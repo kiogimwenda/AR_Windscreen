@@ -127,3 +127,39 @@ since a bare library name is passed straight to the linker without a configure-t
 13.5's CI `host-unit-tests` job installs `libosrm-dev`, which does not exist on `ubuntu-latest`
 either — that job will need the same treatment before Phase 8, and is noted but not yet fixed.
 `platformio.ini`'s board is still the guide's placeholder `blackpill_f411ce`.
+
+## 2026-09-18 — Phase 0: OSRM built from source (Part 2.7)
+
+**Attempted:** Provide the OSRM routing/map-matching dependency that Part 11.2–11.4 are built on,
+since Part 2.7's `apt install osrm-tools` has no package on Debian 13.
+
+**Built/changed:** Cloned OSRM v6.0.0 into `~/src/osrm-backend` (outside this repository — it is a
+system dependency, not project source), built it against system Boost 1.83 and oneTBB 2022.1, and
+installed to `/usr/local`. Provides `osrm-extract`, `osrm-partition`, `osrm-customize`,
+`osrm-contract`, `osrm-datastore`, `osrm-routed`, plus `libosrm.a` and headers under
+`/usr/local/include/osrm`.
+
+**Reasoning:** v6.0.0 rather than master, so the version is pinned and reproducible for the report.
+Built against the distribution's Boost and oneTBB rather than OSRM's bundled alternatives, to keep
+one copy of each library in the process — this matters because the host binary will link OSRM
+alongside PCL, which also uses Boost.
+
+**Problems hit:** The first build failed at 87% with seven `-Werror=array-bounds` errors, all of
+them GCC 14 false positives inside OSRM's *own* vendored third-party headers (fmt 10 and sol2), not
+in OSRM's code or ours. OSRM adds `-Werror` to `CMAKE_CXX_FLAGS` via `cmake/warnings.cmake`.
+Suppressing it needed care: passing `-Wno-error=array-bounds` in `CMAKE_CXX_FLAGS` would have been
+silently defeated, because OSRM *appends* its own flags to that variable and later flags win — so
+`-Werror` would land after the exemption and re-enable it. Putting the exemptions in
+`CMAKE_CXX_FLAGS_RELEASE` instead works, because CMake emits `${CMAKE_CXX_FLAGS}` followed by
+`${CMAKE_CXX_FLAGS_<CONFIG>}`, placing them after `-Werror`. Rebuilt clean.
+
+**Verification:** A C++ program including `<osrm/osrm.hpp>`, `<osrm/route_parameters.hpp>` and
+`<osrm/match_parameters.hpp>` compiles, links against `libosrm`, and constructs an `EngineConfig`
+with the MLD algorithm — the exact API surface Part 11.2 and 11.3 specify. This is the real proof
+the dependency is usable, rather than just that files landed on disk.
+
+**Still open:** `pkg-config --modversion libosrm` reports the literal string `packagejson.version`
+— an unexpanded variable in OSRM's installed `.pc` file. Harmless here since `host/CMakeLists.txt`
+links OSRM by plain library name, but worth knowing before anyone tries to drive the link line from
+pkg-config. Part 13.5's CI job still installs the nonexistent `libosrm-dev`; unchanged, and still
+due before Phase 8.

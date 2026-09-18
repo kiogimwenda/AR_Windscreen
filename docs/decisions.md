@@ -90,3 +90,11 @@ not exist in Debian 13 under any name. Built against system Boost 1.83 and oneTB
 **STM32 board left as the guide's `blackpill_f411ce` placeholder.** Part 4.1 says to substitute the
 exact board on hand; that board has not been identified yet. To be revisited at the start of
 Phase 2.
+
+**OSRM built as a pinned v6.0.0 against system Boost/oneTBB, installed to `/usr/local`.** Source
+kept in `~/src/osrm-backend`, outside this repository — it is a system dependency, not project
+source. Using the distribution's Boost 1.83 and oneTBB rather than bundled copies keeps a single
+copy of each in the host process, which matters because the host binary links OSRM alongside PCL
+and PCL also uses Boost. Its build needs `-Wno-error=array-bounds` and friends passed via
+`CMAKE_CXX_FLAGS_RELEASE` (not `CMAKE_CXX_FLAGS`, where OSRM's own appended `-Werror` would defeat
+them) to get past GCC 14 false positives in OSRM's vendored fmt/sol2 headers.
