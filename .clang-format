@@ -1,0 +1,10 @@
+# Style for firmware/ and host/ C++ — enforced by CI's format-check job (Part 13.5).
+# Google style with a 100-column limit and 4-space indents, matching the code shown throughout
+# docs/BUILD_GUIDE.md.
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 100
+AccessModifierOffset: -4
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline

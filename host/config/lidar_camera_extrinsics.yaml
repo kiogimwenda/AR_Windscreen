@@ -1,0 +1,8 @@
+# Rigid transform from the LiDAR frame into the camera frame — see docs/BUILD_GUIDE.md Part 12.2.
+# Solved from checkerboard corner correspondences visible to both sensors simultaneously.
+# Consumed by SceneReconstruction (Part 8.3) and RoadSurfaceProjector (Part 11.4) — the latter
+# introduces no new calibration dependency of its own, it reuses this one.
+# TEMPLATE ONLY; filled in during Phase 6.
+rotation_matrix: []            # 3x3, row-major
+translation_m: []              # [tx, ty, tz]
+reprojection_error_px: 0.0

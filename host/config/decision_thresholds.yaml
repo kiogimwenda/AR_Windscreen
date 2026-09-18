@@ -1,0 +1,8 @@
+# DecisionArbiter thresholds — see docs/BUILD_GUIDE.md Part 12.5.
+# Conservative placeholders, tuned during Part 13 field testing, never guessed once and left alone.
+ttc_brake_threshold_s: 1.8        # time-to-collision below which a brake request is emitted
+hard_brake_decel_g: 0.4           # IMU deceleration threshold for hazard-lights-on
+tailgating_min_gap_s: 1.0         # following-distance-in-seconds threshold
+brake_actuator_max_intensity: 90  # must match BrakeActuatorDriver::kMaxSafeIntensity (Part 4.4).
+                                  # test_decision_arbiter.cpp asserts no input combination ever
+                                  # produces a BRAKE request above this value (Part 13.1).

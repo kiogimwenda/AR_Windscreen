@@ -1,0 +1,23 @@
+# Claude Code's own local state — never committed, no exceptions.
+.claude/
+
+# Build outputs
+build/
+host/build/
+host/test/unit/build/
+firmware/sensor_actuator_hub/.pio/
+
+# Regenerable / hardware-specific ML artifacts (Part 7.3) — never portable across machines
+host/models/onnx/
+host/models/engines/
+
+# Runtime logs (Part 5.4, Part 11.6)
+logs/
+
+# IDE
+.idea/
+.vscode/
+
+# OS cruft
+.DS_Store
+Thumbs.db

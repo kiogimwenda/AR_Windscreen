@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  protocol-sync-check:
+    name: Protocol / CRC16 byte-for-byte check (firmware vs host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Protocol.h vs HubProtocol.h
+        run: diff firmware/sensor_actuator_hub/include/hub/Protocol.h host/include/ar_drive_assist/vehicle/HubProtocol.h
+      - name: Crc16.h vs Crc16.h
+        run: diff firmware/sensor_actuator_hub/include/hub/Crc16.h host/include/ar_drive_assist/vehicle/Crc16.h
+
+  firmware-build:
+    name: Firmware build (PlatformIO)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.x" }
+      - run: pip install platformio
+      - run: cd firmware/sensor_actuator_hub && pio run
+
+  host-unit-tests:
+    name: Host unit tests (logic only — see Part 13.1's note on why this needs no GPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CPU-only dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libeigen3-dev libpcl-dev libgtest-dev libosrm-dev cmake build-essential
+      - name: Configure and build host/test/unit only
+        run: |
+          cmake -S host/test/unit -B host/test/unit/build
+          cmake --build host/test/unit/build
+      - name: Run unit tests
+        run: ctest --test-dir host/test/unit/build --output-on-failure
+
+  format-check:
+    name: clang-format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y clang-format
+      - run: find firmware host \( -name "*.cpp" -o -name "*.h" \) -print0 | xargs -0 clang-format --dry-run --Werror

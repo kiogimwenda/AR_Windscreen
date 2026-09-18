@@ -1,0 +1,8 @@
+# Produced by scripts/run_camera_calibration.py — see docs/BUILD_GUIDE.md Part 12.1, Appendix A.
+# TEMPLATE ONLY. Do not hand-edit the matrix; regenerate by re-running the calibration, and
+# recalibrate whenever the capture resolution changes (Phase 4 finalizes 2K vs 1080p).
+image_width: 2560
+image_height: 1440
+camera_matrix: []              # [fx, 0, cx, 0, fy, cy, 0, 0, 1]
+distortion_coefficients: []    # [k1, k2, p1, p2, k3]
+reprojection_error_px: 0.0     # fill in from the calibration script's output; keep below ~0.5 px

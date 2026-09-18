@@ -1,0 +1,5 @@
+# RoadSurfaceProjector tuning — see docs/BUILD_GUIDE.md Part 11.4.
+horizon_m: 60                    # how far ahead to project the route line
+waypoint_spacing_m: 1.5
+lateral_correction_max_m: 1.0    # caps how far a single lane-detection frame can nudge the line
+                                 # sideways, so one bad detection can't fling the overlay across lanes

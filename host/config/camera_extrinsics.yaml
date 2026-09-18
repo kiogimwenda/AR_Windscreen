@@ -1,0 +1,5 @@
+# Camera pose relative to the vehicle reference frame (rear axle midpoint, ground-projected).
+# Measured by hand with a tape measure and a level — see docs/BUILD_GUIDE.md Part 12.2.
+# TEMPLATE ONLY; filled in during Phase 6 / Phase 14.
+translation_m: []              # [x forward, y left, z up] from the vehicle reference frame
+rotation_deg: []               # [roll, pitch, yaw] of the camera in the vehicle frame
