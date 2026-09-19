@@ -107,3 +107,40 @@ previous one's exit criteria are met exists so that later work is not built on a
 foundation — and nothing in Phase 1 (the shared protocol and its CRC tests) depends on a camera
 existing. Blocking Phase 1 on check 4 would serve the letter of the rule against its purpose. The
 check stays explicitly open in `progress-log.md` rather than being waived.
+
+## Phase 1 — Shared protocol
+
+**`#include <cstddef>` added to `Protocol.h`.** Part 3.1's snippet uses `size_t` while including
+only `<cstdint>`, which compiles only where `<cstdint>` transitively provides it.
+
+**Frame geometry constants added** (`HEADER_SIZE`, `CRC_SIZE`, `CRC_COVERED_OFFSET`,
+`MAX_FRAME_SIZE`). Derived from Part 3.1's frame diagram, which otherwise leaves `VehicleInterface`
+and `CommsTask` to re-derive the same offsets independently. The CRC covered range especially: a
+mismatch there leaves both ends self-consistent and mutually incompatible, which surfaces only on
+a bench.
+
+**`static_assert` on every struct size and on `sizeof(float)`/`sizeof(double)`.** The two ends are
+different architectures and compilers; `#pragma pack(push, 1)` removes padding but nothing
+otherwise verifies that it did. These turn a silent layout disagreement into a build failure on
+whichever side drifts. Negative-tested on the ARM cross-compile, not assumed.
+
+**HEARTBEAT defined as a zero-payload message.** Part 3.3 requires it but specifies no struct.
+Nothing needs to travel in it: the hub only needs evidence the host is alive, and staleness of an
+actual request is already covered by `ActuationCommand::hostTimestampMs`.
+
+**CRC test vectors duplicated in the host and firmware suites rather than shared.** The point of
+Part 3's "implemented twice, kept identical" rule is independent confirmation. `protocol-sync-check`
+proves the files match; the two suites prove each copy independently yields the standard results. A
+shared vector header would reduce that to a single point of failure.
+
+**`CommsTask.cpp` includes `Protocol.h` while still otherwise a stub.** `static_assert`s only fire
+in a translation unit that compiles the header, and both test suites run on x86-64 — so without
+this, the cross-architecture layout claim would be untested on the architecture it is about. A bare
+`pio run` now checks it on ARM. `CommsTask` owns framing per Part 4.3, so the include belongs here.
+
+**`[env:native]` added to `platformio.ini`, with `default_envs = stm32f4_hub`.** Gives Phase 1 an
+automatable firmware-side test with no board attached, while keeping a bare `pio run` — which is
+what CI's `firmware-build` job runs — building only the STM32 target.
+
+**`.clang-format-ignore` patterns need `**`, not `*`.** Patterns are globs relative to the ignore
+file and `*` does not cross `/`, so `.pio/*` matches nothing useful.

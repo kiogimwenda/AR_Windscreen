@@ -1,11 +1,11 @@
 # Paths clang-format must never touch — see docs/BUILD_GUIDE.md Part 13.5.
 #
 # CI's format-check job runs `find firmware host \( -name "*.cpp" -o -name "*.h" \)` over a clean
-# checkout, where these directories do not exist. Locally they do, and they contain third-party
-# sources (the STM32 Arduino core, STM32duino FreeRTOS, Adafruit and TinyGPSPlus libraries) that
-# must be left exactly as upstream ships them. Without this file, running the same command locally
-# rewrites vendored code inside the build tree.
-firmware/sensor_actuator_hub/.pio/*
-host/build/*
-host/test/unit/build/*
-build/*
+# checkout, where none of these directories exist. Locally they do, and they hold third-party code
+# (the STM32 Arduino core, STM32duino FreeRTOS, Adafruit and TinyGPSPlus) plus CMake's own probe
+# files. Without this, running CI's command locally rewrites vendored sources inside the build tree.
+#
+# Patterns are globs relative to this file's directory, and `*` does NOT cross a `/` — so these
+# need `**`. A pattern like `.pio/*` silently matches nothing below the first level.
+**/.pio/**
+**/build/**

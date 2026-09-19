@@ -189,3 +189,110 @@ silently rewritten, since the point of this log is what actually happened.
 all pass, so Phase 0 is complete except for that one hardware-gated item. A hardware bill of
 materials and a decision on which non-hardware phases to bring forward are both now on the critical
 path, and neither exists yet.
+
+## 2026-09-19 — Phase 1: shared protocol headers (Part 3.1, 3.2)
+
+**Attempted:** Implement `Protocol.h` and `Crc16.h` — the host<->hub wire format and its checksum —
+as two byte-for-byte identical copies, one under `firmware/`, one under `host/`.
+
+**Built/changed:** `firmware/sensor_actuator_hub/include/hub/Crc16.h` and `.../hub/Protocol.h`,
+copied verbatim to `host/include/ar_drive_assist/vehicle/Crc16.h` and `.../vehicle/HubProtocol.h`.
+`Crc16.h` is Part 3.2's bit-serial CRC-16/CCITT-FALSE. `Protocol.h` carries Part 3.1's
+`START_BYTE`, `MAX_PAYLOAD`, `MessageType` and the three packed payload structs, plus four
+additions described below.
+
+**Reasoning:** Four things were added beyond Part 3.1's literal text, all in service of the
+"identical on both ends" requirement rather than in spite of it.
+
+*Frame geometry constants* (`HEADER_SIZE`, `CRC_SIZE`, `CRC_COVERED_OFFSET`, `MAX_FRAME_SIZE`) are
+derived from Part 3.1's ASCII frame diagram. Without them, `VehicleInterface` (Part 11.1) and
+`CommsTask` (Part 4.3) would each re-derive the same offsets by reading that diagram — and the CRC
+covered range in particular is the single most likely framing bug, because getting it wrong leaves
+both ends self-consistent and mutually incompatible, which only shows up on a bench.
+
+*`static_assert` on every struct size.* This is the important one. The two ends are different
+architectures — Cortex-M4 at 32 bits, x86-64 — with different compilers. `#pragma pack(push, 1)`
+is what removes padding, but nothing checks that it worked. These asserts turn a silent layout
+disagreement (the hub reading a brake intensity out of what the host thought was a timestamp) into
+a build failure. They cost nothing at runtime and are checked on both sides because both sides
+compile this same file.
+
+*`#include <cstddef>`.* Part 3.1's snippet uses `size_t` but includes only `<cstdint>`. It happens
+to compile where `<cstdint>` transitively drags in `<cstddef>`, which is not guaranteed.
+
+*A note that HEARTBEAT carries no payload.* Part 3.3 requires the message but defines no struct for
+it. Recorded as length 0 explicitly, so the next person does not have to infer it. Staleness of a
+real request is already covered by `ActuationCommand::hostTimestampMs`, so the heartbeat needs to
+carry nothing.
+
+**Problems hit:** Nothing went wrong in writing the headers. The one thing worth recording is what
+the struct sizes turned out to be: `SensorReport` is 63 bytes against a `MAX_PAYLOAD` of 64. One
+byte of headroom. A `static_assert` now guards that, because adding a single `float` to
+`SensorReport` would push it over the cap and frames would start being rejected as oversized with
+no obvious connection to the change that caused it.
+
+**Still open:** Nothing from this task. Framing encode/decode belongs to `VehicleInterface` and
+`CommsTask` in Phases 3 and 2 respectively, per Part 11.1 — this file deliberately holds only the
+shared format, not the shared machinery.
+
+## 2026-09-19 — Phase 1: CRC and layout tests, both sides of the link
+
+**Attempted:** Satisfy Phase 1's exit criteria — a passing host-side CRC test, a matching
+firmware-side test confirming identical behaviour, and a green `protocol-sync-check`.
+
+**Built/changed:** `host/test/unit/test_crc16.cpp` (12 GoogleTest cases) and
+`firmware/sensor_actuator_hub/test/test_protocol_crc.cpp` (7 Unity cases). Wired up
+`host/test/unit/CMakeLists.txt` with an `add_unit_test()` helper so later phases add one line each,
+and added a `[env:native]` PlatformIO environment plus `default_envs = stm32f4_hub` so `pio test -e
+native` runs the firmware's tests on this machine while a bare `pio run` still builds only the
+STM32 target (which is what CI's `firmware-build` job invokes). Added `#include "hub/Protocol.h"`
+and `"hub/Crc16.h"` to the otherwise-still-stubbed `CommsTask.cpp`.
+
+**Reasoning:** The CRC vectors are deliberately duplicated between the two test files rather than
+factored into a shared header. CI's `protocol-sync-check` already proves the two headers are
+byte-identical; what the tests add is that each copy independently produces the *standard* results.
+A shared vector header would collapse that into one point of failure, which is the opposite of what
+Part 3's "implemented twice, kept identical" rule is for. The canonical check value
+(`crc16_ccitt_false("123456789") == 0x29B1`) is asserted on both sides specifically because it
+proves the implementation is the standard CRC-16/CCITT-FALSE rather than merely self-consistent —
+a self-consistent but non-standard CRC would pass every other test in both files.
+
+The `CommsTask.cpp` include is not premature scaffolding. `Protocol.h`'s `static_assert`s only
+execute in a translation unit that compiles the header, and the layout question they answer is
+specifically about the Cortex-M4 — but both test suites run on x86-64. Without something in the
+firmware including the header, Phase 1's "identical on both ends" claim would have rested entirely
+on two tests that ran on the same architecture. `CommsTask` is the task that genuinely owns framing
+(Part 4.3), so this is where the include belongs anyway.
+
+**Verification:** Host suite 12/12 via `ctest`. Firmware suite 7/7 via `pio test -e native`. `pio
+run` cross-compiles the firmware for ARM successfully, which is what actually exercises the layout
+asserts on the real target. Both `diff`s in CI's `protocol-sync-check` are clean, and the
+`format-check` command passes.
+
+The layout assert was then negative-tested rather than assumed: changing the expected
+`SensorReport` size to 64 and running `pio run` fails the ARM build with `static assertion failed:
+SensorReport layout changed - update BOTH copies`, and restoring it builds clean again. A safety
+net that has never been observed to catch anything is not yet known to be a safety net.
+
+**Still open:** Nothing from this task. The five later test stubs remain stubs; their targets are
+listed as comments in `host/test/unit/CMakeLists.txt` against the phases that will add them.
+
+## 2026-09-19 — Fix: `.clang-format-ignore` was silently matching nothing
+
+**Attempted:** Confirm CI's `format-check` command passes when run locally.
+
+**Built/changed:** Corrected `.clang-format-ignore` from `firmware/sensor_actuator_hub/.pio/*` to
+`**/.pio/**` and `**/build/**`.
+
+**Reasoning:** In a clang-format ignore file, patterns are globs relative to the file's directory
+and `*` does not cross a `/`. `.pio/*` therefore matched only the first level under `.pio` and
+nothing beneath it, so the vendored Arduino/FreeRTOS/Adafruit sources were still being checked.
+
+**Problems hit:** This was a false pass on 2026-09-18, not a new break. That day's check reported
+clean only because `.pio/` had just been wiped, so there was nothing for the broken pattern to fail
+to match. The ignore file was written and never actually exercised. Fixed and then verified in both
+directions: the full command now reports zero violations, and dropping a deliberately misformatted
+file into `host/src/` still produces violations, confirming the ignore is not simply swallowing
+everything.
+
+**Still open:** Nothing.
