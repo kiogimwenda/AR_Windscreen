@@ -98,3 +98,12 @@ copy of each in the host process, which matters because the host binary links OS
 and PCL also uses Boost. Its build needs `-Wno-error=array-bounds` and friends passed via
 `CMAKE_CXX_FLAGS_RELEASE` (not `CMAKE_CXX_FLAGS`, where OSRM's own appended `-Werror` would defeat
 them) to get past GCC 14 false positives in OSRM's vendored fmt/sol2 headers.
+
+## Phase ordering under a hardware-free start
+
+**Phase 0 treated as complete-except-check-4, rather than blocking all work.** Part 2.10's camera
+check cannot pass until hardware is purchased. The guide's rule against starting a phase before the
+previous one's exit criteria are met exists so that later work is not built on an unverified
+foundation — and nothing in Phase 1 (the shared protocol and its CRC tests) depends on a camera
+existing. Blocking Phase 1 on check 4 would serve the letter of the rule against its purpose. The
+check stays explicitly open in `progress-log.md` rather than being waived.

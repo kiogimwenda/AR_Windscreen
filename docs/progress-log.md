@@ -163,3 +163,29 @@ the dependency is usable, rather than just that files landed on disk.
 links OSRM by plain library name, but worth knowing before anyone tries to drive the link line from
 pkg-config. Part 13.5's CI job still installs the nonexistent `libosrm-dev`; unchanged, and still
 due before Phase 8.
+
+## 2026-09-19 — Phase 0: check 4 reclassified as blocked on procurement, not on setup
+
+**Attempted:** Close Part 2.10's fifth check (a USB camera appearing as `/dev/video0` after a
+`usbipd-win` attach), the last outstanding item in Phase 0.
+
+**Built/changed:** Nothing built. The check is reclassified from "pending a Windows-side attach" to
+"blocked until hardware is purchased" and the earlier entry's framing is corrected here rather than
+edited away.
+
+**Reasoning:** The 2026-09-18 entry recorded check 4 as not yet run "because nothing has been
+attached through usbipd-win", which implied a camera existed and was merely unattached. No project
+hardware has been bought at all. That matters well beyond this one check: it means the guide's Part
+14 roadmap cannot be walked straight through in order, because Phases 2, 3, 4, 6, 11, 12, 13, 14
+and 15 all have exit criteria that require physical hardware in hand, and Phases 7 and 9 can be
+written but not fully verified without it.
+
+**Problems hit:** The error was mine in the earlier entry — I inferred from a missing `/dev/video*`
+node that a camera was present but unattached, rather than asking. Recorded here rather than
+silently rewritten, since the point of this log is what actually happened.
+
+**Still open:** Part 2.10 check 4 stays open until a camera exists. Phase 0's other six criteria
+(the four other Part 2.10 checks, `cmake` configuring `host/`, and `pio run` building the firmware)
+all pass, so Phase 0 is complete except for that one hardware-gated item. A hardware bill of
+materials and a decision on which non-hardware phases to bring forward are both now on the critical
+path, and neither exists yet.
