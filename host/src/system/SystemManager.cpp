@@ -59,7 +59,7 @@ void onCrashSignal(int sig) {
 }
 
 void install(int sig, void (*handler)(int), int flags) {
-    struct sigaction sa{};
+    struct sigaction sa = {};
     sa.sa_handler = handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = flags;

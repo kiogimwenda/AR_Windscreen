@@ -44,9 +44,7 @@ std::vector<std::string> readLines(const std::string& path) {
 
 TEST(EventLog, FirstLineIsSessionStartWithWallClock) {
     const auto path = tempPath("start");
-    {
-        EventLog log(path);
-    }
+    EventLog{path};  // a temporary: opened and closed in this one statement
     const auto lines = readLines(path);
     ASSERT_EQ(lines.size(), 2u);
     EXPECT_TRUE(std::regex_search(

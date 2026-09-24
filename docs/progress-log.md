@@ -524,3 +524,25 @@ one package set, so the version guard passes there. The fan-out note matters bec
 between two readers would be a data race.
 
 **Still open:** Confirm the job actually goes green after the push.
+
+## 2026-09-24 — Fix: clang-format disagreement between local (22) and CI (18)
+
+**Attempted:** Confirm CI after pushing the Phase 3 software work.
+
+**Built/changed:** `struct sigaction sa{}` became `struct sigaction sa = {}` in `SystemManager.cpp`,
+and a one-statement scope block in `test_event_log.cpp` became a temporary `EventLog{path};`.
+
+**Reasoning:** `host-unit-tests` went green, its first green run since Phase 0, which confirms the
+CI dependency fix. `format-check` failed on three lines that pass locally: this machine has
+clang-format 22.1.0, and CI's `ubuntu-latest` installs 18. The two versions disagree about the
+spacing in `sa{}` and about collapsing a one-statement block onto a single line. The CI version
+(18.1.8) was reproduced exactly in a scratch venv (`pip install "clang-format>=18,<19"`), and the
+three CI errors matched. Both constructs were rewritten into forms the two versions format
+identically, rather than reformatting with one version and breaking the other.
+
+**Verification:** Both clang-format 22 and 18 report 0 violations across all tracked
+firmware/host sources. 51/51 unit tests; the host binary builds.
+
+**Still open:** The two versions can diverge again on any new code. Checking with the scratch
+clang-format 18 before pushing avoids surprises until CI's formatter is pinned. `ubuntu-latest`
+moves to Ubuntu 26 on 2026-10-19 per GitHub's notice, which will change CI's version again.
