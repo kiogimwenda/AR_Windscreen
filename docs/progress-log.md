@@ -296,3 +296,34 @@ file into `host/src/` still produces violations, confirming the ignore is not si
 everything.
 
 **Still open:** Nothing.
+
+## 2026-09-24 — Hardware bill of materials with Kenyan sourcing
+
+**Attempted:** Produce the hardware bill of materials that the 2026-09-19 entry identified as
+being on the critical path, sourcing from local (Kenyan) suppliers first and naming an import route
+only where nothing suitable is sold locally.
+
+**Built/changed:** `docs/bill-of-materials.md` — every hardware item referenced by Parts 4, 6, 8,
+13.3 and 15, grouped as hub, sensors, actuation/safety, power, bench rig and installation, each with
+the spec that matters, a supplier, a price and stock status as seen on 2026-09-24. Includes an
+import-bundle cost estimate and a budget summary. Four entries added to `decisions.md`.
+
+**Reasoning:** Suppliers were checked online (K-Technics, Pixel Electric, Nerokas, Jumia, Kilimall).
+Four items had no local listing: the Livox Mid-360, its aviation cable (not included with the
+sensor), the BNO085, and a suitable brake actuator. These are grouped into a single import so duty
+and clearing are paid once. The camera line requires manual focus control because autofocus moving
+the lens would silently invalidate the Part 12.1 intrinsics.
+
+**Problems hit:** Three issues that the guide does not surface, found while matching parts to specs.
+First, every locally sold linear actuator is a lead-screw type, which holds position when unpowered.
+Coupled rigidly to the pedal, it would leave the brake applied after a kill-switch cut, directly
+contradicting the hard safety rule. The actuator is therefore marked "do not buy" pending a design
+decision, not substituted. Second, the STM32's 3.3 V outputs sit below the input threshold of the
+common BTS7960 and relay modules. Third, a 100–140 W USB-C car charger cannot power an RTX 5060
+laptop under load. Many shop listings showed "sold out" (GPS, APDS-9960, F411 board, Pixel's
+BTS7960), so all prices are marked for phone confirmation before purchase.
+
+**Still open:** Brake actuator mechanical design (BOM note B), to be agreed with the supervisor.
+Laptop in-car power approach (note D). BNO085 import vs local BNO055 plus a driver change. A clearing
+agent's quote for the LiDAR, and whether departmental education duty relief applies. Part 2.10
+check 4 remains open until the camera is bought.

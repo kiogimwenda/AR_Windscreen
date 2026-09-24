@@ -144,3 +144,26 @@ what CI's `firmware-build` job runs — building only the STM32 target.
 
 **`.clang-format-ignore` patterns need `**`, not `*`.** Patterns are globs relative to the ignore
 file and `*` does not cross `/`, so `.pio/*` matches nothing useful.
+
+## Hardware procurement
+
+**Bill of materials kept at `docs/bill-of-materials.md`.** Part 1's tree has no BOM file; it lives
+beside `decisions.md` because it is a planning record, not code. Sourcing assumes Kenya (the dev
+machine's timezone is Africa/Nairobi), local shops first, imports only where nothing local exists.
+
+**STM32F401CC Black Pill proposed over the guide's F411.** The F411 is out of stock locally; the
+F401 (K-Technics, KES 900) still meets Part 4.1's minimum. If bought, `platformio.ini`'s board
+becomes `blackpill_f401cc` at the start of Phase 2.
+
+**Level converters on every 3.3 V → 5 V module input.** BTS7960 boards' 74HC input buffers and
+opto relay boards do not switch reliably from 3.3 V; marginal logic on a brake PWM line is not
+acceptable under the Part 0 safety rule.
+
+**Brake actuator purchase deferred pending a mechanical design decision.** Locally sold actuators
+are non-back-drivable lead screws, which would hold the brake applied after a power cut if rigidly
+coupled, contradicting the hard rule. Candidate direction (pull-only cable, fail-safe electromagnet
+release, fast low-force actuator) recorded in the BOM's note B for supervisor review, not adopted.
+
+**Two guide gaps flagged, not yet changed:** brake-light-switch sensing via optocoupler as a
+fallback for `obdBrakePedalActive` (BOM note C), and Part 15.2's USB-C PD laptop charger being
+undersized for an RTX 5060 laptop (BOM note D).
