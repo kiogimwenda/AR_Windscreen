@@ -167,3 +167,62 @@ release, fast low-force actuator) recorded in the BOM's note B for supervisor re
 **Two guide gaps flagged, not yet changed:** brake-light-switch sensing via optocoupler as a
 fallback for `obdBrakePedalActive` (BOM note C), and Part 15.2's USB-C PD laptop charger being
 undersized for an RTX 5060 laptop (BOM note D).
+
+## Phase 3 — Host skeleton (software part)
+
+**Phase 3 split: software parts built before Phase 2.** `RingBuffer`, `EventLog` and
+`SystemManager` need no hardware. `VehicleInterface` and the Phase 3 exit test (loopback against the
+real hub) wait for Phase 2. Phase 3 is not marked complete until then.
+
+**`RingBuffer` drop-oldest is done by the consumer (`popLatest`), not the producer.** In an SPSC
+queue only the consumer owns `tail_`; a producer that discarded the oldest item would race the
+consumer reading that slot. `push` returns false when full and the caller applies the policy, as
+Part 5.3's own comment on `push` says.
+
+**`RingBuffer` capacity must be a power of two, and is exactly N.** Monotonic counters with
+`% N` are only correct across counter wrap when N divides 2^64.
+
+**Bus messages are FlatBuffers object-API structs (`--gen-object-api`), not serialized buffers.**
+In-process hops gain nothing from serialisation; the byte form stays available for replay.
+
+**`flatc` 24.3.25 built from OSRM's vendored source and installed to `/usr/local/bin`.** OSRM
+installs FlatBuffers 24.3.25 headers into `/usr/local/include`, shadowing Debian's 23.5.26, and its
+own public headers need them, so the host standardises on 24.3.25. `FlatBufferSchemas.cmake` fails
+configure if `flatc` and the headers disagree.
+
+**`EventLog`: raw `write()` per line; `fsync()` only for actuation, ack and fault lines.** `write()`
+alone survives a process crash (Part 11.6's requirement). `fsync` adds power-loss durability where
+it matters, without its cost on routine lines.
+
+**`EventLog` failure latches `healthy()` false rather than throwing mid-run.** A throw from a logging
+call inside a subsystem thread would take the thread down. The flag lets Phase 10's arbiter refuse
+to actuate without an evidence trail.
+
+**`OSRM::osrm` defined in `cmake/FindOSRM.cmake` instead of the guide's bare `osrm`.**
+`libosrm.a` is static and records none of its dependencies, and OSRM's `libosrm.pc` is broken
+(CMake target names in `Libs.private`). The target names Boost date_time/iostreams/thread, TBB,
+zlib and rt explicitly.
+
+**yaml-cpp added as a dependency.** Part 2.3 lists no YAML library, but the config files are
+YAML. yaml-cpp is packaged on both Debian and Ubuntu and is CPU-only, so the unit suite stays
+GPU-free.
+
+**`start<T>(args...)` forwards constructor arguments** instead of Part 11.5's
+`start<T, Sinks...>(Sinks&...)`. Phase 11 will construct the `WindowedSink` and pass it, e.g.
+`start<ArRenderer>(sink)`.
+
+**Subsystem contract: `void run(const std::atomic<bool>& stop)`.** Part 11.5 leaves it
+unspecified. A throw or early return from `run()` shuts the whole system down.
+
+**Shutdown joins every subsystem before the final-command hook runs.** That guarantees the zeroed
+command is the last thing sent. The heartbeat gap during joins may trip the hub watchdog, which
+fails safe.
+
+**Crash signals write a pre-registered zeroed frame with one `write()`, then re-raise.** It is the
+only async-signal-safe way to meet Part 5.4's "crash-triggered" shutdown requirement.
+
+**`main` defaults: `host/config` and `logs/session.log`, run from the repo root.** Part 5.4's
+`"config/"` assumed a working directory of `host/`, while `logs/` is at the repository root.
+Both are overridable by argv.
+
+**CI installs no OSRM until Phase 8.** `libosrm-dev` does not exist on Ubuntu.

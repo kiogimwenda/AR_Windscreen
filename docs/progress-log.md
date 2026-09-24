@@ -327,3 +327,200 @@ BTS7960), so all prices are marked for phone confirmation before purchase.
 Laptop in-car power approach (note D). BNO085 import vs local BNO055 plus a driver change. A clearing
 agent's quote for the LiDAR, and whether departmental education duty relief applies. Part 2.10
 check 4 remains open until the camera is bought.
+
+## 2026-09-24 — Phase 3 (software part): `RingBuffer` message bus (Part 5.3)
+
+**Attempted:** Implement the single-producer/single-consumer ring buffer that every host
+subsystem communicates through. Phase 3 was started with its hardware-free parts only
+(`RingBuffer`, `EventLog`, `SystemManager`); `VehicleInterface` and the Phase 3 exit test wait for
+the Phase 2 hub.
+
+**Built/changed:** `host/include/ar_drive_assist/common/RingBuffer.h`: `push` (copy and move),
+`pop`, `popLatest`, `sizeApprox`. `host/test/unit/test_ring_buffer.cpp` has 9 tests, 2 of them
+two-threaded. It is registered in `host/test/unit/CMakeLists.txt` with `Threads::Threads`.
+`.gitignore` now also covers `host/test/unit/build-*/` (sanitizer build directories).
+
+**Reasoning:** Both indices are monotonically increasing counters, each written by one thread
+only, so no compare-and-swap is needed. Using counters rather than wrapped indices gives a
+capacity of exactly N instead of N−1; N must be a power of two so the modulo stays correct across
+counter wrap. The producer publishes a slot with a `release` store of `head_`, and the consumer's
+`acquire` load of `head_` guarantees it sees the fully written item. The mirror-image pair on
+`tail_` stops the producer overwriting a slot the consumer is still moving out of. `head_` and
+`tail_` sit on separate cache lines to avoid false sharing.
+
+Part 5.3's "drop oldest" policy is realised by the consumer (`popLatest`), not the producer. In an
+SPSC queue only the consumer owns `tail_`, so a producer discarding the oldest item would race the
+consumer reading it. `push` therefore never overwrites; it returns false and leaves the policy to
+the caller, as Part 5.3's own signature comment says. `popLatest` resets discarded slots to `T{}`
+so a frame bus doesn't pin up to N stale `cv::Mat` buffers.
+
+**Problems hit:** The first ThreadSanitizer run aborted at startup ("unexpected memory mapping")
+because this kernel's address-space randomisation is incompatible with TSan's shadow memory. An
+earlier run had appeared to pass only because the random layout happened to work that time. It
+now runs under `setarch -R` (randomisation disabled for that process only):
+`cmake -S host/test/unit -B host/test/unit/build-tsan -DCMAKE_CXX_FLAGS="-fsanitize=thread -O1 -g"`,
+then `setarch -R host/test/unit/build-tsan/test_ring_buffer`.
+
+**Verification:** 9/9 pass in the normal build (21/21 across the suite including CRC). Under TSan,
+three consecutive runs are 9/9 with zero race reports. Negative test: weakening the producer's
+`head_.store` from `release` to `relaxed` makes TSan report a data race on the consumer's slot
+read (`RingBuffer.h:92`), which is exactly the failure the ordering exists to prevent. Restored
+and re-verified clean.
+
+**Still open:** Nothing from this task.
+
+## 2026-09-24 — Phase 3 (software part): FlatBuffers message schemas and generation (Part 3.5)
+
+**Attempted:** Fill in the four bus message schemas deferred to Phase 3 by Phase 0, and generate
+their C++ headers at build time as Part 3.5 requires. `EventLog` needs the generated
+`ActuationRequest` type.
+
+**Built/changed:** `detections.fbs`, `vehicle_pose.fbs`, `actuation_request.fbs` and
+`road_projected_route.fbs`, with Part 3.5's definitions verbatim. New
+`cmake/FlatBufferSchemas.cmake` provides `ar_add_schema_library()`, which runs
+`flatc --cpp --gen-object-api` per schema into the build tree and exposes the output as an
+INTERFACE library. `common/Types.h` aliases the generated object-API structs under the guide's
+names (`ActuationRequest` = `schema::ActuationRequestT`, and so on) and defines the `Config`
+struct. Built `flatc` 24.3.25 from OSRM's vendored FlatBuffers source (`~/src/flatc-24.3.25-build`)
+and installed only that binary to `/usr/local/bin/flatc`.
+
+**Reasoning:** The bus carries the object-API structs (`...T`), not serialized buffers. Serialising
+and parsing on every hop between two threads of one process buys nothing, and the byte form stays
+available for recording and replay (Part 13.2) with no second definition of any type.
+`Config` only holds the sections a built subsystem reads (vehicle params, decision thresholds).
+Later phases add theirs with the code that consumes them.
+
+**Problems hit:** The first build failed on every generated header with FlatBuffers' own
+"Non-compatible flatbuffers version included". Two versions are installed. Debian's 23.5.26 is in
+`/usr/include` and matches `/usr/bin/flatc`. OSRM's 24.3.25, installed on 2026-09-18, is in
+`/usr/local/include`, which the compiler searches first. Removing OSRM's copy was not an option:
+OSRM's public headers (`osrm/engine/api/base_result.hpp`) include it, and the host links OSRM. So
+the whole host standardises on 24.3.25, and a matching `flatc` was built from the exact source OSRM
+vendors.
+
+To stop this recurring as an unexplained compile error, `FlatBufferSchemas.cmake` now compares
+`flatc --version` with the version in the `flatbuffers/base.h` the compiler will see, and fails
+configure with both versions and paths named. Verified against the real case: the stale cached
+`/usr/bin/flatc` made configure fail with that message, and clearing the cache fixed it. CI is
+unaffected: Ubuntu's `flatc` and headers come from the same apt package.
+
+**Still open:** The main host build still has to link `ar_schemas` (done with `SystemManager`,
+below).
+
+## 2026-09-24 — Phase 3 (software part): `EventLog` (Part 11.6)
+
+**Attempted:** Implement the host's actuation evidence log. Part 11.6 requires a monotonic
+timestamp on every line and flushing that survives a crash.
+
+**Built/changed:** `system/EventLog.h` and `src/system/EventLog.cpp`: `logActuationRequest`,
+`logAckStatus`, `logFault`, `logGeneral`, plus `healthy()`. `test_event_log.cpp` has 11 tests.
+
+**Reasoning:** Each line is one POSIX `write()` on an `O_APPEND` descriptor, with no userspace
+buffer, so it is in the kernel the moment `write()` returns and survives any crash of the
+process. Actuation, ack and fault lines are also `fsync()`'d, so they survive a power cut, which
+matters in a car where ignition-off can take the laptop down seconds after an actuation.
+`logGeneral` skips `fsync` because it is too slow for routine lines.
+
+Timestamps are `steady_clock` milliseconds since the log opened. Wall-clock time can jump under
+NTP or GPS correction and would distort request-to-ack gaps. The `SESSION_START` line records the
+UTC wall time for mapping. A per-line sequence number makes a missing line provable. The timestamp
+is taken inside the mutex, so line order, sequence order and time order always agree. Values are
+quoted and escaped, so one event is always exactly one line.
+
+A write or `fsync` failure latches `healthy()` false and reports to stderr. The log cannot record
+its own failure. Phase 10's arbiter is meant to read this flag: a system that can no longer record
+actuation evidence should not request actuation. The constructor throws if the file can't be
+opened, so the system can't start without its evidence trail.
+
+**Verification:** 11/11 pass, and 32/32 across the unit suite. The key test forks a child that
+logs a fault and then `abort()`s (no destructors, no flushing). The parent finds the line on disk
+and confirms `SESSION_END` is absent, proving the destructor really never ran. A concurrency test
+with 8 threads × 500 lines checks that every line is well-formed, the sequence has no gaps and
+matches line order, timestamps never go backwards, and no message is lost or doubled. It is clean
+under ThreadSanitizer. The disk-full path is exercised by logging to `/dev/full`.
+
+**Still open:** Wiring `healthy()` into the arbiter's arming check is Phase 10's.
+
+## 2026-09-24 — Phase 3 (software part): `SystemManager` and `main.cpp` (Part 5.4, Part 11.5)
+
+**Attempted:** Implement subsystem lifecycle, config loading, signal handling and the ordered
+shutdown with its final zeroed `ActuationCommand`, then wire the real host entry point.
+
+**Built/changed:** `system/SystemManager.h` and `src/system/SystemManager.cpp`: `loadConfig`,
+`start<T>(args...)`, `runUntilShutdown`, `requestShutdown`, `setFinalCommandHook`,
+`installSignalHandlers`, `registerCrashFrame`. `src/main.cpp` loads config, opens the log, installs
+handlers and runs; each later phase adds its own `start<>` line. `test_system_manager.cpp` has 19
+tests. yaml-cpp was added to both builds.
+
+**Reasoning:** Shutdown sets `stop`, joins every thread in start order, and only then calls the
+final-command hook. Once all threads have returned, nothing can produce a new actuation request,
+so the zeroed command is provably the last thing the hub hears. Called earlier, a still-running
+arbiter could slip a brake request in behind it.
+
+A subsystem whose `run()` throws, or returns before being asked to, is logged as a FAULT and takes
+the whole system down. A pipeline missing a stage is broken, not degraded, and stopping hands
+control to the hub watchdog.
+
+Signal handlers only do async-signal-safe things:
+- SIGINT/SIGTERM set a lock-free flag, which `runUntilShutdown` polls every 50 ms.
+- A second SIGINT/SIGTERM means shutdown is stuck. It writes the crash frame and calls `_exit`.
+- Crash signals (SEGV/BUS/FPE/ILL/ABRT) make a single `write()` of a pre-encoded zeroed frame to a
+  registered fd, then re-raise, so the process still dies with its real cause.
+
+VehicleInterface will register that frame and fd when it opens the port. This is Part 5.4's
+belt-and-braces measure; the hub watchdog does not depend on it.
+
+`loadConfig` fails with the file and key named for anything missing, mistyped or out of range.
+The brake ceiling is read as a wide integer and range-checked (0–255) rather than converted
+straight to `uint8_t`.
+
+**Problems hit:**
+- *Host binary failed to link inside `libosrm.a`* (undefined Boost.Thread symbols). A static
+  archive records none of its own dependencies, and `libosrm.a`'s `osrm.cpp.o` contains weak copies
+  of `std::string` member functions. Once `main.cpp` used `std::string`, the linker pulled that
+  object in, and its Boost references with it. This was confirmed by intersecting our objects'
+  undefined symbols with the archive's definitions, not guessed. OSRM's own `libosrm.pc` can't
+  supply the missing list: it contains CMake target names instead of linker flags. The new
+  `cmake/FindOSRM.cmake` defines `OSRM::osrm` with the dependencies (Boost date_time, iostreams and
+  thread, TBB, zlib, rt) and OSRM's compile definitions. This is the link-time failure Phase 0's
+  entry predicted.
+- *Test expectation wrong about the component name:* demangled type names are fully qualified.
+  The test was fixed; the code was right.
+- *Format check:* clang-format wrapped an example log line in `EventLog.h`'s comment, making it
+  read as two lines. The example was shortened. `.clang-format-ignore` gained `**/build-*/**`.
+
+**Verification:** 51/51 unit tests. SystemManager tests were clean under ThreadSanitizer in 3 runs.
+- *Negative test:* with the final-command hook moved before the joins, the ordering test fails (0
+  of 3 subsystems finished when the hook ran). Restored.
+- *Signal paths, tested in forked children:*
+  - SIGINT gives an ordered shutdown, exit 0, and the hook runs.
+  - SIGSEGV delivers the registered frame byte-exact through a pipe and still kills the child with
+    SIGSEGV.
+  - An unregistered frame writes nothing on SIGABRT.
+  - With a subsystem that ignores `stop`, a second SIGINT exits 130 and delivers the frame.
+- *Live binary:* `build/host/ar_drive_assist` runs, and Ctrl+C gives exit 0 with the log trail
+  `shutdown requested by signal → stopping 0 subsystem(s) → shutdown complete → SESSION_END`.
+  A missing config dir refuses to start (exit 1, file named).
+- A manual "two SIGTERMs back to back" check proved nothing: standard signals sent together
+  coalesce into one delivery. That path is covered by the stuck-subsystem unit test instead.
+
+**Still open:** VehicleInterface (Phase 3's hardware half) must call `setFinalCommandHook` and
+`registerCrashFrame`, and unregister the frame before closing the port.
+
+## 2026-09-24 — Phase 3 (software part): CI unit job repaired; architecture note on fan-out buses
+
+**Attempted:** Get CI's `host-unit-tests` job green. It has been red since Phase 0, failing at
+`apt-get install libosrm-dev`.
+
+**Built/changed:** `.github/workflows/build.yml` drops `libosrm-dev`, which does not exist on
+Ubuntu, and adds `flatbuffers-compiler`, `libflatbuffers-dev` and `libyaml-cpp-dev`.
+`docs/architecture/system-architecture.md` now states that a bus with several consumers is one
+`RingBuffer` per consumer.
+
+**Reasoning:** Nothing in the unit suite needs OSRM until Phase 8's `test_map_matcher.cpp`, which
+will have to choose how CI obtains OSRM. On Ubuntu, `flatc` and the FlatBuffers headers come from
+one package set, so the version guard passes there. The fan-out note matters because
+`frameBus`/`detectionBus` each feed several threads in Part 5.1's table, and sharing one SPSC ring
+between two readers would be a data race.
+
+**Still open:** Confirm the job actually goes green after the push.

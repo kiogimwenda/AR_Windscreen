@@ -46,6 +46,7 @@ find_package(SDL2 REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 find_package(Flatbuffers REQUIRED)
 find_package(GTest REQUIRED)
+find_package(yaml-cpp REQUIRED)   # SystemManager::loadConfig (Phase 3); see docs/decisions.md
 
 # TensorRT ships no CMake config package, so this project supplies its own find-module.
 # NOTE: the guide's Part 5.2 snippet writes ${CMAKE_SOURCE_DIR}/../cmake/FindTensorRT.cmake, which
@@ -54,6 +55,16 @@ find_package(GTest REQUIRED)
 # CMAKE_CURRENT_SOURCE_DIR keeps the path correct and correct-if-relocated. Logged in
 # docs/decisions.md.
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/FindTensorRT.cmake)
+
+# OSRM is a static library whose dependencies must be named at the final link. See FindOSRM.cmake
+# for why the guide's bare `osrm` stops linking as soon as real code exists. Logged in
+# docs/decisions.md.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/FindOSRM.cmake)
+
+# Bus message types generated from include/ar_drive_assist/common/schemas/*.fbs (Part 3.5). The
+# same module generates them for the unit-test build, so both compile identical code.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/FlatBufferSchemas.cmake)
+ar_add_schema_library(ar_schemas ${CMAKE_CURRENT_SOURCE_DIR}/include/ar_drive_assist/common/schemas)
 
 # --- Target ------------------------------------------------------------------------------------
 # GLOB_RECURSE is what the guide specifies. It has a known downside: CMake only re-globs when it
@@ -67,7 +78,8 @@ target_include_directories(ar_drive_assist PRIVATE include)
 target_link_libraries(ar_drive_assist PRIVATE
     ${OpenCV_LIBS} ${PCL_LIBRARIES} Eigen3::Eigen glm::glm
     spdlog::spdlog SDL2::SDL2 CUDA::cudart TensorRT::TensorRT
-    flatbuffers osrm
+    flatbuffers OSRM::osrm
+    ar_schemas yaml-cpp::yaml-cpp
 )
 
 # The unit suite under test/unit/ is intentionally NOT built from here — see test/CMakeLists.txt.

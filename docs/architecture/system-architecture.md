@@ -26,6 +26,12 @@ Everything else in the architecture follows from keeping that boundary intact.
 One process, one thread per subsystem, connected by single-producer/single-consumer ring buffers
 (Part 5.3) — deliberately not a general pub/sub framework, since the set of subsystems is fixed.
 
+A bus named below with more than one consumer (`frameBus` feeds inference and render;
+`detectionBus` feeds fusion, navigation and render) is **one `RingBuffer` per consumer**, and the
+producer pushes to each one. An SPSC ring is only race-free with exactly one reader, so sharing one
+between two consumers would be a data race. Real-time consumers read with `popLatest()`, which is
+where frame/LiDAR "drop oldest" happens (see `RingBuffer.h`).
+
 | Thread | Consumes | Produces |
 |---|---|---|
 | `CameraThread` | camera device | `frameBus` |

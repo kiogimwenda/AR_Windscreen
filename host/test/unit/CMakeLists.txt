@@ -31,6 +31,35 @@ endfunction()
 # --- Phase 1 ----------------------------------------------------------------------------------
 add_unit_test(test_crc16 test_crc16.cpp)
 
+# --- Phase 3 ----------------------------------------------------------------------------------
+# Threads::Threads adds -pthread portably; RingBuffer, EventLog and SystemManager tests all run
+# several threads.
+find_package(Threads REQUIRED)
+
+# The bus message types are generated from the .fbs schemas by flatc — the same module the main
+# host build uses, so both builds compile against identical generated code. flatc and the
+# FlatBuffers headers are CPU-only, so this keeps the suite GPU-free (Part 13.1).
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/FlatBufferSchemas.cmake)
+ar_add_schema_library(ar_schemas ${CMAKE_CURRENT_SOURCE_DIR}/../../include/ar_drive_assist/common/schemas)
+
+set(HOST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
+
+add_unit_test(test_ring_buffer test_ring_buffer.cpp)
+target_link_libraries(test_ring_buffer PRIVATE Threads::Threads)
+
+add_unit_test(test_event_log test_event_log.cpp ${HOST_SRC}/system/EventLog.cpp)
+target_link_libraries(test_event_log PRIVATE ar_schemas Threads::Threads)
+
+# SystemManager reads the YAML config, so this is the one Phase 3 test that needs yaml-cpp.
+# HOST_SOURCE_DIR lets it load the real host/config/*.yaml files, so a config file edited into an
+# invalid state fails CI rather than failing at startup in the car.
+find_package(yaml-cpp REQUIRED)
+add_unit_test(test_system_manager test_system_manager.cpp
+              ${HOST_SRC}/system/SystemManager.cpp ${HOST_SRC}/system/EventLog.cpp)
+target_link_libraries(test_system_manager PRIVATE ar_schemas yaml-cpp::yaml-cpp Threads::Threads)
+target_compile_definitions(test_system_manager PRIVATE
+                           HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
+
 # --- Later phases (targets added as each phase implements its subsystem) ------------------------
 # Phase 7:  test_ekf.cpp, test_multi_object_tracker.cpp          (adds Eigen3)
 # Phase 8:  test_map_matcher.cpp                                  (adds OSRM)

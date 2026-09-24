@@ -9,3 +9,4 @@
 # need `**`. A pattern like `.pio/*` silently matches nothing below the first level.
 **/.pio/**
 **/build/**
+**/build-*/**

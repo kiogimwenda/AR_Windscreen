@@ -5,6 +5,7 @@
 build/
 host/build/
 host/test/unit/build/
+host/test/unit/build-*/
 firmware/sensor_actuator_hub/.pio/
 
 # Regenerable / hardware-specific ML artifacts (Part 7.3) — never portable across machines

@@ -33,7 +33,12 @@ jobs:
       - name: Install CPU-only dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libeigen3-dev libpcl-dev libgtest-dev libosrm-dev cmake build-essential
+          # libosrm-dev (the guide's original list) does not exist on Ubuntu, and nothing in this
+          # suite needs OSRM until Phase 8's test_map_matcher.cpp. That phase must decide how CI
+          # gets OSRM (see docs/decisions.md). flatc and the FlatBuffers headers come from the same
+          # package set, so their versions match, which FlatBufferSchemas.cmake checks.
+          sudo apt-get install -y libeigen3-dev libpcl-dev libgtest-dev cmake build-essential \
+              flatbuffers-compiler libflatbuffers-dev libyaml-cpp-dev
       - name: Configure and build host/test/unit only
         run: |
           cmake -S host/test/unit -B host/test/unit/build
