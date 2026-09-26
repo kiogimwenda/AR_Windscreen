@@ -64,9 +64,29 @@ target_compile_definitions(test_system_manager PRIVATE
 # Model-output decoding only. The GPU side (TrtEngine, pre-processing) is tested in
 # host/test/integration/ under the `gpu` label, since CI has no GPU.
 add_unit_test(test_postprocess test_postprocess.cpp ${HOST_SRC}/inference/Postprocess.cpp)
+# The sign class-name check reads host/scripts/prepare_mtsd.py (the training script's CLASSES).
+target_compile_definitions(test_postprocess PRIVATE HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
+
+# --- Phase 7 ----------------------------------------------------------------------------------
+find_package(Eigen3 REQUIRED)
+add_unit_test(test_ekf test_ekf.cpp ${HOST_SRC}/fusion/SensorFusion.cpp)
+target_link_libraries(test_ekf PRIVATE Eigen3::Eigen ar_schemas)
+add_unit_test(test_hungarian test_hungarian.cpp ${HOST_SRC}/safety/Hungarian.cpp)
+add_unit_test(test_motion_predictor test_motion_predictor.cpp ${HOST_SRC}/safety/ImmFilter.cpp
+              ${HOST_SRC}/safety/MotionPredictor.cpp)
+target_link_libraries(test_motion_predictor PRIVATE Eigen3::Eigen)
+add_unit_test(test_multi_object_tracker test_multi_object_tracker.cpp
+              ${HOST_SRC}/safety/MultiObjectTracker.cpp ${HOST_SRC}/safety/ImmFilter.cpp
+              ${HOST_SRC}/safety/Hungarian.cpp)
+target_link_libraries(test_multi_object_tracker PRIVATE Eigen3::Eigen yaml-cpp::yaml-cpp)
+target_compile_definitions(test_multi_object_tracker PRIVATE
+                           HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
+add_unit_test(test_mask_lidar_fusion test_mask_lidar_fusion.cpp
+              ${HOST_SRC}/scene/SceneReconstruction.cpp ${HOST_SRC}/inference/Postprocess.cpp)
+target_link_libraries(test_mask_lidar_fusion PRIVATE Eigen3::Eigen)
 
 # --- Later phases (targets added as each phase implements its subsystem) ------------------------
-# Phase 7:  test_ekf.cpp, test_multi_object_tracker.cpp          (adds Eigen3)
+# Phase 7:  test_multi_object_tracker.cpp, test_motion_predictor.cpp, test_mask_lidar_fusion.cpp
 # Phase 8:  test_map_matcher.cpp                                  (adds OSRM)
 # Phase 9:  test_road_surface_projector.cpp                       (adds Eigen3)
 # Phase 10: test_decision_arbiter.cpp

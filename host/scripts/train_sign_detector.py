@@ -52,6 +52,11 @@ def main():
     ap.add_argument("--name", default=NAME, help="run name under host/models/training/")
     ap.add_argument("--epochs", type=int, default=300)
     ap.add_argument("--patience", type=int, default=100)
+    ap.add_argument("--lr0", type=float, default=0.01,
+                    help="initial learning rate; lower it when warm-starting from a trained model")
+    ap.add_argument("--warmup-epochs", type=float, default=3.0,
+                    help="learning-rate warm-up; signs_v2's early dip came from 3 full warm-up "
+                         "epochs on already-trained weights")
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--imgsz", type=int, default=1280)
@@ -80,6 +85,9 @@ def main():
         epochs=args.epochs,  # cap; with a `time` limit, that ends training first
         time=hours,
         patience=args.patience,
+        lr0=args.lr0,
+        warmup_epochs=args.warmup_epochs,
+        optimizer="SGD",     # explicit: 'auto' would pick one and override lr0
         batch=args.batch,
         workers=args.workers,
         amp=True,

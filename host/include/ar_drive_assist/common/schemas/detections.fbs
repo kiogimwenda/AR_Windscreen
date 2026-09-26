@@ -25,5 +25,8 @@ table DetectionFrame {
   // mask is instance i of that frame's masks. Appended LAST: FlatBuffers identifies fields by
   // position, so new fields go at the end, and data written before the change stays readable.
   mask_ref: ulong;
+  // Added 2026-09-26: the road-sign detector's boxes. class_id indexes the 29 sign classes
+  // (kSignClassNames in inference/Postprocess.h), NOT the object classes of `boxes`. Appended last.
+  signs: [BoundingBox];
 }
 root_type DetectionFrame;

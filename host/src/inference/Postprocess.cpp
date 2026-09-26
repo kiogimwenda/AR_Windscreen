@@ -67,7 +67,8 @@ std::vector<Box> decodeYolo(const float* out, int numClasses, int numCandidates,
         for (int c = 0; c < numClasses; ++c) {
             const float score = out[(4 + c) * numCandidates + i];
             if (score < best) continue;
-            const int32_t mapped = mapCocoClass(c);
+            const int32_t mapped =
+                params.classes == YoloParams::Classes::Coco ? mapCocoClass(c) : int32_t(c);
             if (mapped < 0) continue;
             best = score;
             bestClass = mapped;

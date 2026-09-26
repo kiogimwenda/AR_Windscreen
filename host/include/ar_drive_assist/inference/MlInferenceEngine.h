@@ -66,6 +66,10 @@ struct InferenceConfig {
     // (data/README.md), where the horizon sits ~58% down the frame. That is a DIFFERENT camera
     // mount from the project's, so Part 12 calibration must re-tune this for the real one.
     float laneBandTopFraction = 0.32f;
+    // Road-sign detector (the fourth model; docs/experiments/2026-09-26-sign-detector.md). Empty =
+    // no sign detection. Its classes are its own 29 (kSignClassNames), so no COCO mapping.
+    std::string signEngine = "host/models/engines/signs.engine";
+    YoloParams signs{0.25f, 0.45f, 100, YoloParams::Classes::Identity};
 };
 
 // Object masks for one frame: masks[i] belongs to DetectionFrame::boxes[i] of the frame with the
@@ -105,6 +109,7 @@ public:
     struct Result {
         DetectionFrame detections;  // what goes on the bus
         std::vector<Box> boxes;     // the same boxes, as plain structs, for tools
+        std::vector<Box> signs;     // sign detections; classId indexes kSignClassNames
         MaskFrame masks;            // one mask per box (empty list for a box-only engine)
         Lanes lanes;                // all four UFLD lanes (the bus carries only 1 and 2)
         DepthFrame depth;
@@ -127,8 +132,9 @@ private:
     int numMaskCoeffs_ = 0;
     EventLog* log_;
 
-    TrtEngine yolo_, ufld_, midas_;
-    Preprocessor yoloPre_, ufldPre_, midasPre_;
+    TrtEngine yolo_, ufld_, midas_, signs_;
+    Preprocessor yoloPre_, ufldPre_, midasPre_, signsPre_;
+    bool hasSigns_ = false;
     cv::cuda::Stream uploadStream_;
     cv::cuda::GpuMat gpuFrame_;
     cudaEvent_t uploaded_ = nullptr;

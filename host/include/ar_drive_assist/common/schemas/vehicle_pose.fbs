@@ -10,6 +10,11 @@
 
 namespace ar_drive_assist.schema;
 
+// Conventions (fixed 2026-09-26 with SensorFusion, Part 8.2):
+//   x, y        metres, local east / north plane around the first GPS fix
+//   heading_deg degrees COUNTER-CLOCKWISE FROM EAST (maths convention), in (-180, 180].
+//               NOT a compass heading: compass = 90 - heading_deg. Convert only at display.
+//   yaw_rate    rad/s, counter-clockwise (left turn) positive
 table VehiclePose {
   timestamp_ms: ulong;
   x: double; y: double; heading_deg: float;

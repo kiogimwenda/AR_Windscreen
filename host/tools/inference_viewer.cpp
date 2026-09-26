@@ -80,6 +80,15 @@ void draw(cv::Mat& img, const MlInferenceEngine::Result& r, const LaneBand& band
         cv::putText(img, label, {int(b.x), std::max(30, int(b.y) - 8)}, cv::FONT_HERSHEY_SIMPLEX,
                     1.2, c, 3);
     }
+    // Road-sign detector: its own 29 classes, labelled by meaning (white outline, so they are
+    // distinguishable from the COCO detector's yellow "sign" boxes).
+    for (const Box& b : r.signs) {
+        cv::rectangle(img, cv::Rect2f(b.x, b.y, b.w, b.h), {255, 255, 255}, 4);
+        char label[64];
+        std::snprintf(label, sizeof label, "%s %.2f", kSignClassNames[b.classId], b.confidence);
+        cv::putText(img, label, {int(b.x), std::max(30, int(b.y) - 8)}, cv::FONT_HERSHEY_SIMPLEX,
+                    1.1, {255, 255, 255}, 3);
+    }
     for (int l = 0; l < 4; ++l) {
         for (const LanePoint& p : r.lanes[l])
             cv::circle(img, {int(p.x), int(p.y)}, 6, kLaneColour[l], -1);
@@ -97,9 +106,9 @@ void draw(cv::Mat& img, const MlInferenceEngine::Result& r, const LaneBand& band
         roi.convertTo(roi, -1, 0.35);
     };
     char stats[96];
-    std::snprintf(stats, sizeof stats, "gpu %.1f ms   total %.1f ms   boxes %zu", r.gpuMs,
-                  r.totalMs, r.boxes.size());
-    panel({0, 0, 1180, 90});
+    std::snprintf(stats, sizeof stats, "gpu %.1f ms   total %.1f ms   boxes %zu   signs %zu",
+                  r.gpuMs, r.totalMs, r.boxes.size(), r.signs.size());
+    panel({0, 0, 1560, 90});
     cv::putText(img, stats, {20, 60}, cv::FONT_HERSHEY_SIMPLEX, 1.6, {255, 255, 255}, 4);
 
     panel({0, 100, 520, 330});
@@ -183,7 +192,7 @@ int main(int argc, char** argv) {
     // not what the pipeline costs per frame in steady state. They are excluded from the statistics.
     constexpr int kWarmup = 10;
     std::vector<double> gpu, total;
-    std::vector<size_t> boxCounts;
+    std::vector<size_t> boxCounts, signCounts;
     int laneFrames[4] = {0, 0, 0, 0};
     cv::Mat img;
     int n = 0;
@@ -197,6 +206,7 @@ int main(int argc, char** argv) {
             total.push_back(r.totalMs);
         }
         boxCounts.push_back(r.boxes.size());
+        signCounts.push_back(r.signs.size());
         if (n == dumpFrame) {
             const std::string base = "dump_" + std::to_string(n);
             cv::imwrite(base + ".png", img);  // lossless, so the reference sees identical pixels
@@ -241,7 +251,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    size_t totalBoxes = 0;
+    size_t totalBoxes = 0, totalSigns = 0;
+    for (size_t c : signCounts) totalSigns += c;
     for (size_t c : boxCounts) totalBoxes += c;
     std::printf("frames %d (first %d excluded from timing)\n", n, kWarmup);
     std::printf("gpu   ms: median %.2f  p95 %.2f  max %.2f\n", percentile(gpu, .5),
@@ -249,7 +260,8 @@ int main(int argc, char** argv) {
     std::printf("total ms: median %.2f  p95 %.2f  max %.2f  -> %.0f fps at the median\n",
                 percentile(total, .5), percentile(total, .95), percentile(total, 1),
                 1000.0 / std::max(1e-9, percentile(total, .5)));
-    std::printf("boxes/frame: mean %.1f\n", n ? double(totalBoxes) / n : 0.0);
+    std::printf("boxes/frame: mean %.1f   signs/frame: mean %.2f\n",
+                n ? double(totalBoxes) / n : 0.0, n ? double(totalSigns) / n : 0.0);
     std::printf("frames with lane present: outer-L %d  ego-L %d  ego-R %d  outer-R %d\n",
                 laneFrames[0], laneFrames[1], laneFrames[2], laneFrames[3]);
     return 0;

@@ -460,6 +460,8 @@ table DetectionFrame {
   depth_map_ref: ulong;   // handle into the depth-map ring buffer, not inlined
   mask_ref: ulong;        // handle into the object-mask buffer (YOLOv8m-seg, Part 7.1), not inlined;
                           // box i's mask is instance i of that frame (amended 2026-09-25)
+  signs: [BoundingBox];   // road-sign detector boxes; class_id indexes its 29 sign classes, not the
+                          // object classes of `boxes` (amended 2026-09-26)
 }
 root_type DetectionFrame;
 ```

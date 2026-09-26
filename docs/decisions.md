@@ -479,3 +479,60 @@ the renderer.
 
 **The engine type is recognised by its outputs** (two = segmentation). `mask_ref` was appended
 last in `detections.fbs`, as FlatBuffers schema evolution requires.
+
+## Phase 7 — Fusion and tracking
+
+**EKF (ego): CTRV with IMU yaw rate as a measurement, not a control input.** IMU longitudinal
+acceleration is unused in v1 (OBD observes speed). Joseph-form updates. `VehiclePose.heading_deg`
+is the maths convention (CCW from east); compass conversion happens only at display.
+
+**Tracker IMM: shared [px, py, ψ, v, ω] state, UKF prediction, asymmetric switching (rare entry
+into STOP).** Symmetric rates biased cruise speed ~9% low (measured).
+
+**Two-point velocity initialisation on a track's second sighting.** The speed+heading state
+cannot learn direction from rest. A Cartesian CV model for pedestrians is the recorded
+improvement for the remaining post-birth speed overshoot.
+
+**Late measurements are replayed from snapshots within 500 ms.** Anything older than every
+snapshot is dropped and counted, never applied out of order.
+
+**Per-class motion noise lives in `config/motion_prediction.yaml`, as starting values.** They are
+tuned against recordings via the NIS check (Part 9.1.3), never by eye.
+
+**Collision probability is a Monte-Carlo estimate over sampled futures, drawn with exactly the
+filter's own process noise, seeded by track id.** CPA (t*, d*) covers crossing traffic that
+range/closing-speed TTC misses. Neither ever reaches the brake (Part 9.3).
+
+**Prediction still uses the tracking noise, and that overstates lateral spread for
+lane-following vehicles (measured: head-on 0.75, oncoming-in-other-lane 0.25).** Warning
+thresholds are set on these measured values. The fixes are recorded, not applied by tuning:
+prediction-specific noise calibrated on recorded drives (ADE/FDE, Part 9.1.4), then lane-aware
+prediction once lanes are tracked.
+
+**The filter reports speed as non-negative.** The models may internally hold (−v, ψ). The
+reported state is flipped to (v, ψ+π), so the models are never flipped one by one and mixing
+stays coherent.
+
+**Mask-based fusion is pure geometry on plain values; bus adaptation waits for LidarProcessor
+(Phase 6).** Every Part 8.3 rule is then testable on synthetic scenes.
+
+**Fusion tests use ray-cast scenes, not hand-placed points.** The LiDAR is on the roof, offset
+from the camera, and its angular scan stops at the first surface. Occlusion, parallax and angular
+point density are therefore physically right, and camera-view masks are ray-cast too.
+
+**Rules 2 (erosion) and 4 (depth test) are defence in depth behind rule 3.** In the test scenes,
+rule 3 alone still recovered the range. What the two rules measurably do is raise the share of
+mask-selected points that belong to the object:
+- erosion: 49% → 89%;
+- depth test: 35% → 85%.
+
+That share is published as `points / maskPoints` for ExtrinsicMonitor (Part 12.2.1), since a
+falling average is a symptom of extrinsic drift.
+
+**Unexplained LiDAR obstacles ignore points more than 2.5 m above the road.** Gantries and
+branches cannot hit the car. An object's points hidden by the depth test are still claimed by it
+(inside its mask, within its depth band), so it never reappears as a duplicate UNKNOWN obstacle.
+
+**MiDaS estimates fit rel = a/z + b** (MiDaS is affine-invariant in inverse depth, not only
+scale-invariant) to at least two LiDAR-ranged objects in the frame. They are flagged ESTIMATED
+and are never usable for braking.

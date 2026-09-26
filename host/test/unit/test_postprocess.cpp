@@ -7,6 +7,10 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <fstream>
+#include <regex>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "ar_drive_assist/inference/Postprocess.h"
@@ -412,4 +416,52 @@ TEST(DecodeMask, BoxOutsideTheGridGivesAnEmptyMaskNotACrash) {
     EXPECT_EQ(m.w * m.h, 0);
     EXPECT_EQ(m.area(), 0);
     EXPECT_FALSE(m.atGrid(0, 0));
+}
+
+// --- sign detector (identity classes) -------------------------------------------------------
+
+TEST(DecodeYolo, IdentityClassesKeepModelClassIndices) {
+    constexpr int nC = kNumSignClasses;
+    constexpr int N = 3;
+    std::vector<float> out(size_t(4 + nC) * N, 0.0f);
+    auto set = [&](int i, float cx, int cls, float score) {
+        out[0 * N + i] = cx;
+        out[1 * N + i] = 100;
+        out[2 * N + i] = 40;
+        out[3 * N + i] = 40;
+        out[size_t(4 + cls) * N + i] = score;
+    };
+    set(0, 100, 0, 0.9f);        // stop
+    set(1, 400, 11, 0.8f);       // speed_limit_50
+    set(2, 700, 41 % nC, 0.2f);  // below threshold
+    YoloParams p;
+    p.classes = YoloParams::Classes::Identity;
+    const auto boxes = decodeYolo(out.data(), nC, N, kIdentity, 1000, 1000, p);
+    ASSERT_EQ(boxes.size(), 2u);
+    EXPECT_EQ(boxes[0].classId, 0);
+    EXPECT_STREQ(kSignClassNames[boxes[0].classId], "stop");
+    EXPECT_EQ(boxes[1].classId, 11);
+    EXPECT_STREQ(kSignClassNames[boxes[1].classId], "speed_limit_50");
+}
+
+// The C++ class names must be exactly the training script's CLASSES, in order. A silent mismatch
+// would show every sign under the wrong meaning. This is the same idea as CI's protocol-sync check.
+TEST(SignClassNames, MatchTheTrainingScript) {
+    std::ifstream f(std::string(HOST_SOURCE_DIR) + "/scripts/prepare_mtsd.py");
+    ASSERT_TRUE(f) << "cannot open prepare_mtsd.py";
+    std::stringstream ss;
+    ss << f.rdbuf();
+    const std::string src = ss.str();
+    const auto begin = src.find("CLASSES = [");
+    ASSERT_NE(begin, std::string::npos);
+    const auto end = src.find(']', begin);
+    const std::string list = src.substr(begin, end - begin);
+    std::vector<std::string> py;
+    const std::regex quoted("\"([a-z0-9_]+)\"");
+    for (auto it = std::sregex_iterator(list.begin(), list.end(), quoted);
+         it != std::sregex_iterator(); ++it) {
+        py.push_back((*it)[1]);
+    }
+    ASSERT_EQ(py.size(), size_t(kNumSignClasses));
+    for (int i = 0; i < kNumSignClasses; ++i) EXPECT_EQ(py[i], kSignClassNames[i]) << "class " << i;
 }

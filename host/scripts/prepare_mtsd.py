@@ -3,6 +3,8 @@
 
     python prepare_mtsd.py --mtsd ../data/datasets/mtsd --out ../data/datasets/mtsd_yolo
     python prepare_mtsd.py --mtsd ../data/datasets/mtsd --labels-only   # print the label list only
+    python prepare_mtsd.py --mtsd ../data/datasets/mtsd --out ../data/datasets/mtsd_yolo_v3 \
+        --us-speed-variants scripts/mtsd_uncertain_unit_speed_variants.json --mask-ignored
 
 MTSD ships one JSON file per image. Each object has a `label` such as
 "regulatory--maximum-speed-limit-50--g1": category, sign name, design variant (g1, g2, ...).
@@ -121,8 +123,13 @@ def load_json(p: Path) -> dict:
         return json.load(f)
 
 
+# Grey used to paint out ignored boxes: ultralytics' letterbox fill, i.e. a value the model already
+# treats as "no image content" rather than as background scenery.
+MASK_GREY = (114, 114, 114)
+
+
 def convert_one(job):
-    key, split, ann_path, img_path, out, class_map = job
+    key, split, ann_path, img_path, out, class_map, mask_labels, mask_ignored = job
     done_img = out / "images" / split / f"{key}.jpg"
     done_lbl = out / "labels" / split / f"{key}.txt"
     ann = load_json(ann_path)
@@ -132,8 +139,19 @@ def convert_one(job):
         return key, "noimg", []
     W, H = ann["width"], ann["height"]
     lines, kept = [], []
+    masked, kept_px = [], []  # rectangles to grey out; kept boxes, to restore over the grey
     for o in ann.get("objects", []):
         props = o.get("properties", {})
+        # With --mask-ignored, a sign we cannot label (ambiguous, or a speed limit of uncertain
+        # unit) is painted out instead of merely unlabelled. Unlabelled but still visible, it
+        # would be learned as BACKGROUND, teaching "small, unclear sign = not a sign"
+        # (docs/experiments/2026-09-26-sign-detector.md, gap 2). Dummies stay background on
+        # purpose: they are sign-like things that are not signs.
+        if mask_ignored and (props.get("ambiguous") or o["label"] in mask_labels):
+            b = o["bbox"]
+            if "cross_boundary" not in b:
+                masked.append((b["xmin"], b["ymin"], b["xmax"], b["ymax"]))
+            continue
         if props.get("ambiguous") or props.get("dummy"):
             continue
         cid = class_map.get(o["label"])
@@ -149,6 +167,7 @@ def convert_one(job):
         lines.append(f"{cid} {(x0 + x1) / 2 / W:.6f} {(y0 + y1) / 2 / H:.6f} "
                      f"{(x1 - x0) / W:.6f} {(y1 - y0) / H:.6f}")
         kept.append(cid)
+        kept_px.append((x0, y0, x1, y1))
     if done_img.exists():
         # Image already re-saved by an earlier run on partial data: only the labels are
         # rewritten (cheap), so a mapping change always reaches every label file.
@@ -162,6 +181,18 @@ def convert_one(job):
         # Normalised YOLO coordinates are resolution independent, but a mismatch means the JSON
         # does not describe this file. Report it rather than guessing.
         return key, f"size-mismatch {w}x{h} vs {W}x{H}", []
+    if masked:
+        painted = img.copy()
+        for (x0, y0, x1, y1) in masked:
+            # 20% margin: annotation boxes are tight, and a sign's edge left visible is still a
+            # partial sign (10% visibly left slivers on small distant signs).
+            mx, my = 0.2 * (x1 - x0), 0.2 * (y1 - y0)
+            cv2.rectangle(painted, (int(max(0, x0 - mx)), int(max(0, y0 - my))),
+                          (int(min(w, x1 + mx)), int(min(h, y1 + my))), MASK_GREY, -1)
+        for (x0, y0, x1, y1) in kept_px:  # never erase a sign we ARE training on
+            ix0, iy0, ix1, iy1 = int(x0), int(y0), int(x1 + 1), int(y1 + 1)
+            painted[iy0:iy1, ix0:ix1] = img[iy0:iy1, ix0:ix1]
+        img = painted
     s = MAX_SIDE / max(w, h)
     if s < 1:
         img = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
@@ -192,6 +223,9 @@ def main():
                     help="JSON list of full MTSD labels (with --gN) that are US mph signs")
     ap.add_argument("--map-out", type=Path, default=Path(__file__).with_name("mtsd_class_map.json"))
     ap.add_argument("--workers", type=int, default=16)
+    ap.add_argument("--mask-ignored", action="store_true",
+                    help="paint ambiguous and uncertain-unit signs grey instead of leaving them "
+                         "visible but unlabelled (use a fresh --out: existing images are reused)")
     args = ap.parse_args()
 
     root = find_root(args.mtsd)
@@ -234,7 +268,8 @@ def main():
         keys = (root / "splits" / f"{split}.txt").read_text().split()
         present = [k for k in keys if k in images and k in anns]
         print(f"{split}: {len(keys)} listed, {len(present)} with image + annotation on disk")
-        jobs += [(k, split, anns[k], images[k], args.out, class_map) for k in present]
+        jobs += [(k, split, anns[k], images[k], args.out, class_map, us, args.mask_ignored)
+                 for k in present]
 
     counts = {"train": Counter(), "val": Counter()}
     status = Counter()

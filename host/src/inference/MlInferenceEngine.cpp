@@ -59,13 +59,16 @@ MlInferenceEngine::MlInferenceEngine(const InferenceConfig& cfg, FrameBus& frame
       log_(log),
       yoloPre_(PreprocessSpec{}),
       ufldPre_(PreprocessSpec{}),
-      midasPre_(PreprocessSpec{}) {
+      midasPre_(PreprocessSpec{}),
+      signsPre_(PreprocessSpec{}) {
     yolo_.load(cfg_.yoloEngine);
     // A YOLOv8-seg engine has a second output: the prototype masks, (1, K, H/4, W/4).
     segmentation_ = yolo_.outputs().size() == 2;
     if (segmentation_) numMaskCoeffs_ = static_cast<int>(output(yolo_, "output1").shape[1]);
     ufld_.load(cfg_.ufldEngine);
     midas_.load(cfg_.midasEngine);
+    hasSigns_ = !cfg_.signEngine.empty();
+    if (hasSigns_) signs_.load(cfg_.signEngine);
 
     // Each engine's input shape (N, C, H, W) decides its pre-processing size, so a rebuilt engine
     // at another resolution needs no code change here.
@@ -79,6 +82,10 @@ MlInferenceEngine::MlInferenceEngine(const InferenceConfig& cfg, FrameBus& frame
     yoloPre_ = Preprocessor(PreprocessSpec::yolo(yw, yh));
     ufldPre_ = Preprocessor(PreprocessSpec::imagenet(uw, uh));
     midasPre_ = Preprocessor(PreprocessSpec::imagenet(mw, mh));
+    if (hasSigns_) {
+        auto [sw, sh] = hw(signs_);
+        signsPre_ = Preprocessor(PreprocessSpec::yolo(sw, sh));  // same letterbox as training
+    }
 
     // cudaEventDisableTiming: this event is only for ordering, and skipping timestamps makes
     // recording and waiting on it cheaper.
@@ -129,7 +136,9 @@ MlInferenceEngine::Result MlInferenceEngine::process(const CameraFrame& frame) {
         Preprocessor& pre;
         InputMapping mapping;
     };
-    Job jobs[] = {{yolo_, yoloPre_, {}}, {ufld_, ufldPre_, {}}, {midas_, midasPre_, {}}};
+    // jobs[0..2] are always present; jobs[3], the sign detector, is optional.
+    std::vector<Job> jobs = {{yolo_, yoloPre_, {}}, {ufld_, ufldPre_, {}}, {midas_, midasPre_, {}}};
+    if (hasSigns_) jobs.push_back({signs_, signsPre_, {}});
     for (Job& j : jobs) {
         check(cudaStreamWaitEvent(j.engine.stream(), uploaded_, 0), "cudaStreamWaitEvent");
         cv::cuda::Stream s = cv::cuda::StreamAccessor::wrapStream(j.engine.stream());
@@ -167,6 +176,13 @@ MlInferenceEngine::Result MlInferenceEngine::process(const CameraFrame& frame) {
         }
     }
 
+    // --- signs --- (1, 4 + 29, candidates), classes used as-is
+    if (hasSigns_) {
+        const TensorInfo& sOut = output(signs_, "output0");
+        r.signs = decodeYolo(outputData(signs_, "output0"), static_cast<int>(sOut.shape[1]) - 4,
+                             static_cast<int>(sOut.shape[2]), jobs[3].mapping, W, H, cfg_.signs);
+    }
+
     // --- UFLD --- outputs are looked up by name: TensorRT does not promise to keep the order
     // the exporter declared them in.
     auto ufldOut = [&](const char* name) -> const float* {
@@ -202,6 +218,17 @@ MlInferenceEngine::Result MlInferenceEngine::process(const CameraFrame& frame) {
         bb->confidence = b.confidence;
         bb->track_id = -1;  // assigned by MultiObjectTracker (Phase 7)
         r.detections.boxes.push_back(std::move(bb));
+    }
+    for (const Box& b : r.signs) {
+        auto bb = std::make_unique<schema::BoundingBoxT>();
+        bb->x = b.x;
+        bb->y = b.y;
+        bb->w = b.w;
+        bb->h = b.h;
+        bb->class_id = b.classId;  // kSignClassNames index
+        bb->confidence = b.confidence;
+        bb->track_id = -1;
+        r.detections.signs.push_back(std::move(bb));
     }
     for (const LanePoint& p : r.lanes[1]) {
         r.detections.lane_points_left.push_back(p.x);

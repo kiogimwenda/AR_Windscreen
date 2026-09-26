@@ -55,14 +55,51 @@ struct YoloParams {
     float confThreshold = 0.25f;  // ultralytics' default
     float iouThreshold = 0.45f;   // NMS overlap above which the weaker same-class box is removed
     int maxDetections = 300;
+    // Coco: model classes are COCO's 80, mapped onto ObjectClass (mapCocoClass); unmapped are
+    // dropped. Identity: classes are the model's own, e.g. the 29 sign classes, used as-is.
+    enum class Classes { Coco, Identity } classes = Classes::Coco;
 };
 
-// Decodes YOLOv8's (1, 4 + numClasses, numCandidates) output: channel-major, so candidate i's
-// value for channel c is out[c * numCandidates + i]. Channels 0-3 are box centre x, centre y,
-// width and height in model-input pixels. The rest are per-class scores, already sigmoid-ed by
-// the exported head. Classes are mapped to ObjectClass BEFORE non-maximum suppression, so a
-// vehicle scored as both "car" and "truck" collapses to one Vehicle box. Boxes are clipped to the
-// source frame.
+// The road-sign detector's 29 classes, in model order. MUST match CLASSES in
+// host/scripts/prepare_mtsd.py, which trained the model; test_postprocess.cpp checks this.
+inline constexpr const char* kSignClassNames[] = {"stop",
+                                                  "give_way",
+                                                  "no_entry",
+                                                  "no_left_turn",
+                                                  "no_right_turn",
+                                                  "no_u_turn",
+                                                  "no_overtaking",
+                                                  "speed_limit_10",
+                                                  "speed_limit_20",
+                                                  "speed_limit_30",
+                                                  "speed_limit_40",
+                                                  "speed_limit_50",
+                                                  "speed_limit_60",
+                                                  "speed_limit_70",
+                                                  "speed_limit_80",
+                                                  "speed_limit_90",
+                                                  "speed_limit_100",
+                                                  "speed_limit_110",
+                                                  "speed_limit_120",
+                                                  "end_of_restriction",
+                                                  "pedestrian_crossing",
+                                                  "children_school",
+                                                  "road_hump",
+                                                  "roundabout",
+                                                  "traffic_signals_ahead",
+                                                  "keep_left_or_right",
+                                                  "no_parking_or_stopping",
+                                                  "other_warning",
+                                                  "other_regulatory"};
+inline constexpr int kNumSignClasses = sizeof(kSignClassNames) / sizeof(kSignClassNames[0]);
+
+// Decodes YOLOv8's (1, 4 + numClasses, numCandidates) output (with params.classes = Identity,
+// classId is the model's own class index and nothing is remapped or dropped): channel-major, so
+// candidate i's value for channel c is out[c * numCandidates + i]. Channels 0-3 are box centre x,
+// centre y, width and height in model-input pixels. The rest are per-class scores, already
+// sigmoid-ed by the exported head. Classes are mapped to ObjectClass BEFORE non-maximum
+// suppression, so a vehicle scored as both "car" and "truck" collapses to one Vehicle box. Boxes
+// are clipped to the source frame.
 std::vector<Box> decodeYolo(const float* out, int numClasses, int numCandidates,
                             const InputMapping& mapping, int srcW, int srcH,
                             const YoloParams& params = {});

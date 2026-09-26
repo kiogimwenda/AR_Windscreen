@@ -1,0 +1,63 @@
+# Motion prediction and tracking — see docs/BUILD_GUIDE.md Part 9.1 (amended 2026-09-25).
+#
+# Per-class process noise encodes how unpredictable each road user is. These are STARTING values
+# reasoned from typical behaviour, NOT measured. They are tuned on recorded drives until the
+# tracker's NIS passes its chi-square check (Part 9.1.3). Never tune them by eye.
+#
+#   accel_std          m/s^2, 1 sigma, unknown acceleration along the heading
+#   yaw_accel_std      rad/s^2, 1 sigma, change of turn rate (turning model)
+#   heading_drift_std  rad/sqrt(s), how freely heading wanders (straight-line model)
+#   stop_tau_s         s, speed-decay time constant of the stopping model
+#   model_switch_rate  1/s, how readily the object changes behaviour (straight/turn/stop)
+#   initial_speed_std  m/s, speed uncertainty when a track is born
+
+tracker:
+  gate_chi2: 13.8          # Mahalanobis^2 association gate: chi-square 2 dof, 99.9 %
+  confirm_hits: 3          # consecutive associations before a track is shown (overlay rule 2)
+  tentative_max_misses: 1
+  max_coast_s: 1.5         # an occluded object is predicted for at most this long, then dropped
+  replay_window_ms: 500    # late measurements within this window are replayed in time order
+
+classes:
+  vehicle:        # cars, matatus, buses, trucks: follow roads, brake hard, stop suddenly at stages
+    accel_std: 3.0
+    yaw_accel_std: 0.6
+    heading_drift_std: 0.1
+    stop_tau_s: 0.8
+    model_switch_rate: 0.5
+    initial_speed_std: 8.0
+  pedestrian:     # slow, but can turn and stop instantly
+    accel_std: 1.5
+    yaw_accel_std: 1.0
+    heading_drift_std: 0.8
+    stop_tau_s: 0.5
+    model_switch_rate: 1.0
+    initial_speed_std: 2.0
+  cyclist:        # bicycles and boda-bodas: vehicle speeds, weave far more
+    accel_std: 3.0
+    yaw_accel_std: 1.5
+    heading_drift_std: 0.4
+    stop_tau_s: 0.6
+    model_switch_rate: 1.0
+    initial_speed_std: 6.0
+  sign:           # static; tracked so it can be confirmed across frames and kept in view
+    accel_std: 0.1
+    yaw_accel_std: 0.01
+    heading_drift_std: 0.01
+    stop_tau_s: 0.5
+    model_switch_rate: 0.1
+    initial_speed_std: 0.5
+  obstacle:       # large animals: erratic, and they can bolt
+    accel_std: 3.0
+    yaw_accel_std: 1.5
+    heading_drift_std: 1.2
+    stop_tau_s: 0.5
+    model_switch_rate: 1.5
+    initial_speed_std: 3.0
+  unclassified:   # LiDAR clusters no camera mask explains (Part 8.3 rule 6): assume little
+    accel_std: 3.0
+    yaw_accel_std: 1.0
+    heading_drift_std: 0.6
+    stop_tau_s: 0.6
+    model_switch_rate: 1.0
+    initial_speed_std: 6.0
