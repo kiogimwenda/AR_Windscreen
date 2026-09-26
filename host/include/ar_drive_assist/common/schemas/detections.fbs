@@ -21,5 +21,9 @@ table DetectionFrame {
   lane_points_left: [float];
   lane_points_right: [float];
   depth_map_ref: ulong;   // handle into the depth-map ring buffer, not inlined
+  // Added 2026-09-25 (Part 3.5 amendment). Handle into the object-mask bus (YOLOv8m-seg): box i's
+  // mask is instance i of that frame's masks. Appended LAST: FlatBuffers identifies fields by
+  // position, so new fields go at the end, and data written before the change stays readable.
+  mask_ref: ulong;
 }
 root_type DetectionFrame;

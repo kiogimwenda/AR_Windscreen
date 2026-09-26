@@ -60,6 +60,11 @@ target_link_libraries(test_system_manager PRIVATE ar_schemas yaml-cpp::yaml-cpp 
 target_compile_definitions(test_system_manager PRIVATE
                            HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
+# --- Phase 5 ----------------------------------------------------------------------------------
+# Model-output decoding only. The GPU side (TrtEngine, pre-processing) is tested in
+# host/test/integration/ under the `gpu` label, since CI has no GPU.
+add_unit_test(test_postprocess test_postprocess.cpp ${HOST_SRC}/inference/Postprocess.cpp)
+
 # --- Later phases (targets added as each phase implements its subsystem) ------------------------
 # Phase 7:  test_ekf.cpp, test_multi_object_tracker.cpp          (adds Eigen3)
 # Phase 8:  test_map_matcher.cpp                                  (adds OSRM)

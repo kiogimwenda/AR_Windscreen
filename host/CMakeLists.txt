@@ -82,5 +82,17 @@ target_link_libraries(ar_drive_assist PRIVATE
     ar_schemas yaml-cpp::yaml-cpp
 )
 
+# --- Tools ------------------------------------------------------------------------------------
+# Developer tools live in tools/, not src/, so the GLOB above never picks up their main().
+# Phase 5: plays recorded video through the inference engine and draws the results.
+add_executable(inference_viewer tools/inference_viewer.cpp src/inference/MlInferenceEngine.cpp
+               src/inference/TrtEngine.cpp src/inference/Preprocess.cpp
+               src/inference/Postprocess.cpp src/system/EventLog.cpp)
+target_include_directories(inference_viewer PRIVATE include)
+target_link_libraries(inference_viewer PRIVATE ${OpenCV_LIBS} CUDA::cudart TensorRT::TensorRT
+                      ar_schemas)
+
 # The unit suite under test/unit/ is intentionally NOT built from here — see test/CMakeLists.txt.
+# enable_testing() must come before the tests are declared, so ctest can find the integration tests.
+enable_testing()
 add_subdirectory(test)

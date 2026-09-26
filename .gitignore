@@ -11,6 +11,7 @@ firmware/sensor_actuator_hub/.pio/
 # Regenerable / hardware-specific ML artifacts (Part 7.3) — never portable across machines
 host/models/onnx/
 host/models/engines/
+host/models/weights/
 
 # Runtime logs (Part 5.4, Part 11.6)
 logs/
@@ -22,3 +23,14 @@ logs/
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Recorded/downloaded video for offline testing (large; source and licence in data/README.md)
+data/footage/
+
+# Sign-detector training runs and datasets (large; overnight run 2026-09-24/25)
+host/models/training/
+data/datasets/
+
+# Model weights downloaded by tools (e.g. ultralytics fetches yolo26n.pt into the working
+# directory for its AMP check). Project weights live in host/models/weights/, already ignored.
+*.pt

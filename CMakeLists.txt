@@ -14,4 +14,6 @@ project(ar_windscreen
 # Export compile_commands.json so clangd / IDEs resolve includes without a separate config.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Needed at the top level too: ctest only finds tests registered below a directory that enables them.
+enable_testing()
 add_subdirectory(host)
