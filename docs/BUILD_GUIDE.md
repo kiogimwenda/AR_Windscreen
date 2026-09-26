@@ -1351,7 +1351,94 @@ public:
     Route routeTo(double destLat, double destLon, const VehiclePose& currentPose);
 };
 ```
-Use the OSRM C++ API (`osrm::OSRM`, `RouteParameters`, MLD algorithm) against an offline-processed OpenStreetMap extract for the test area. **This subsystem is a primary project objective, not a stretch feature** — the precision, road-locked navigation overlay (11.4) is one of the two things this system does with what it senses (the other being hazard detection/actuation), so it does not get stubbed or deprioritized against the actuation subsystem's testing. `routeTo` returns a `Route` — the full geometry (an ordered list of world-coordinate points along the road network, not just turn text), because 11.3 and 11.4 need that geometry, not only the instructions a plain turn-by-turn UI would need.
+Use the OSRM C++ API (`osrm::OSRM`, `RouteParameters`, MLD algorithm) against an offline-processed OpenStreetMap extract for the test area. *Amended 2026-09-26:* the test area is **Nairobi**. The extract is Geofabrik's Kenya file clipped with `osmium extract` to the box enclosing a **100 km radius around Nairobi CBD** (1.2864°S, 36.8172°E): lon 35.92–37.72, lat −2.19 to −0.38. It covers Thika, Machakos, Kajiado, Murang'a and Naivasha, and it is refreshed automatically (11.2.1, layer 1). MLD is required, not just preferred, because the live layer (11.2.1, layer 2) re-weights the graph with `osrm-customize`, which only MLD supports. **This subsystem is a primary project objective, not a stretch feature** — the precision, road-locked navigation overlay (11.4) is one of the two things this system does with what it senses (the other being hazard detection/actuation), so it does not get stubbed or deprioritized against the actuation subsystem's testing. `routeTo` returns a `Route` — the full geometry (an ordered list of world-coordinate points along the road network, not just turn text), because 11.3 and 11.4 need that geometry, not only the instructions a plain turn-by-turn UI would need.
+
+### 11.2.1 Road status: three layers, and the map never overrules the sensors
+
+*Added 2026-09-26 (Ian's requirement: the system must always know the real state of the roads).
+See `docs/decisions.md`, "Navigation: three-layer road status, TomTom live layer".*
+
+Road status is three kinds of information that change at very different rates, so each has its
+own source. No single provider covers all three, and no provider knows the third at all.
+
+| Layer | What it knows | Source | How fresh |
+|---|---|---|---|
+| **1. Base map** | Road network, one-ways, turn restrictions, speed limits, long-lived closures | OpenStreetMap (Nairobi, 100 km radius) | Refreshed nightly |
+| **2. Live network** | Traffic speeds, accidents, temporary closures, roadworks | TomTom traffic (flow and incidents), when connected | Minutes |
+| **3. Own sensors** | What is physically ahead: barriers, blockages, potholes, debris, no-entry signs | LiDAR (Part 8.1 road-anomaly pass), camera models (Part 7), fusion (Part 8.3) | Live, centimetre scale |
+
+**Layer 1: refresh, don't freeze.** A `scripts/refresh_osm.sh` job, run when the laptop is on
+Wi-Fi (nightly), does the following:
+- downloads Geofabrik's daily Kenya file;
+- clips it to the 100 km Nairobi box;
+- runs `osrm-extract`, `osrm-partition` and `osrm-customize` into a NEW directory;
+- switches to it atomically only if the build succeeded and a smoke-test route passes.
+
+A failed refresh leaves yesterday's map in place. The map's build date is logged, and shown in
+the navigation status when it is more than 14 days old.
+
+**Layer 2: live network, when there is signal.** `nav/LiveRoadStatus` runs off the hot path. It
+polls the provider every 2–5 minutes (bounded by cost), turns flow and incidents into OSRM
+segment speeds, and hot-swaps the re-weighted graph. It works in five steps:
+1. **Provider-neutral records.** Each road stretch is recorded as {stretch, speed km/h or
+   closed, incident type, source, observed-at time, confidence}. An adapter per provider fills
+   this format, so a second provider is a new adapter, not a redesign.
+2. **Location matching.** TomTom's traffic feed (Intermediate Traffic API; Kenya is covered for
+   flow and incidents) refers to roads by **OpenLR**, a map-independent location reference. It is
+   decoded onto the Nairobi OSM graph. Records that do not decode confidently are dropped and
+   counted, never guessed onto a nearby road.
+3. **Re-weighting.**
+   - A closure gives its segments speed 0, so routes avoid them.
+   - Flow gives its segments the observed speed.
+   - `osrm-customize --segment-speed-file` on the Nairobi graph takes seconds.
+   - The engine runs in OSRM shared-memory mode, so `osrm-datastore` swaps the new weights in
+     without restarting navigation.
+4. **Staleness.** Flow older than 15 minutes, and incidents past their end time, are removed and
+   the segments fall back to their base weights. Each item's age is kept with it. The display
+   may say "live traffic 3 min ago", and never presents old data as current.
+5. **No signal.** Layer 2 silently falls back to layers 1 and 3. Navigation never stops because
+   of a lost connection.
+
+When a re-weighted route is materially faster (default: more than 2 minutes and more than 10%),
+the driver gets a **"faster route" prompt**. It is advisory, as are live ETAs.
+
+**Layer 3: the sensors are the truth for what is ahead.** The rule:
+
+> **The map is an expectation; the sensors are the truth.** Map data, live or offline, plans
+> beyond sensor range. It never overrules what the car's own sensors measure about the road
+> directly ahead.
+
+- **Map says open, sensors see a closure.** A confirmed barrier or blockage across the route (a
+  LiDAR obstacle spanning the lane, confirmed over several frames per the tracker's rules), or a
+  `no_entry` sign confirmed on the route's next edge, marks that edge closed **locally**. The
+  system reroutes. The local closure expires after a set time (default 2 hours) unless seen
+  again.
+- **Live feed says clear, camera sees a stopped matatu.** The hazard layer (Parts 9 and 10)
+  handles it as it always does. Map data does not suppress, delay or down-rank a sensor hazard.
+- **Road-condition memory.** Potholes and bumps from the road-anomaly pass, and local closures,
+  are stored as the car's own **road observations** (position, type, time, count of sightings).
+  Tomorrow's route can then warn about today's pothole. Sharing observations between cars is
+  future work, and needs a privacy review first.
+
+**Safety boundary.** Consistent with Part 0 and Part 9.3, nothing from layers 1 or 2 ever reaches
+`DecisionArbiter`'s braking logic. Map and live data may change the route and add advisories.
+Only the current measured range and closing speed (Part 9.3) can actuate.
+
+**Before layer 2 is built, verify (and record in `docs/decisions.md`):**
+1. **Access and cost:** whether TomTom's Intermediate Traffic feed is available on self-service
+   terms or needs a sales agreement, and the cost at the chosen polling rate.
+2. **Quality in Nairobi:** trial-key data compared against at least three of Ian's own recorded
+   drives (main roads, estate roads, one peri-urban route). Coverage is probe-based, so side roads
+   are expected to be sparse.
+3. **Terms:** that caching the feed for up to 15 minutes and showing derived route and traffic
+   information on our own display are permitted.
+
+If any check fails, layer 2 is deferred. Layers 1 and 3 are complete on their own. Alternatives
+checked on 2026-09-26:
+- **HERE:** no traffic coverage listed for Kenya.
+- **Waze for Cities:** data programme open only to public agencies and road operators.
+- **Google Routes API:** returns finished routes rather than per-road speeds, and its terms on
+  use with non-Google maps were not confirmed.
 
 ### 11.3 `MapMatcher` — snapping the fused pose onto the route, not trusting raw GPS
 
@@ -1718,8 +1805,18 @@ Deliverables: `SensorFusion` (Part 8.2), `SceneReconstruction` with mask-based c
 Exit criteria: `test_ekf.cpp`, `test_multi_object_tracker.cpp`, `test_motion_predictor.cpp` (including NIS consistency and the closing-speed bound) and `test_mask_lidar_fusion.cpp` pass; a tracked object's range/velocity estimate visibly matches reality in a manual sanity check (e.g., walking toward the camera at a known pace).
 
 **Phase 8 — Navigation: routing and map-matching**
-Deliverables: `NavigationEngine` (Part 11.2), `MapMatcher` (Part 11.3), against an offline OSM extract for the test area.
-Exit criteria: `test_map_matcher.cpp` passes; a route requested between two known points on the test-area extract returns sensible turn-by-turn geometry; feeding a recorded or live GPS/EKF track through `MapMatcher` produces a matched position that visibly snaps onto the correct road edge, with `distanceAlongRouteM` increasing monotonically as the track progresses.
+Deliverables: `NavigationEngine` (Part 11.2), `MapMatcher` (Part 11.3), against the offline Nairobi OSM extract; `scripts/refresh_osm.sh` (11.2.1 layer 1); the local-closure and road-observation store (11.2.1 layer 3); `nav/LiveRoadStatus` with the TomTom adapter (11.2.1 layer 2), **only after its three verification checks pass**, otherwise deferred and logged.
+Exit criteria:
+- `test_map_matcher.cpp` passes;
+- a route requested between two known Nairobi points returns sensible turn-by-turn geometry;
+- a recorded or live GPS/EKF track fed through `MapMatcher` visibly snaps onto the correct road
+  edge, with `distanceAlongRouteM` increasing monotonically as the track progresses;
+- `test_road_status.cpp` passes:
+  - a locally closed edge is avoided;
+  - a stale live record falls back to base weights;
+  - an OpenLR record that does not decode confidently is dropped, not snapped;
+  - with the network unavailable, routing still succeeds;
+- a failed or broken map refresh leaves the previous map in service.
 
 **Phase 9 — Road Surface Projector: precision navigation overlay**
 Deliverables: `RoadSurfaceProjector` (Part 11.4), consuming Phase 6's `GroundPlaneModel`, Phase 8's matched position and route, Phase 5's lane detections, and Phase 7's fused pose.

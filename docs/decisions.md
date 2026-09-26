@@ -536,3 +536,42 @@ branches cannot hit the car. An object's points hidden by the depth test are sti
 **MiDaS estimates fit rel = a/z + b** (MiDaS is affine-invariant in inverse depth, not only
 scale-invariant) to at least two LiDAR-ranged objects in the frame. They are flagged ESTIMATED
 and are never usable for braking.
+
+## Navigation: three-layer road status, TomTom live layer (2026-09-26, Ian's requirement)
+
+**Test area: Nairobi and everything within 100 km of its CBD.** Geofabrik Kenya, clipped with
+`osmium extract` to lon 35.92–37.72, lat −2.19 to −0.38 (the box enclosing the 100 km circle).
+The first box stopped at 1.10°S and missed Thika; Ian asked for a 100 km radius.
+
+**Road status comes from three layers:**
+- base OpenStreetMap, refreshed nightly (atomic swap, a failed build keeps the previous map);
+- a live network layer (traffic and incidents) when connected;
+- the car's own sensors.
+
+The offline base stays because navigation must work without signal, and map-matching at 5–10 Hz
+needs local geometry.
+
+**Rule: the map is an expectation, the sensors are the truth.** Map and live data plan beyond
+sensor range and never overrule what the sensors measure ahead. Nothing from a map reaches
+braking.
+
+**Live provider: TomTom (Intermediate Traffic API), behind a provider-neutral adapter.**
+- TomTom's coverage table lists Kenya for flow and incidents.
+- Its OpenLR references decode onto OSM, so traffic re-weights our own OSRM graph (MLD,
+  `osrm-customize`, shared-memory hot swap).
+
+Rejected alternatives:
+- **HERE:** Kenya not in its traffic coverage table.
+- **Waze for Cities:** public agencies and road operators only.
+- **Google:** gives finished routes, not per-road speeds, and its terms on use with non-Google
+  maps are unconfirmed.
+
+Several providers are not used at the start: the conflict-resolution and cost burden come before
+any evidence it is needed, and the sensors are already an independent second source.
+
+**Gate on the live layer:**
+- access and cost;
+- quality on three of Ian's own Nairobi drives;
+- terms for caching and display.
+
+If any check fails, the live layer is deferred and layers 1 and 3 ship alone.

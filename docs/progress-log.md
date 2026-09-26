@@ -1882,3 +1882,38 @@ Known limitations carried forward:
 - prediction uses tracking noise, which overstates lateral spread (fix: prediction noise
   calibrated on recorded drives, then lane-aware prediction);
 - MiDaS estimate rays ignore lens distortion.
+
+## 2026-09-26 — Guide amendment: navigation road status (Part 11.2, new 11.2.1, Phase 8)
+
+**What:**
+- **Test area:** set to Nairobi.
+- **New Part 11.2.1:** the three-layer road-status design (nightly-refreshed OSM, TomTom live
+  layer, sensors override), the "map is an expectation, sensors are the truth" rule, local
+  closures and a road-observation memory, the safety boundary, and three verification gates for
+  the live layer.
+- **Phase 8:** deliverables and exit criteria extended (`refresh_osm.sh`, the road-status store,
+  `LiveRoadStatus` gated on the checks, `test_road_status.cpp`).
+
+**Why:** Ian's requirement that the system always know the real state of the roads. Change in
+road status happens at three rates, and no single provider covers all three.
+
+**Research (2026-09-26):**
+- **TomTom:** its Intermediate Traffic coverage table lists Kenya for flow and incidents.
+- **HERE:** its traffic coverage table does not list Kenya.
+- **Waze for Cities:** limited to public agencies and road operators.
+- **Google Maps Platform:** the terms page could not be read with the available tools, so its
+  terms are recorded as unconfirmed, not assumed.
+
+**Verification:** documentation change only; no code.
+
+## 2026-09-26 — Map area widened to 100 km around Nairobi
+
+**What:** the OSM extract box changed from lon 36.55–37.15, lat −1.50 to −1.10 to lon
+35.92–37.72, lat −2.19 to −0.38. This is the box enclosing a 100 km radius around Nairobi CBD
+(1.2864°S, 36.8172°E; ±0.904° latitude, ±0.899° longitude).
+
+**Why:** Ian asked whether the map reached Thika (1.03°S, 37.07°E). It did not: the first box
+stopped at 1.10°S. Ian asked for a 100 km radius, which now covers Thika, Machakos, Kajiado,
+Murang'a and Naivasha.
+
+**Verification:** documentation change only.
