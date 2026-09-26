@@ -546,3 +546,930 @@ firmware/host sources. 51/51 unit tests; the host binary builds.
 **Still open:** The two versions can diverge again on any new code. Checking with the scratch
 clang-format 18 before pushing avoids surprises until CI's formatter is pinned. `ubuntu-latest`
 moves to Ubuntu 26 on 2026-10-19 per GitHub's notice, which will change CI's version again.
+
+## 2026-09-24 — Phase 5: model selection, weights, and the ONNX/engine scripts (Part 7.1–7.3)
+
+**Attempted:** Obtain pretrained weights for the three Part 7.1 models and write the export and
+engine-build scripts.
+
+**Built/changed:** `host/scripts/export_onnx.py` (`--model yolov8m|ufld|midas`). Each export is
+verified against PyTorch through ONNX Runtime before it counts as a success.
+`host/scripts/build_tensorrt_engines.sh` runs `trtexec --fp16` per model and keeps logs and
+benchmark numbers in `models/engines/*.log`. Weights were downloaded to the newly gitignored
+`host/models/weights/`: `yolov8m.pt` (ultralytics release) and `culane_res18.pth` (UFLDv2 release,
+Google Drive). The UFLDv2 source was cloned to `~/src/Ultra-Fast-Lane-Detection-v2`. The export
+venv `~/src/ar-export-env` layers over `~/ml-env` via a `.pth` path file and adds only timm 0.9.16,
+gdown and onnxslim, leaving `~/ml-env` unchanged.
+
+**Reasoning:** Part 7.1's input sizes do not match the models it names, which was checked against
+the upstream sources rather than assumed:
+- UFLDv2 ships only 320×800 (TuSimple) and 320×1600 (CULane/CurveLanes). 800×288 is UFLD **v1**.
+  I chose CULane ResNet-18 at 320×1600, because CULane (urban, night, crowded, faded markings) is
+  nearer to Nairobi roads than TuSimple's clear US highways.
+- No "MiDaS v3.1 Small at 384×384" exists. v3.1's small SwinV2-T model fails to load under
+  timm ≥ 0.7 (layer restructuring: size mismatches in every downsample layer). timm 0.6.x, the
+  version MiDaS pins, does not import on Python 3.13. MiDaS **v2.1** Small (256×256) is used. Depth
+  is relative, and metric near-field depth comes from the LiDAR.
+- YOLOv8m is COCO-pretrained, so Part 7.1's five classes will be a mapping from COCO classes in
+  post-processing. COCO has no generic "obstacle" class.
+
+**Problems hit:**
+- timm 0.6.12 raises a dataclass error on import under Python 3.13, and MiDaS's hub file imports
+  timm even for models that don't use it.
+- MiDaS small pulls a second torch-hub repository for its backbone, which prompted for trust
+  interactively. It was added to `~/.cache/torch/hub/trusted_list`.
+- **Running the exports was stopped by the permission classifier.** Loading the downloaded UFLD
+  checkpoint with `torch.load(weights_only=False)` executes pickled code from an external file.
+  The script now uses `weights_only=True` for UFLD. YOLOv8m's load inside ultralytics still
+  unpickles, and MiDaS runs torch-hub repository code. No export has been run, pending Ian's
+  decision.
+
+**Still open:** Run the three exports and the engine build once permitted, then check the
+`trtexec` latencies against Part 7.1's FPS targets.
+
+## 2026-09-24 — Phase 5: `TrtEngine` (Part 7.4)
+
+**Attempted:** Implement the per-model TensorRT wrapper against the installed TensorRT 10.16.
+
+**Built/changed:** `inference/TrtEngine.h` and `src/inference/TrtEngine.cpp`: `load`, `enqueue`,
+`sync`, `inferBlocking`, `deviceInput`, `hostOutput`, `input` and `outputs`. The new
+`host/test/integration/test_trt_engine.cpp` has 7 GPU tests, ctest label `gpu`, and is not in CI.
+`enable_testing()` was added to the top-level and host CMake files so ctest discovers the
+integration tests.
+
+**Reasoning:** TensorRT 10 has no binding indices or `enqueueV2`, the API Part 7.4's snippet
+assumes. Tensors are found by name and given device addresses once at load with
+`setTensorAddress`, and inference is `enqueueV3`.
+
+Inference is split into `enqueue()` and `sync()`, so that MlInferenceEngine can queue all three
+models before waiting on any. That is what lets the Part 7.4 streams overlap. Each engine gets a
+*non-blocking* stream, so that any stray default-stream call cannot re-serialise them.
+
+Outputs are copied into pinned host memory, so the copy is truly asynchronous. The input is a
+device pointer that pre-processing writes into on the same stream, so frames never round-trip
+through host memory.
+
+The engine is rejected at load if it has a dynamic shape, non-FP32 I/O, or more than one input.
+All three are signs that the wrong engine was loaded, and each would otherwise corrupt a buffer
+size silently.
+
+**Problems hit:** The `cudaMallocHost(float**)` overload lives in `cuda_runtime.h`, not the C
+API header that was included. Fixed by allocating into `void*`.
+
+**Verification:** The test needs no downloaded model. It builds its own two-output network
+(`y = 2x+1`, `r = relu(x)`) with TensorRT's builder API, serialises it, and loads it through
+`TrtEngine`. 7/7 pass on the RTX 5060:
+- every output element is exact;
+- repeated runs see their own input;
+- two engines on separate streams, both enqueued before either is synced, are both correct;
+- wrong-sized input throws;
+- missing and garbage engine files throw.
+Formatting was checked clean with clang-format 22 and 18.
+
+**Still open:** Pre-processing into `deviceInput()` and the per-model post-processing come next.
+
+## 2026-09-24 — Phase 5: model resolution chosen, exports run, TensorRT engines built (Part 7.3)
+
+**Attempted:** Ian permitted running the exports and asked for the highest useful resolution per
+model, one that works for both distant and very close objects.
+
+**Built/changed:**
+- `export_onnx.py` gained `--width/--height` for yolov8m and midas, and refuses them for ufld.
+- Exports at the chosen sizes:
+  - `yolov8m.onnx` at 1280×736;
+  - `ufld.onnx` at 1600×320 (fixed by the model);
+  - `midas.onnx` at 448×256.
+- `build_tensorrt_engines.sh` builds all three FP16 engines, and now checks each engine's input
+  shape against the expected one.
+- `test_trt_engine.cpp` gained a parameterised test over the real engines. It skips when they are
+  not built on the machine.
+
+**Reasoning (resolution):**
+- **YOLO only:** it is the only model where resolution is a free choice.
+- **Far objects:** with an assumed ~70° horizontal FOV (to be replaced by Phase 4's measured
+  value), a 1.7 m pedestrian is ≈ 1.39·W/d pixels tall at distance d. At the ~12 px YOLO needs,
+  W = 1280 detects out to ~148 m. That covers ~100 km/h stopping distance (~98 m) plus ~1 s of
+  tracking history.
+- **Close objects:** YOLOv8 trained at 640 with up to 1.5× scale augmentation, so it has seen
+  objects up to ~960 px. At 1280 a car 3 m away is ~600 px, inside that range. At 1920 and above,
+  close objects exceed it, and close range is what braking depends on.
+- **Shape:** 16:9 at 1280×736 (720 rounded up to a multiple of 32) spends no compute on letterbox
+  padding.
+- **UFLDv2:** cannot change size. Its fully-connected head's input is H/32 × W/32 × 8.
+- **MiDaS:** 448×256 at the frame's 16:9 shape. *Correction, same day:* this was first
+  described as MiDaS's "native 256 short side". Reading MiDaS's own small-model transform
+  (`resize_method="upper_bound"`, 256) showed it caps the *long* side at 256, i.e. 256×128 for
+  16:9. 448×256 is therefore ~1.75× its standard scale, a moderate increase for sharper depth
+  edges. It is kept moderate because MiDaS far past its training scale loses global consistency.
+
+**Problems hit:**
+- *UFLD export failed:* its model file imports `utils.common`, which imports NVIDIA DALI and other
+  training-only packages. A stand-in `utils.common` with a no-op `initialize_weights` is
+  registered instead. That is safe because every weight is overwritten by the checkpoint, and
+  `strict=True` proves nothing is left at its initial value. The config file is read with `runpy`,
+  avoiding the `addict` dependency.
+- *First engine build failed:* TensorRT rejects Part 7.3's `--shapes` flag for a fully static
+  model. The flag was dropped and replaced by a post-build shape check.
+- *That check falsely failed at first:* trtexec capitalises "Input binding". The match is now
+  case-insensitive.
+
+**Verification:**
+- *Exports:* each matches PyTorch through ONNX Runtime. Max |Δ|: YOLO 1.1e-3 on scores, UFLD
+  ≤ 8.2e-6 on all four outputs, MiDaS 8.5e-4. The UFLD checkpoint loaded with `strict=True` and
+  `weights_only=True`.
+- *Engines, median GPU compute each in isolation (RTX 5060 laptop):*
+
+  | Model | Input | Median | Throughput |
+  |---|---|---|---|
+  | YOLOv8m | 1280×736 | 6.58 ms | 133/s |
+  | UFLDv2 | 1600×320 | 2.51 ms | 344/s |
+  | MiDaS | 448×256 | 1.57 ms | 556/s |
+
+  All three are well above Part 7.1's targets (30+/30+/15–20), and even run in sequence they total
+  ~10.7 ms of a 33 ms frame.
+- *YOLO resolution sweep (benchmark-only builds, not kept), median:* 640×384 2.77 ms, 640×640
+  3.07, 960×544 3.76, **1280×736 6.58**, 1920×1088 13.97, 2560×1440 26.45 ms. Camera-native would
+  use ~80% of the frame budget on detection alone.
+- *Engines in C++:* all three load in `TrtEngine` with exactly the expected tensor names and
+  shapes, and produce finite outputs on a grey frame. GPU tests 10/10. Both clang-format versions
+  are clean.
+
+**Still open:**
+- Isolated latencies are not the exit criterion. Part 7.1's FPS must be met on a live feed with
+  pre-processing, three concurrent models and display, on a laptop GPU that throttles when hot.
+- The 70° FOV assumption must be replaced by the real camera's value once Phase 4 measures it. If
+  it is much wider, re-run the range arithmetic.
+
+## 2026-09-24 — Phase 5: output decoding (YOLO boxes, UFLD lanes)
+
+**Attempted:** Turn raw engine outputs into boxes and lane points in source-frame pixels.
+
+**Built/changed:** `inference/Postprocess.h` and `src/inference/Postprocess.cpp` contain
+`mapCocoClass`, `InputMapping` (with `letterbox`), `decodeYolo` (with class-aware NMS), `iou` and
+`decodeUfld`. `test_postprocess.cpp` has 18 tests and sits in the GPU-free unit suite, so CI runs
+it.
+
+**Reasoning:**
+- **No OpenCV/CUDA dependency,** so the logic every later decision depends on is checked in CI.
+- **COCO → Part 7.1 class mapping:**
+  - person → Pedestrian;
+  - bicycle and motorcycle → Cyclist (a two-wheeler with an exposed rider, i.e. boda-boda);
+  - car, bus, truck → Vehicle;
+  - traffic light, stop sign → Sign;
+  - large animals (dog, horse, sheep, cow, elephant, bear, zebra, giraffe) → Obstacle. COCO has
+    no generic obstacle class, and livestock and wildlife are real hazards on Kenyan roads.
+- **Classes are mapped *before* NMS,** so a vehicle scored as both car and truck becomes one box.
+- **Safety rule: post-processing never removes a pedestrian box because it overlaps another
+  class.** The common "rider suppression" trick (drop a person box overlapping a two-wheeler)
+  would also drop a real person standing beside one, and a missed pedestrian is the unsafe
+  direction.
+- **`decodeUfld` ports UFLDv2's `pred2coords`:** row anchors for the ego-lane boundaries, column
+  anchors for the outer lanes, the > ½ and > ¼ presence rules, and a soft-argmax over ±1 cell.
+  Its softmax subtracts the max logit first (overflow-safe), and it keeps float coordinates where
+  upstream truncates to int.
+
+**Verification:** 18/18, and 69/69 across the unit suite. The expected values are hand-computed:
+- the production letterbox (2560×1440 → 1280×720 + 8 px bands) and the 1080p fallback;
+- decoding into source pixels, thresholding, unmapped-class handling, NMS, car+truck merge,
+  clipping into padding, and `maxDetections`;
+- the pedestrian-never-suppressed rule;
+- lane anchor rows, both presence thresholds at their exact boundaries, soft-argmax refinement
+  towards a strong neighbour, and finiteness with 500-valued logits.
+
+**Still open:** Cross-check both decoders against the upstream Python on *real* model output for
+a real road frame (needs footage).
+
+## 2026-09-24 — Phase 5: GPU pre-processing
+
+**Attempted:** Convert a GPU camera frame into each engine's input tensor, on that engine's
+stream.
+
+**Built/changed:** `inference/Preprocess.h` and `src/inference/Preprocess.cpp`: `PreprocessSpec`
+(`yolo`, `imagenet`) and `Preprocessor::run`. `host/test/integration/test_preprocess.cpp` has 5
+GPU tests.
+
+**Reasoning:** The pipeline is region → resize (letterbox for YOLO, pad 114 as in its training)
+→ BGR→RGB → /255 → per-channel normalise (ImageNet stats for UFLD/MiDaS, none for YOLO) → HWC to
+CHW. The last step is `cuda::split` into three GpuMat headers laid over the engine's input
+buffer, so there is no extra copy. Every call is on the caller's stream, so the three models'
+pre-processing overlaps like their inference. Scratch buffers are allocated once per model.
+
+The lane model will receive a CULane-shaped band (2.78:1) around the horizon rather than the
+whole frame squashed. It was trained on that shape, and squashing 16:9 into it distorts road
+geometry by ~1.7× vertically. The band's position will be configuration, because it depends on
+the final camera mount.
+
+**Verification:** 5/5 GPU tests with hand-computable expectations:
+- a pure-red frame gives exactly `(1−.485)/.229`, `−.456/.224`, `−.406/.225` in the R, G, B
+  planes;
+- YOLO's 8 padding rows each side are exactly 114/255, with the content exactly 1.0;
+- a white square lands where the returned mapping predicts;
+- an ROI excludes the rest of the frame and offsets the mapping;
+- a bad ROI and a wrong pixel type throw.
+
+Negative test: with BGR→RGB removed, the channel test fails. Restored and re-verified. (The first
+two attempts at this negative test printed nothing: my grep pattern had one space where
+GoogleTest prints two, in `FAILED  ]`. The failure was confirmed from unfiltered output.)
+
+**Still open:** The Phase 4 camera is not bought yet, so real frames for the band placement and
+the live check must come from recorded footage.
+
+## 2026-09-24 — Phase 5: `MlInferenceEngine`, debug viewer, and a first run on real footage
+
+**Attempted:** Assemble the inference thread and check its output on real road video, since the
+Phase 4 camera does not exist yet.
+
+**Built/changed:**
+- `camera/CameraFrame.h`.
+- `inference/MlInferenceEngine.h` and `src/inference/MlInferenceEngine.cpp`: `process()`, `run()`
+  (SystemManager contract) and `laneBand()`. It publishes a `DetectionFrame` on the detection bus
+  and a `DepthFrame` on its own bus, paired through `depth_map_ref` = frame sequence number.
+- `host/tools/inference_viewer.cpp`, a new CMake target outside `src/` so its `main` never enters
+  the app. It draws boxes, lanes, the lane band and a depth inset, reports latency percentiles, and
+  takes `--band-top`, `--snapshots`, `--out` and `--dump`.
+- `Preprocessor::setRoi`.
+- Test footage in `data/footage/` (gitignored), with source and CC BY 3.0 attribution in
+  `data/README.md`.
+
+**Reasoning:**
+- **Upload ordering:** the frame is uploaded once. Each model stream waits on a CUDA event recorded
+  after the upload (`cudaStreamWaitEvent`), so the ordering is enforced on the GPU without
+  blocking the CPU.
+- **Sizes from the engines:** pre-processing sizes come from each engine's input shape, so a
+  rebuilt engine at another resolution needs no code change.
+- **UFLD outputs by name,** because TensorRT does not guarantee declaration order.
+- **Lane band:** UFLD sees the bottom 60% (upstream `crop_ratio`) of a CULane-shaped band. The
+  decoder maps against the full band, as upstream does.
+- **Footage:** "City Driving 4K – Kraków Poland 2024" (Relaxing Roads 4K, CC BY 3.0). It is
+  2560×1440, exactly the planned camera resolution. Only the first 120 s was fetched, in one
+  contiguous range request.
+
+**Problems hit:**
+- *Clip download:* seeking inside the remote WebM made many range requests and Wikimedia returned
+  HTTP 429. It was replaced by a single range request for the first 200 MB, cut locally with
+  `ffmpeg -c copy`.
+- *Privacy slip, mine:* the earlier `ffprobe` of that URL sent Ian's email address in its
+  User-Agent. Wikimedia's policy asks for contact details, but Ian had not agreed to share his
+  email with any service. All later requests used a User-Agent without it.
+- *Lane band placement:* the default band (top at 0.25) sat too high for this footage (horizon
+  ~58% down) and cut off the nearest ~100 px of road. The band top was changed to 0.32, and the
+  ego-left lane then followed the double white line down to the bonnet. The 0.32 default fits
+  this footage's camera mount, not the project's; Part 12 must re-tune it.
+- *Viewer crash:* the viewer aborted with an uncaught exception when run outside the repository
+  root, because engine paths are relative. It now reports the error and exits 1, verified.
+
+**Verification:**
+- *Timing, 600 frames, 2560×1440, first 10 excluded as warm-up:*
+
+  | Measure | Median | p95 | Max |
+  |---|---|---|---|
+  | Upload → all three models synced | 10.5 ms | 14.1 ms | 18.4 ms |
+  | Including decode | 12.8 ms | 16.6 ms | 20.9 ms |
+
+  That is ~78 FPS at the median. The worst frame is still inside 33 ms, so Part 7.1's 30+/30+/15–20
+  targets are met with all three models running concurrently.
+- *Visual, frames 0/120/240/360/480:*
+  - boxes on parked and moving cars, a van, and a pedestrian crossing ahead (0.87);
+  - a distant pedestrian ~48 px tall detected at 0.71;
+  - ego-left lane on the double white line;
+  - no ego lanes at an unmarked junction, which is correct;
+  - depth brightest on the road nearest the car.
+
+  The ego-right lane followed a faint worn marking (plausible, unconfirmed), and the outer-right
+  lane was noisy.
+- *Independent cross-check:* ultralytics' reference pipeline (its own letterbox + PyTorch FP32 +
+  its NMS) on the identical frames, with the same class map:
+
+  | Frame | Ours | Reference | IoU | Confidence difference |
+  |---|---|---|---|---|
+  | 120 | 5 | 5, all matched | 0.976–0.997 | ≤ 0.03 |
+  | 360 | 3 | 3, all matched | 0.964–0.989 | ≤ 0.05 |
+
+  No missing or extra boxes. This validates GPU pre-processing, the TensorRT FP16 engine, the
+  decoder and NMS together.
+- Unit 69/69, GPU 15/15, and both clang-format versions clean.
+
+**Still open (Phase 5 is NOT complete):**
+- Part 14's exit criterion requires a **live camera feed** at target FPS. Recorded footage is not
+  a substitute; this needs the Phase 4 camera.
+- The UFLD decoder is validated by unit tests and visually (points lie on real markings), but not
+  numerically against upstream `pred2coords` on real output.
+- The footage is European. Accuracy on Kenyan roads (boda-bodas, matatus, unmarked roads,
+  livestock) is untested until the project's own recordings exist.
+- Frame upload uses pageable memory. Pinned host memory (`cv::cuda::HostMem`) would make it
+  asynchronous if profiling shows the upload matters.
+
+## 2026-09-24 — Phase 5: full annotated run of the test footage, for review
+
+**Attempted:** Ian asked to see the models running on real road footage.
+
+**Built/changed:** `inference_viewer` gained dark backing panels behind its text (it was
+unreadable over bright sky), a class/lane legend, and the CC BY 3.0 attribution line the footage
+licence requires. It now writes video at the source frame rate, so playback is real-time. The
+output is `data/footage/annotated/krakow_annotated.mp4` (120 s, 1280×720, 60 fps, H.264, 133 MB,
+gitignored).
+
+**Verification:**
+- *Timing, all 7,200 frames at 2560×1440:* median 13.05 ms, p95 16.6 ms, max 25.1 ms. The worst
+  frame in two minutes is inside the 33 ms budget. Mean 9.7 boxes per frame. Ego lanes present in
+  ~78–79% of frames.
+- *Spot-checked frame at 38 s:* stop sign 0.90 and traffic light 0.30. Three pedestrians on the
+  pavement, including a child at 0.29, a low-confidence detection of exactly the kind the
+  never-suppress rule protects. Ego lane on the kerb and road edge.
+- *One clear false positive:* a large "vehicle" box on a building wall at the left frame edge.
+  Single-frame false positives like this are what Phase 7's tracker (a detection must persist
+  across frames to become a track) is meant to filter.
+
+**Still open:** Ian's review of the full video.
+
+## 2026-09-24 — Road-sign detection extension: scope, overnight training launched, AR behaviours
+
+**Attempted:** Ian found the detector weak on road signs, and chose a dedicated fourth model
+trained on the Mapillary Traffic Sign Dataset (MTSD). He also defined the purpose of signs:
+understand each sign and show the driver spatially, racing-game style (a holographic stop
+barrier, barriers across forbidden turns, the speed limit against actual speed with an F1-style
+colour-graded route line), for navigation and safety.
+
+**Built/changed:** `docs/architecture/sign-behaviours.md` gives per-class AR behaviours for all 29
+detector classes, 7 cross-cutting rules, and the phase each capability lands in. An overnight
+background agent was launched to obtain MTSD, train the model, export and benchmark it, and
+evaluate it on openly licensed Kenyan imagery. Its own progress-log entries and report
+(`docs/experiments/2026-09-25-sign-detector-overnight.md`) follow.
+
+**Reasoning:**
+- **Root cause is vocabulary, not resolution:** COCO has only "stop sign" and "traffic light".
+  That rules out threshold or resolution fixes.
+- **A separate small model (YOLOv8s)** rather than retraining YOLOv8m keeps the safety-critical
+  detector untouched.
+- **Speed limits are one class per value,** so the detector reads the number without a second
+  classifier.
+- **No horizontal flips** in training (they swap left/right meanings).
+- **Kenya is left-hand traffic,** which decides which lane boundary "no overtaking" marks and which
+  side signs appear on.
+- **The overriding rule, kept from Part 9:** signs never actuate. A wrong sign can at worst draw a
+  wrong graphic.
+
+**Problems hit:** MTSD needs Ian's own Mapillary login. The download links are emailed and valid
+for 5 days, so no unattended process could fetch it without him. Ian chose to let the agent read
+**only** the `from:mapillary` email in his Gmail to take the links. At launch the email had not
+arrived yet; Ian was asked to request the dataset. The one public mirror checked (Hugging Face) was
+a 2,000-image shape-only subset with no licence, so it is unusable. The agent was told not to use
+YouTube for Kenyan footage (licence and ToS) and to use KartaView (CC BY-SA 4.0) and Wikimedia
+Commons instead.
+
+**Still open:**
+- The overnight results.
+- Whether ~10 h of wall time allows both the ~42 GB download and meaningful training depends on
+  bandwidth.
+- The behaviours are design only; implementation lands in Phases 7–11.
+
+## 2026-09-24 — Sign detector: MTSD label mapping and YOLO conversion
+
+**Attempted:** Turn the Mapillary Traffic Sign Dataset (fully annotated part) into a YOLO dataset
+with the 29 target classes (stop ... other_regulatory), as the first step of a fourth,
+sign-specific detector.
+
+**Built/changed:**
+- `host/scripts/prepare_mtsd.py`: reads the real label list (401 labels, 206,386 boxes over
+  41,909 annotation files), maps every label, writes `host/scripts/mtsd_class_map.json`, converts
+  train/val to `data/datasets/mtsd_yolo/` (long side capped at 2048 px, boxes rescaled through
+  normalised coordinates) and writes `mtsd.yaml` and `instance_counts.json`. It is re-runnable:
+  images already re-saved are not re-encoded, but labels are always rewritten.
+- `host/scripts/mtsd_uncertain_unit_speed_variants.json`: speed-limit designs dropped as mph or
+  unclear.
+- `host/scripts/extract_growing_zip.py`: extracts complete entries of a zip that is still
+  downloading (MTSD stores its JPEGs uncompressed, sizes in each local header, CRC checked), so
+  conversion can overlap the slow download.
+- `.gitignore`: `host/models/training/` and `data/datasets/`.
+
+**Reasoning:** The mapping was written only after reading the real labels and looking at crops of
+every mapped design variant (e.g. the MTSD names are `regulatory--yield`, `warning--road-bump`,
+not "give-way"/"speed-bump"). The conservative choices are in docs/decisions.md.
+
+**Verification:** 10 random converted train images drawn with their boxes and looked at (visual
+check, not measured): every box sits on a sign and the class names match (stop, give_way,
+no_entry, speed_limit_50/60, pedestrian_crossing on a yellow school-crossing diamond,
+keep_left_or_right on blue keep-right discs, no_parking on the P-with-slash disc). No conversion
+bug found. Val zip MD5 matches Mapillary's list.
+
+**Problems hit:** On the partial data (6,314 train + 5,320 val images) many classes are small:
+speed_limit_10 (13 train boxes), 110 (15), 120 (21), end_of_restriction (36), 90 (38) and 20 (39).
+The full train set is ~5.8x larger.
+
+**Still open:** train.0/1/2 still downloading (~2.2 MB/s aggregate). Final per-class counts come
+from the final conversion run.
+
+## 2026-09-25 — Sign detector: training data ready, training started (train.0 + val)
+
+**Attempted:** Download the fully annotated MTSD parts and start training on what the time budget
+allows.
+
+**Built/changed:**
+- Downloaded and MD5-verified against Mapillary's own list: annotations (121 MB), val (4.57 GB,
+  5,320 images) and train.0 (10.38 GB, 12,197 images; the zip's entry count matches the files
+  extracted). train.1 and train.2 (10.4 GB each) are still downloading in the background for a
+  later run. Test (no public labels) and the partially annotated set (not fully labelled) were not
+  downloaded.
+- Final conversion: 12,692 train images (train.0 plus ~500 that train.1/2 had delivered while
+  paused) and 5,320 val images; 391 panoramas skipped. Per-class train/val box counts are in
+  `data/datasets/mtsd_yolo/instance_counts.json`. Smallest: speed_limit_10 23/12, 110 29/14,
+  120 38/14, end_of_restriction 68/37, speed_limit_20 72/28, 90 77/27, 100 89/44.
+- `host/scripts/train_sign_detector.py` started at 00:35 EAT: YOLOv8s from COCO `yolov8s.pt`,
+  imgsz 1280, batch 8, fliplr 0, flipud 0, amp, 8 workers, `time` = 4.94 h (ends by 05:30).
+
+**Reasoning:** At the measured ~2.2 MB/s the full train set would have arrived around 03:10,
+leaving about 2 h of training. That is below the brief's 4 h threshold, so its fallback was used
+(docs/decisions.md). A later request to extend training to 08:00 could not be applied in this
+run, so the original deadline stands.
+
+**Problems hit:** A first run on partial data (23:53) was stopped before its first epoch ended. It
+left no weights (`host/models/training/signs_v1_partial_superseded/`). The overnight session was
+also paused by a usage limit around 23:00–23:50; the downloads kept running.
+
+**Still open:** Training results; train.1/2 are for a retrain on the full ~36.6k training images.
+
+## 2026-09-25 — Sign detector: Kenyan evaluation imagery collected
+
+**Attempted:** Collect openly licensed real Kenyan road imagery with signs, to evaluate the sign
+detector on the target domain.
+
+**Built/changed:** `host/scripts/fetch_kenya_imagery.py` (KartaView, CC BY-SA 4.0) and
+`host/scripts/fetch_commons_kenya.py` (Wikimedia Commons, licence read from Commons metadata,
+only CC0/CC BY/CC BY-SA kept). 300 images in `data/footage/kenya/` (199 KartaView from Nairobi and
+the A104, 101 Commons), with per-file author/licence manifests. Sources and attribution recorded
+in `data/README.md`.
+
+**Reasoning:** Both sources have explicit open licences and public APIs. Requests were serial,
+with pauses, back-off on 429/5xx and a User-Agent without personal data.
+
+**Problems hit:** KartaView's v2 bounding-box sequence search answers "Restricted access"; the v1
+list endpoint works but returns only ~15 sequences for Nairobi and none for Mombasa, Eldoret,
+Kisumu or Thika town. One KartaView storage host returned HTTP 500 for over an hour. Commons began
+answering HTTP 429 after ~100 files (the thumbnail width was not a standard size; now fixed to
+1280). No Thika Road / Mombasa Road / Waiyaki Way sequences specifically were found.
+
+**Still open:** The set is dominated by one contributor and many frames have no sign. Ian's own
+dashcam recordings will be the real test set.
+
+## 2026-09-25 — Sign detector: overnight run reviewed; full-data retrain until no improvement
+
+**Attempted:** Review what the overnight agent completed, then carry out Ian's instruction to keep
+training "until its confidence cannot be improved anymore".
+
+**Built/changed:**
+- `host/scripts/train_sign_detector.py` gained `--name`, `--epochs`, `--patience` and
+  `--end none`. The defaults keep the old behaviour.
+- A detached pipeline, `host/models/training/run_signs_v2.sh` (gitignored, log beside it in
+  `signs_v2_pipeline.log`):
+  - re-extracts train.1 and train.2;
+  - verifies every image in all four zips is on disk at full size;
+  - converts, skipping already-converted images;
+  - trains `signs_v2`, warm-started from `signs_v1/weights/best.pt`, on all ~36.6k training
+    images, with `patience=15` and `epochs=60`.
+
+**Reasoning:**
+- *What happened overnight:* the agent was stopped twice by usage limits (~23:00 and ~04:50). It
+  never received the 08:00 extension. `signs_v1` trained on train.0 only (12,411 images) for
+  22 epochs within its 4.94 h budget.
+- *Its curve shows it was still improving:* mAP50 0.16 → 0.39 (ep 10) → 0.533 (ep 22); mAP50-95
+  0.114 → 0.418. More data and more epochs should help.
+- *"Cannot be improved anymore"* is implemented as standard early stopping. Training ends once
+  validation fitness (0.1·mAP50 + 0.9·mAP50-95) has not improved for 15 consecutive epochs.
+  `epochs=60` is a safety cap, and it also sets the learning-rate decay length. At ~31 min per
+  epoch on 36.6k images (extrapolated from v1's ~10.7 min on 12.4k), the cap is ~31 h.
+- *Warm start from v1:* it already knows the sign classes, so it converges faster than starting
+  from COCO.
+- *Detached (`setsid nohup`):* a session or usage-limit cutoff can no longer stop the run. This is
+  what cost the night twice.
+
+**Problems hit:** The first extraction of train.1/2 was cut off with the session. The images on
+disk (36,314) were short of the ~41.9k expected, and a half-written JPEG would have been skipped
+by unzip's no-overwrite mode. The pipeline re-extracts with overwrite and then verifies sizes
+against the zip listings before converting.
+
+**Still open:**
+- The v2 results.
+- v1 was never exported or evaluated on the Kenyan imagery (the agent stopped first). Evaluation
+  will be done once, on the final model.
+- The overnight report `docs/experiments/2026-09-25-sign-detector-overnight.md` was never
+  written.
+
+## 2026-09-25 — Guide amendment: AR overlays rendered on the GPU (Part 10)
+
+**Attempted:** At Ian's instruction, switch the guide's overlay rendering from OpenCV CPU drawing
+to GPU work, so the holographic sign behaviours can be drawn at the full 2K resolution. He also
+asked what the box overlays are for.
+
+**Built/changed:** `docs/BUILD_GUIDE.md` Part 10.1–10.4 rewritten, and the Phase 11 deliverables
+in Part 14 updated:
+- `CompositedFrame` carries video + an `OverlayScene` draw list;
+- `OverlayItem` geometry is either image-space or road-space (vehicle-frame metres, projected in
+  the vertex shader);
+- `WindowedSink` draws the video texture (PBO upload) and then an overlay shader pass, at native
+  display resolution, with no OS scaling;
+- `ArRenderer` builds the scene (`addHazardHighlights`, `addLaneOverlay`, `addNavigationOverlay`,
+  `addSignBehaviours`, `addSpeedAndWarnings`) and draws nothing itself;
+- the 10.4 benchmark now times the upload and the overlay pass separately, and its native-Windows
+  fallback sends video + `OverlayScene` over TCP.
+
+**Reasoning:**
+- **Why the GPU:** the translucency, glow, gradients and pulsing are per-pixel blending of
+  several 2K layers per frame. That is trivial on the GPU and a real cost on the CPU.
+- **Why a draw list instead of composited pixels:** a future optical `ProjectorSink` must draw
+  overlays *without* the video, and pre-composited pixels could never support that.
+- **Road-locked items:** projecting them with the same calibration as perception means they land
+  where the detections are.
+- **Checked display facts:** the development laptop's panel is 2560×1600 @ 240 Hz at 150% Windows
+  scaling, so a 2560×1440 frame maps 1:1 if OS scaling is avoided. Otherwise it is resampled from
+  1707 px and blurred.
+- **What the boxes are for (answer to Ian):** they show the driver what the system has noticed
+  and judged a hazard (Part 9.2: tailgating, erratic speed, swerving, forward-collision risk), so
+  a warning or brake never arrives unexplained. They are also report evidence (Part 16). In the
+  driver view they become threat-styled hazard highlights on relevant objects only; the
+  every-detection boxes stay in the debug viewer.
+
+**Still open:**
+- The report's description of the `DisplaySink` interface must be updated to match.
+- Whether CUDA/GL interop is available under WSLg (not assumed) will be settled by the 10.4
+  benchmark.
+
+## 2026-09-25 — AR overlay design: hazards join the sign language; guide amended
+
+**Attempted:** Ian's design for hazards. Instead of boxes, a dangerous car, pedestrian, animal or
+obstacle is shown with the same road-placed elements as signs, plus a subtle shimmering glow on
+the object whose colour follows its risk. Tailgating is shown as a following-distance zone (my
+proposal, agreed). He asked for the documentation and guide edits now, and the model work after
+the sign training.
+
+**Built/changed:**
+- `docs/architecture/ar-overlay-design.md` replaces `sign-behaviours.md`:
+  - §0: a shared visual-language table;
+  - §1: 8 rules for all overlays. Rule 4 is now "never hide a hazard"; rule 8, "ordinary traffic
+    gets nothing", is new;
+  - §2: the sign behaviours (unchanged, except that the crossing escalation now uses hazards);
+  - §3: hazards, with risk level `r`, the object glow, and forward-collision, pedestrian/animal,
+    tailgating, swerving-neighbour and obstacle behaviours;
+  - §4: a capability/phase table, adding YOLOv8m-seg masks and `r`.
+- `docs/BUILD_GUIDE.md`:
+  - Part 3.5: `mask_ref` in `DetectionFrame`;
+  - Part 7.1: table amended (YOLOv8m-seg; the sign-detector row; the real lane/depth models and
+    sizes), with 7.3 superseded by the scripts;
+  - Part 10.1: object-mask geometry, and rule-4 enforcement (rim glow; road items masked by
+    silhouettes);
+  - Part 10.3: `addHazards`, and the hazards-not-boxes specification;
+  - Part 10.4: the benchmark scene now includes shimmering glows;
+  - Part 14: Phase 11 deliverables.
+
+**Reasoning:**
+- *One visual language:* every element means the same thing, whether it comes from a sign or a
+  hazard.
+- *The glow follows the object's real outline,* which needs per-object masks. A box-shaped glow
+  would reintroduce the rectangle Ian wants gone, so the detector moves to YOLOv8m-seg (same COCO
+  classes and export path).
+- *`r` comes from the same TTC and Part 9.2 measures the arbiter uses,* so the display and the
+  brake decision agree. It never feeds actuation.
+- *The shimmer is capped at ~3 Hz* to avoid strobing.
+- *Road graphics are masked by silhouettes,* so they sit behind objects, as rule 4 requires.
+
+**Still open:** the YOLOv8m-seg work, deferred until the sign training ends:
+- export and engine;
+- a mask decoder with unit tests;
+- `detections.fbs` `mask_ref` and the mask bus;
+- timing against the current 6.6 ms;
+- confirming the box outputs match the current detector's behaviour.
+
+The report's descriptions of the display interface and the model table must follow the guide.
+
+## 2026-09-25 — Guide amendment: mask-based LiDAR fusion and startup extrinsic verification
+
+**Attempted:** Two proposals from Ian, written into the guide:
+- (1) match each object's YOLOv8m-seg mask with its LiDAR points;
+- (2) have the system calibrate the LiDAR–camera mapping when it starts, for the most accurate
+  mask/3D matching.
+
+**Built/changed:** `docs/BUILD_GUIDE.md`:
+- Part 8.3 rewritten: mask-based fusion, with 7 rules;
+- new Part 12.2.1: `ExtrinsicMonitor`, with its states `UNVERIFIED`/`VERIFIED`/`REFINED`/
+  `DEGRADED`;
+- Part 13.1 gains `test_mask_lidar_fusion.cpp` and `test_extrinsic_monitor.cpp`;
+- Part 14 Phase 6/7 deliverables and exit criteria include them.
+
+Decisions logged.
+
+**Reasoning:**
+- *Masks over boxes:* masks give each object its own points, so range, ground-contact point,
+  velocity and TTC are the object's own. This matters most for the thin or partly hidden
+  objects that are hazards.
+- *Each fusion rule answers a known failure mode:*
+  - motion compensation, because the Livox pattern accumulates over ~100 ms;
+  - mask erosion, because ¼-resolution masks are soft and extrinsic error shifts projections;
+  - nearest depth mode, because a mean is dragged by stray points;
+  - the parallax depth test, because the two sensors sit in different places.
+- *The LiDAR-veto rule:* an unexplained cluster in the path is still an obstacle, so a camera
+  miss can never hide a real object.
+- *Startup calibration is verification + bounded refinement, not from-scratch:*
+  - at startup the car is usually stationary in a poor scene, where a free solve can converge
+    wrongly with confidence;
+  - bounds, held-out checking, and rejection of solutions at the bound make a bad refinement
+    detectable rather than silent;
+  - in `DEGRADED`, braking relies on LiDAR-only ranges, which need no camera alignment. A wrong
+    self-calibration can therefore never reach the brake, in keeping with the hard safety rule.
+
+**Still open:** Implementation in Phases 6–7. The maths (projection, erosion, depth modes,
+scoring, bounded search) can be built and unit-tested on synthetic data before the LiDAR exists.
+The arbiter's LiDAR-only corridor mode belongs in Phase 10.
+
+## 2026-09-25 — Guide amendment: motion prediction (Part 9.1)
+
+**Attempted:** Ian proposed a model that collects points, derives their velocity vectors and
+predicts their motion, and asked for the full mathematical and engineering treatment, then for it
+to be written into the guide.
+
+**Built/changed:**
+- `docs/BUILD_GUIDE.md`:
+  - Part 9.1 rewritten: `MultiObjectTracker` (IMM: CV / CTRV-UKF / stopping) and
+    `MotionPredictor`;
+  - new 9.1.1 (the limits of prediction), 9.1.2 (closest point of approach and collision
+    probability), 9.1.3 (NIS, ADE/FDE) and 9.1.4 (scope);
+  - Part 9.2 gains a tracker-based swerving definition plus sudden-braking and crossing/cut-in
+    warnings;
+  - Part 9.3 gains an explicit statement of what prediction may not do;
+  - Part 10.3 gains predicted-path ribbons and latency compensation;
+  - Part 13.1 gains `test_motion_predictor.cpp`;
+  - Part 14 Phase 7 deliverables and exit criteria updated.
+- `docs/architecture/ar-overlay-design.md`: §3.1 `r` includes collision probability; §3.4
+  crossing barriers go at the predicted conflict point; new §3.8 (predicted paths, ghosts, latency
+  compensation); §4 table.
+
+**Reasoning:**
+- *Object-level, not point-level:* the Livox scan is non-repetitive, so individual points have no
+  successor, and per-point velocity is noise. Objects measured through their points (L-shape fits,
+  ICP registration) give real motion. Centroids are rejected because visibility changes fake
+  sideways velocity.
+- *IMM:* road users switch behaviour. The stopping model's rising probability gives early warning
+  of a lead vehicle braking, and matatus stopping without warning are a real case.
+- *The limits are shown with numbers:* ~1.4 m/s raw velocity noise per frame at 10 Hz, and
+  pedestrian position uncertainty ~0.35 m at 0.5 s, ~1.1 m at 1 s, ~4.1 m at 2 s. So predictions
+  are displayed as regions, and ~1.5 s is the honest physics horizon.
+- *CPA:* it covers crossing and cut-in cases, which TTC misses.
+- *Braking stays on current measured range and closing speed:* forecast-based braking risks
+  phantom stops and would make the brake rule unauditable. The IMM still changes the closing-speed
+  estimate, so its error and lag are gated by a test before Phase 10.
+- *Latency compensation:* ~40–60 ms is ~0.75 m for a car crossing at 15 m/s. Drawing at the
+  predicted display-time position keeps graphics attached to moving objects.
+
+**Still open:** Implementation in Phase 7. All the maths (UKF, IMM mixing, CPA, NIS) can be built
+and unit-tested on synthetic trajectories before the LiDAR exists. The per-class noise must be
+tuned on real recordings.
+
+## 2026-09-25 — Sign detector: GPU fault at epoch 21 (power-source change); resumed with auto-retry
+
+**Attempted:** A progress check found training stopped since 19:49.
+
+**Built/changed:** `host/models/training/resume_signs_v2.sh` (gitignored) resumes `signs_v2` from
+`last.pt` and retries up to 5 times after a crash, 60 s apart. It writes its PID to
+`resume_signs_v2.pid`. Training resumed at 19:58 from epoch 21.
+
+**Reasoning:**
+- *Evidence:* validation after epoch 20 died with `torch.AcceleratorError: CUDA error: unknown
+  error` at 19:49. Windows' System log shows two Kernel-Power "Power source change" events at
+  19:48:37–38, one minute earlier. The likely cause is the laptop GPU's power-state transition when
+  moving between mains and battery, under full load. It was not a training bug.
+- *Nothing lost:* epoch 20 had completed and been saved; it is also the best so far (mAP50 0.684,
+  mAP50-95 0.547, from 0.533 / 0.418 for v1).
+- *Auto-retry:* a transient GPU fault costs at most the epoch in progress.
+
+**Problems hit:** My liveness check `pgrep -f run_signs_v2.sh` matched the checking shell's own
+command line, which contains that string. It kept reporting RUNNING after the pipeline had died.
+The background watcher meant to trigger the YOLOv8m-seg work used the same check, so it would
+never have fired. It was stopped and replaced by a watcher on the resume job's PID file.
+
+**Still open:** Ultralytics' resume restores the epoch and optimiser state, but the early-stopping
+window counts again from the resume point, which is more lenient by at most the epochs already
+elapsed since the best. It is noted here in case the stop epoch looks late.
+
+## 2026-09-26 — Sign detector: retry limit raised from 5 to 7
+
+**Attempted:** Ian asked to raise the training job's crash-retry limit from 5 to 7. By then it
+had used 3 attempts: crashes at 21:05 and 00:47, the same `CUDA error: unknown error`.
+
+**Built/changed:**
+- `host/models/training/resume_signs_v2.sh`: the attempt range is now configurable
+  (`START_ATTEMPT`, `MAX_ATTEMPTS`, default 1..7). The new version was written to a temporary file
+  and renamed over the old one.
+- New `host/models/training/extend_retries.sh`: waits for the running job's PID to exit. If the log
+  says it gave up, it continues with attempts 6–7. Both files are gitignored.
+
+**Reasoning:** The live job's `for` loop was parsed when it started, so editing its script cannot
+change its limit. Bash also reads scripts incrementally, so editing the file in place under a
+running process can corrupt what it executes next. The atomic rename leaves the running process on
+its already-open copy, and the extender adds the two extra attempts from outside it. The effective
+limit is 7, and the live training was never touched.
+
+**Still open:** None. Training was at epoch 45/60, best mAP50 0.7125 / mAP50-95 0.5696 (epoch 44).
+
+## 2026-09-26 — Sign detector: signs_v2 training complete (60 epochs, full MTSD)
+
+**Attempted:** Finish the full-data retrain until validation stopped improving (Ian's
+instruction).
+
+**Built/changed:** `host/models/training/signs_v2/weights/best.pt` (epoch 53) and `last.pt`
+(epoch 60). The run finished normally at 16:05:54 on 2026-09-26, after 5 GPU-fault resumes
+(epochs 21, 23, 30, 50, 51), all recovered automatically.
+`host/scripts/show_results.py` prints `results.csv` as a table, marking the best epoch,
+resumes and the mosaic-off epoch. `host/scripts/align_csv.py` was written and tested, then
+unused, because Ian cancelled the in-place alignment of `results.csv`.
+
+**Reasoning / results:**
+- **Final validation of `best.pt`** (5,210 images, 6,330 signs): P 0.816, R 0.613,
+  **mAP50 0.716, mAP50-95 0.572**, against v1's 0.533 / 0.418 (+34% / +37%).
+- **The run ended at the 60-epoch cap, not by early stopping.** mAP50-95 had been flat within
+  0.5713–0.5727 since ~epoch 47. Mosaic-off (epochs 51–60) gave no final gain. Training losses
+  kept falling while validation losses stayed flat: converged, with the onset of overfitting.
+- **Per class, strongest (mAP50):** stop 0.869, no_overtaking 0.866, road_hump 0.827,
+  no_parking_or_stopping 0.827, pedestrian_crossing 0.818, give_way 0.811.
+- **Weakest:** speed limits 10 (0.431), 20 (0.448), 120 (0.530), 60 (0.547), 80 (0.605), with
+  low recall (speed_limit_60 R 0.361 despite 88 instances), plus no_left_turn 0.633.
+- **The model misses more than it invents.** Precision is ≥ 0.75 for most classes, while
+  recall is the limit (0.613 overall, flat since ~epoch 22). That points to data (rare classes;
+  confusion between similar speed values), not training length.
+- **Recall is per frame, not per sign.** A sign stays in view for many frames on approach, so
+  the tracker's multi-frame confirmation sees it several times. Per-sign detection will be
+  higher than 0.61, but that needs measuring on video, not assuming.
+- **Speed:** ultralytics reports 8.0 ms inference per image at batch 1 in PyTorch. The
+  TensorRT FP16 engine is measured next.
+
+**Still open:** Export + engine + benchmark, the Kenyan evaluation, and the overnight report;
+then the YOLOv8m-seg work.
+
+## 2026-09-26 — Sign detector: known gaps and the improvement plan
+
+**Attempted:** At Ian's request, record the sign model's gaps and how to close them, with evidence
+from the final validation (per-class metrics, `signs_v2/confusion_matrix_normalized.png`,
+`data/datasets/mtsd_yolo/instance_counts.json`).
+
+**Gaps found:**
+
+1. **Missed speed-limit signs (the largest gap).** In the confusion matrix, 40–55% of true speed
+   limit 10/20/60/80/110/120 signs are predicted as *background*: not detected at all. Other
+   speed limits lose ~25–35%. Confusion between values is small (~5–15%: 120→110, 10→70/30).
+   - *Correction to my own earlier statement:* limit 60 (R 0.361) was attributed to confusing
+     60/80/50. The matrix shows it is mostly missed, not misread.
+   - *Also corrected:* training instances on the full data are 79 (10), 195 (20), 95 (110) and
+     94 (120), not the 23–38 quoted from the train.0-only run. Limit 60 has 607, so scarcity
+     alone cannot explain its recall.
+2. **A cause we introduced ourselves: dropped boxes become negatives.**
+   - `prepare_mtsd.py` removes boxes flagged `ambiguous` (68,560 across MTSD) and the
+     uncertain-unit speed variants. Removing a label does not remove the sign from the image; it
+     becomes *background*, so training teaches the model that small, distant or hard-to-read
+     signs are "not a sign".
+   - That fits the pattern: the most-missed classes are the ones most often small and far away.
+   - The same applies to information/complementary signs dropped as background.
+3. **False positives concentrate in the catch-all classes.** In the matrix's background column,
+   other_warning (~0.4) and other_regulatory (~0.25) fire on non-signs. These are likely the
+   dropped information/complementary signs, which look like signs.
+4. **Recall is the limit overall.** Recall 0.613 with precision 0.816; recall flat since
+   ~epoch 22, while more epochs only lowered training loss. It is a data problem, not a training
+   length problem.
+5. **Left/right asymmetry.** no_left_turn mAP50 0.633 vs no_right_turn 0.778. Horizontal flip is
+   disabled (correctly: it swaps meanings), so each direction learns only from its own examples.
+6. **Domain gap: no Kenyan training data.** MTSD is mostly Europe/Americas/Asia. Kenyan signs are
+   UK-style, but faded, rusted, hand-painted, vegetation-covered and text-board signs
+   ("BUMPS AHEAD", matatu stages) are unrepresented. Kenyan performance is unmeasured until the
+   evaluation (next task).
+7. **Evaluation gaps.** Recall is per frame. Per-sign recall over a video approach (with the
+   tracker's multi-frame confirmation) is unmeasured, as is performance at night and in rain,
+   and by sign pixel size.
+8. **Resolution.** Images were capped at 2,048 px on the long side and trained at 1,280. Distant
+   signs are a few pixels wide at that scale.
+
+**Improvement plan, highest expected payoff first:**
+
+1. **Stop teaching misses. Mask, don't drop.** In `prepare_mtsd.py`, paint ambiguous and excluded
+   boxes out of the image (fill with the dataset mean grey), so they count as neither sign nor
+   background, instead of deleting the label. Cheap: one retrain. It targets gap 1 at its
+   likely cause.
+2. **Kenyan data with active learning.** Record Kenyan drives. Run the model; queue for labelling
+   the frames with low-confidence or flickering detections (where it is least sure). Label a few
+   hundred in CVAT or Label Studio, and fine-tune. This targets gap 6 and gives a real Kenyan test
+   set.
+3. **Two-stage speed limits.**
+   - The detector finds "a speed-limit sign" (one merged class, far more examples per class).
+   - A small classifier reads the value from a crop taken from the full-resolution 2K frame.
+   - Digits are much easier to read at native resolution than inside a 1280-wide detector input.
+   - Targets gaps 1 and 8.
+4. **Label-aware flip augmentation.**
+   - Flip an image only when every sign in it is flip-safe, swapping labels as it flips:
+     no_left↔no_right, keep-left↔keep-right. Symmetric signs are unchanged.
+   - Images containing text or digits (speed limits, text boards) are never flipped.
+   - This recovers the doubled data that plain flipping would give, without teaching wrong
+     meanings. Targets gap 5.
+5. **Class-balanced sampling.** Oversample images containing rare speed limits (10, 20, 110,
+   120), or use loss weighting, so the two catch-all classes (≈ 21k of ~38k train instances)
+   don't dominate.
+6. **Train on information signs as an explicit class** (or mask them, as in 1), so the model
+   stops calling them other_warning/other_regulatory. Targets gap 3.
+7. **Higher effective resolution for small signs.** Train on sign-centred crops at native
+   resolution, and/or run a second inference pass on a high-resolution crop of the sign-bearing
+   region (upper half, verges) at run time. Targets gap 8.
+8. **A larger model** (YOLOv8m, or a newer family) for signs, if items 1–7 plateau. The 33 ms
+   budget has room; latency must be measured with all models running.
+9. **Measure what matters.** Per-sign recall on video (did the system catch this sign at least
+   once, in time?), recall by pixel size, day/night breakdown, and a Kenyan labelled test set.
+   Per-frame mAP alone understates a tracked system and hides failure conditions.
+
+**Mitigations already in the design** (so the gaps are not safety-critical):
+- Signs never actuate (`docs/architecture/ar-overlay-design.md` rule 1).
+- OSM `maxspeed`/stop/turn-restriction priors fill in missed signs (rule 7).
+- Multi-frame confirmation suppresses one-frame false positives (rule 2).
+
+## 2026-09-26 — Sign detector: export, TensorRT engine, Kenyan evaluation, report
+
+**Attempted:** Finish the sign detector: export and benchmark it, evaluate it on real Kenyan
+imagery, and write the report the overnight agent never wrote.
+
+**Built/changed:**
+- `host/models/onnx/signs.onnx`, verified against PyTorch (max |Δ| 9.8e-4, output 1×33×19320).
+- `host/models/engines/signs.engine` (FP16), with all four engines rebuilt.
+- `data/footage/kenya_annotated/` and `data/footage/krakow_signs/` (annotated images + CSVs).
+- The report `docs/experiments/2026-09-26-sign-detector.md`.
+- `docs/architecture/ar-overlay-design.md` gains a speed-value agreement rule.
+- Small fixes to the overnight agent's scripts: the example weights paths in `export_onnx.py` and
+  `eval_sign_detector.py` pointed at v1, and two docstring lines were over 100 columns.
+
+**Reasoning / results:**
+- **Speed:** the sign engine runs at 2.48 ms median. The four models total ≈ 11.3 ms, measured
+  alone.
+- **Kenyan audit, all 57 detections judged from crop contact sheets:**
+  - at ≥ 0.5 confidence, 24 of 25 verifiable detections were correct;
+  - the one error was a 30 sign read as 50 (0.57), the most harmful kind for the display, hence
+    the new value-agreement rule;
+  - below 0.25 it is mostly noise (logos, a face, sign backs);
+  - a Kenyan text "NO ENTRY" sign was found only at 0.18.
+- **Kenyan recall is unmeasured:** 11 of 12 randomly sampled no-detection frames contain no
+  traffic sign, so the collected set cannot measure misses. This is stated plainly in the report
+  rather than read as good (or bad) recall.
+
+**Problems hit:** None new.
+
+**Still open:**
+- The Kenyan labelled test set (own drives).
+- Improvement item 1 (mask ambiguous boxes, retrain).
+- Concurrent four-model timing in `MlInferenceEngine`.
+- Next: the YOLOv8m-seg work.
+
+## 2026-09-26 — YOLOv8m-seg: export, engine, mask decoding, pipeline integration, cross-check
+
+**Attempted:** The deferred work for the hazard glow (`ar-overlay-design.md` §3.2) and mask-based
+LiDAR fusion (Part 8.3): per-object masks from YOLOv8m-seg.
+
+**Built/changed:**
+- **Export and engine:**
+  - `host/models/weights/yolov8m-seg.pt` (official ultralytics release);
+  - `export_onnx.py --model yolov8m-seg`, which verifies both outputs against PyTorch;
+  - `models/onnx/yolov8m_seg.onnx` and `models/engines/yolov8m_seg.engine`;
+  - an optional seg build in `build_tensorrt_engines.sh`.
+- **Decoding** (`Postprocess.h/.cpp`): `Box::candidate`, `ObjectMask`, `maskCoefficients`,
+  `decodeMask`, `maskContains`. 7 new unit tests; the unit suite is 76/76.
+- **Pipeline:**
+  - `MlInferenceEngine` recognises a seg engine by its two outputs, decodes one mask per kept box,
+    and publishes a `MaskFrame` on a new `MaskBus`;
+  - `DetectionFrame.mask_ref` = frame seq (appended last in `detections.fbs`);
+  - the default detector engine is now `yolov8m_seg.engine`, and a box-only engine still works.
+- **Tools and tests:** `inference_viewer` tints masks by class and `--dump` writes a mask label
+  image. `test_trt_engine.cpp`'s real-engine list gains the seg and sign engines; GPU tests 17/17.
+
+**Reasoning:**
+- *Prototype masks:* YOLOv8-seg outputs 32 image-wide prototypes at ¼ resolution plus 32
+  coefficients per candidate. A mask is the sign of the coefficient-weighted sum, cropped to the
+  box. sigmoid(v) > 0.5 ⇔ v > 0, so no exponentials are needed.
+- *Linking boxes to masks:* each kept `Box` records its candidate index, so masks cannot be
+  attached to the wrong object after NMS reorders boxes by confidence.
+- *Masks stay on the ¼-res grid, cropped to the box:* memory is small, and `maskContains`
+  answers source-pixel queries, which is exactly what LiDAR fusion needs.
+
+**Verification:**
+- **Engine** (trtexec, alone): 6.75 ms median, vs 5.38 ms for box-only YOLOv8m (+1.37 ms,
+  +25%). That is more than my estimate of 10–20%; the 4-model total is ≈ 12.7 ms.
+- **Whole pipeline on Kraków 2560×1440** (600 frames, including CPU mask decoding): median
+  14.6 ms, p95 18.3, max 22.3 (was 12.8 / 16.6 / 20.9 without masks). Detections per frame are
+  unchanged at 7.0.
+- **Negative test:** a threshold of `v >= 0` instead of `v > 0` fails 2 of the mask tests.
+  Restored.
+- **Cross-check against ultralytics' seg pipeline** (PyTorch FP32) on Kraków frames 120 and 360:
+  - every road-relevant object matched, box IoU 0.950–0.995;
+  - mask IoU on the ¼ grid: 0.97–0.99 for large objects, 0.81–0.92 for medium, 0.57 for a tiny
+    distant pedestrian (14 vs 8 grid px);
+  - our masks run consistently a few cells larger. Ultralytics upsamples before thresholding and
+    cropping, while we crop whole partial cells at the box edge, which matters mostly for tiny
+    objects. That is fine for the glow; Part 8.3's erosion rule covers fusion;
+  - the one unmatched reference box is a truck 0.73 + car 0.35 duplicate on the same vehicle,
+    merged by our class-mapped NMS by design.
+- **Visual:** masks follow real outlines (a car body and wheels, a pedestrian's legs and bag).
+- Both clang-format versions (22 local, 18.1.8 = CI) report 0 violations.
+
+**Still open:**
+- The sign detector is not yet a fourth engine inside `MlInferenceEngine`. It needs a class
+  mapping-free decode, and then concurrent four-model timing.
+- The hazard glow itself is Phase 11.
+- Mask erosion and LiDAR association are Phase 7.

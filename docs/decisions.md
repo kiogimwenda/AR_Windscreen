@@ -226,3 +226,256 @@ only async-signal-safe way to meet Part 5.4's "crash-triggered" shutdown require
 Both are overridable by argv.
 
 **CI installs no OSRM until Phase 8.** `libosrm-dev` does not exist on Ubuntu.
+
+## Phase 5 — ML inference
+
+**Lane model: UFLDv2 CULane ResNet-18 at 320×1600.** Part 7.1's 800×288 is UFLD v1's size; v2
+ships 320×800 (TuSimple) or 320×1600 (CULane). CULane's conditions are nearer Nairobi roads.
+
+**Depth model: MiDaS v2.1 Small at 256×256.** "v3.1 Small at 384×384" matches no checkpoint.
+v3.1's SwinV2-T weights do not load under timm ≥ 0.7, and timm 0.6 does not run on Python 3.13.
+Depth is relative and secondary to LiDAR range.
+
+**Detector: COCO-pretrained YOLOv8m. Part 7.1's classes are a mapping from COCO classes.** COCO
+has no generic "obstacle" class.
+
+**Exports verified against PyTorch through ONNX Runtime; UFLD loads with `strict=True` and
+`weights_only=True`.** UFLD's own demo uses `strict=False`, which silently leaves mismatched
+layers random.
+
+**Export environment layered over `~/ml-env` rather than installing into it.** `~/ml-env` is
+shared with unrelated CUDA work.
+
+**`TrtEngine` targets TensorRT 10's name-based API; inference is split into `enqueue()` and
+`sync()`.** Part 7.4's single `infer()` would serialise the three models. The engine rejects
+dynamic shapes, non-FP32 I/O and multiple inputs at load.
+
+**GPU tests live in `host/test/integration/` under ctest label `gpu`, outside CI.** Consistent
+with Part 13.1 and Part 13.5.
+
+**YOLOv8m at 1280×736 instead of 640×640.** At ~70° HFOV, a pedestrian stays ≥12 px out to
+~148 m (enough for ~100 km/h plus tracking), and close objects stay within YOLOv8's trained scale
+range (≤ ~960 px). Measured 6.6 ms median; camera-native 2560 measured 26.5 ms and would push close
+objects outside that range. Revisit once Phase 4 measures the real FOV.
+
+**MiDaS at 448×256 (16:9), ~1.75× its standard scale; UFLD stays 1600×320.** MiDaS's own small
+transform caps the long side at 256 (256×128 for 16:9). 448×256 is a moderate increase for sharper
+depth edges. The same entry previously said "native 256 short side", which was wrong (corrected
+2026-09-24, after reading MiDaS's transform). UFLD's fully-connected head fixes its input size.
+
+**`build_tensorrt_engines.sh` omits Part 7.3's `--shapes`.** TensorRT rejects it for fully static
+models. The script verifies the built engine's input shape instead.
+
+**UFLD export substitutes a no-op `utils.common` and reads its config with `runpy`.** Its real
+`utils.common` pulls in DALI, tensorboard and other training-only packages. `strict=True` loading
+proves every weight is replaced.
+
+**COCO → Part 7.1 class map.** Motorcycles are Cyclists (two-wheelers with exposed riders). Large
+animals are Obstacles. Birds and non-road classes are dropped. Classes are mapped before NMS.
+
+**Post-processing never suppresses a pedestrian box because of overlap with another class.** No
+"rider suppression": a missed pedestrian is the unsafe error.
+
+**The lane model sees a CULane-shaped (2.78:1) band of the frame, positioned by config.** It is not
+fed the whole 16:9 frame squashed.
+
+**`MlInferenceEngine` loads its engines in the constructor, not a separate `init()`.** A bad model
+set then fails at `SystemManager::start`, before any thread runs.
+
+**Depth maps travel on their own bus; `DetectionFrame::depth_map_ref` is the frame sequence
+number.** This follows Part 3.5's "handle, not inlined" without shared mutable storage.
+
+**Lane band top defaults to 0.32 of frame height.** It was tuned on the Kraków footage and must be
+re-tuned in Part 12 for the real camera mount.
+
+**Offline footage: Kraków city drive (CC BY 3.0), 2560×1440.** It is used for pipeline and timing
+validation only, not as an accuracy measure for Kenyan roads.
+
+## Phase 5 extension — road-sign behaviours (design)
+
+**A fourth model, a dedicated sign detector trained on MTSD, is added beyond the guide.** Ian
+observed that COCO-trained YOLOv8m misses most signs. COCO knows only stop signs and traffic
+lights. Part 7.2 allows fine-tuning for a failure mode found in testing.
+
+**Sign behaviours are specified in `docs/architecture/sign-behaviours.md`.** Signs inform and never
+actuate. Signs are shown only after multi-frame confirmation, in priority order, drawn under hazard
+boxes, and degrade to screen-fixed banners when road geometry is missing. A detected sign confirms
+or overrides OSM priors.
+
+**Horizontal-flip augmentation is disabled for sign training.** Flipping swaps the meanings of
+left/right-specific signs (no-left-turn and no-right-turn, keep-left and keep-right).
+
+## Phase 5 extension — traffic-sign detector (overnight run)
+
+**Only the fully annotated MTSD parts are downloaded.** Ian's signed MTSD links cover 11 zips. They
+were identified by the MD5 lists shipped beside them and by reading each zip's central directory
+from a ranged request: annotations (0.12 GB), val (4.57 GB, 5,320 images), train.0/1/2 (10.4 GB
+each, ~11.8k images each), test (8.96 GB, 10,544 images; labels not public, skipped) and the
+partially annotated set (annotations + 4 zips of ~11.9 GB, skipped). The three train zips are
+assigned .0/.1/.2 by the alphabetical key range of their contents; the MD5 list confirms this
+after download.
+
+**Bandwidth forces training on train.0 only.** The measured aggregate download rate was ~2 MB/s
+over five parallel streams, so the 35.8 GB needed would finish at ~03:30, leaving 2 h of training.
+Following the plan's fallback, train.1 and train.2 were paused so that annotations + val + train.0
+(15 GB) get all the bandwidth, and training starts as soon as those are unpacked. train.1/2 then
+continue downloading in the background for later runs.
+
+**Kenyan evaluation imagery comes from KartaView only (plus any openly licensed Commons photos).**
+KartaView's v2 API rejects bounding-box sequence queries ("Restricted access"), so sequences are
+listed through the v1 `list` endpoint over 0.05° tiles and each sequence's photos are fetched
+through the v2 photo endpoint. Every 12th photo is kept, at most 10 per sequence, to spread the
+set over many roads. The already-blurred ("proc") images are used.
+
+**Plan change at ~23:55 (Ian): wait for ALL fully annotated training data, train until 08:00.**
+This supersedes the "train on train.0 only" choice above. A run had been started at 23:53 on the
+6,314 train images extracted by then; it was stopped within two minutes, before its first epoch
+ended, so it produced no weights. Its directory is kept as
+`host/models/training/signs_v1_partial_superseded/` (only `args.yaml`). train.1 and train.2 were
+resumed. If the downloads are not complete by 03:00 EAT, training starts on everything complete
+by then.
+
+**Speed-limit variants whose unit is mph or unclear are dropped, not merged.** Crops of every
+`maximum-speed-limit-*` variant were inspected. The round red-ringed designs (g1, and the LED
+variants) are km/h and are merged into the speed classes. The rectangular white "SPEED LIMIT NN"
+designs are US/Canadian and so usually mph: `30--g3`, `40--g3`, `40--g6` (a "41"-like sign) and
+`50--g6` (plain white rectangle, unit unclear) have their boxes dropped (listed in
+`host/scripts/mtsd_uncertain_unit_speed_variants.json`). Speed values with no target class (5, 15,
+25, 35, 45, 55, 65 and the truck limit) go to other_regulatory. `100--g3` ("MAXIMUM 100 km/h")
+is km/h and is kept.
+
+**Narrow merges.** keep_left_or_right is keep-left, keep-right, pass-on-either-side and the
+US-style warning "pass left or right". Mandatory turn-only / straight-only signs are NOT merged
+into it (different meaning) and stay in other_regulatory. no_overtaking excludes the
+heavy-goods-vehicle variant. end_of_restriction is end-of-maximum-speed-limit-*,
+end-of-prohibition and end-of-speed-limit-zone; end-of-no-parking, end-of-priority-road and the
+end-of-lane-type signs stay in other_regulatory. road_hump is warning--road-bump only (uneven-road
+stays in other_warning).
+
+**`information--pedestrians-crossing` (2,272 boxes, the blue square European design) is dropped**
+as the brief requires for all information--* labels, so only the warning-triangle designs train
+pedestrian_crossing. This is a real loss of a common sign: a blue pedestrian-crossing square will
+be background to this model. Flagged for Ian.
+
+**Panoramas are skipped** (260 of the images converted so far): equirectangular images with boxes
+that wrap the edge, unlike the forward-facing production camera.
+
+**Back to the original timeline (00:00).** The requested extension of training to 08:00 could not
+be applied in this unattended run (the change was blocked by the session's permission checks, as
+it moved the hard 07:00 deadline). The original brief therefore stands: training ends by 05:30
+and the report is due by 06:45. Under that brief, a full download (~03:10 at the measured
+2.2 MB/s) would leave well under 4 h of training, so its fallback applies: train.1/train.2 are
+paused again, train.0 gets all the bandwidth, and training starts as soon as annotations + val +
+train.0 are complete and converted. train.1/2 resume downloading after that, for later runs.
+Ian should decide whether to retrain on the full set.
+
+## Guide amendment: GPU overlay rendering (2026-09-25, at Ian's instruction)
+
+**Part 10 now renders AR overlays on the GPU (OpenGL shaders in `WindowedSink`) instead of OpenCV
+CPU drawing.** The holographic style (translucency, glow, gradients, pulsing) is per-pixel blending
+over several full-screen 2K layers per frame, which would compete with the pipeline for the frame
+budget on the CPU.
+
+**The Part 10.1 `DisplaySink` interface changed:** `CompositedFrame` now carries the video frame
+plus an `OverlayScene` (a draw list) instead of pre-composited pixels. It is the cleaner seam for
+the optical phase: a `ProjectorSink` can draw only the overlays. **The FYP report's description
+of this interface must be updated to match.**
+
+**Road-locked overlay items are given in vehicle-frame metres and projected in the vertex shader
+with the Part 12 calibration.** Barriers and the route band therefore land where perception places
+them.
+
+**Driver view shows hazard highlights styled by threat level, not a box around every detection.**
+Per-class boxes with confidences remain in the debug viewer.
+
+**Video upload via PBO; CUDA/GL interop not assumed under WSLg.** WSLg's OpenGL runs on Mesa's
+D3D12 layer, not NVIDIA's GL driver. To be confirmed in the 10.4 benchmark.
+
+## Hazard overlays replace boxes (2026-09-25, Ian's design)
+
+**No rectangles on the driver display.** Hazards use the same road-placed language as signs:
+- barriers at collision-risk objects;
+- an amber → red route-line grade;
+- a following-distance zone for tailgating;
+- a red lane-line glow towards a swerving neighbour;
+- ground rings under pedestrians and animals.
+
+In addition, the object itself gets a subtle shimmering glow along its outline, coloured by a
+risk level `r` (TTC + Part 9.2 flags, thresholds in config). Ordinary traffic gets nothing.
+
+**Rule 4 changed from "draw nothing over a hazard" to "never hide a hazard".** The glow is a rim
+plus ≤ ~25% tint. Road graphics are masked by object silhouettes so they appear behind objects.
+
+**Object detection moves to YOLOv8m-seg (COCO).** The glow needs per-object masks, and boxes alone
+would make it rectangular. It is the same class set and export path, plus a mask output. The work
+is deferred until the sign-detector training finishes, so the GPU isn't shared with training.
+A missing mask falls back to a soft ellipse.
+
+**`sign-behaviours.md` became `docs/architecture/ar-overlay-design.md`** (signs + hazards + a
+shared visual-language table). Earlier log entries naming the old file are left as written.
+
+**`BUILD_GUIDE.md` Part 7.1 brought up to date:** YOLOv8m-seg, the sign detector row, and the
+actual lane/depth models and sizes. The Part 7.3 commands are superseded by the scripts.
+`detections.fbs` gains `mask_ref` in the guide. The schema file itself changes with the seg
+implementation.
+
+## Mask-based LiDAR fusion and startup extrinsic check (2026-09-25, Ian's proposal)
+
+**Part 8.3 associates LiDAR points with objects through their YOLOv8m-seg masks,** not boxes or
+cluster centroids. A box is mostly background, and box-selected points mix a pedestrian's range
+with the wall behind. The rules are: motion-compensate, erode masks, take the nearest dominant
+depth cluster, depth-test for parallax, report "no range" honestly, locate signs via
+high-intensity returns inside their box, and treat unexplained LiDAR clusters in the corridor as
+`UNKNOWN` obstacles. The camera may never veto the LiDAR.
+
+**Part 12.2.1 adds `ExtrinsicMonitor`: startup and continuous verification with *bounded*
+refinement** (~1°, ~3 cm) around the Part 12.2 checkerboard baseline. It is not a from-scratch
+self-calibration, which can converge confidently to a wrong answer on a poor scene.
+- It scores edge alignment plus mask agreement.
+- It accepts a refinement only with enough varied evidence, held-out improvement, and a solution
+  off the bounds.
+- `DEGRADED` keeps the baseline, logs a fault, falls back to screen-fixed display, and makes the
+  arbiter use LiDAR-only corridor ranges.
+- Every start begins from the baseline, so errors don't accumulate.
+- Intrinsics and camera-to-vehicle are not auto-adjusted.
+- Braking never depends on an unverified refinement.
+
+## Motion prediction (2026-09-25, Ian's proposal)
+
+**Part 9.1's constant-velocity tracker is replaced by an IMM tracker with a `MotionPredictor`.**
+- Models: CV for pedestrians, animals and unknown obstacles; CTRV via a UKF, with an explicit ω→0
+  branch, for vehicles; a stopping model.
+- Per-class process noise in `config/motion_prediction.yaml`.
+- Tracking in a world-fixed frame via the EKF pose.
+- The Appendix Q.7 loop (predict → Mahalanobis → Hungarian → gate → update → lifecycle) is kept.
+
+**Prediction is object-level, measured from mask-fused LiDAR points**: L-shape fits and cluster
+registration, never centroids. The non-repetitive Livox scan has no point-to-point
+correspondence. Centroid shifts from changing visibility fake lateral velocity, which would
+falsely trip the swerving rule.
+
+**Risk for warnings and display uses closest point of approach and collision probability**
+against a predicted ego path. TTC alone is blind to crossing traffic and cut-ins.
+
+**Predictions are distributions, not lines.** Horizons above ~1.5 s are treated as intent, not
+physics (uncertainty ≈ √(σv²t² + σa²t⁴/4)). Honesty is checked by NIS (chi-square) and by
+ADE/FDE on recordings.
+
+**Braking (Part 9.3 rule 1) uses only the current tracked range and closing speed,** never
+forecasts, CPA, collision probability or IMM model probabilities. This avoids phantom braking and
+keeps the brake rule auditable. Because the IMM changes the closing-speed estimate,
+`test_motion_predictor.cpp` must bound its error and lag before Phase 10.
+
+**Physics-based (verifiable) first.** Map-aware prediction next; a learned predictor only as a
+display-only stretch goal.
+
+**The renderer draws object-anchored overlays at their positions predicted for display time**
+(latency compensation), plus predicted-path ribbons and `PREDICTED_ONLY` ghosts.
+
+**YOLOv8m-seg masks are decoded on the CPU at prototype-grid resolution (¼), cropped to the box.**
+Cost is small (≈ +1.8 ms whole-pipeline, measured), and it is exact to ultralytics for large
+objects and slightly generous at box edges for tiny ones. Upsampling to full resolution is left to
+the renderer.
+
+**The engine type is recognised by its outputs** (two = segmentation). `mask_ref` was appended
+last in `detections.fbs`, as FlatBuffers schema evolution requires.

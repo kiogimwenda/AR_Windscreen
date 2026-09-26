@@ -458,6 +458,8 @@ table DetectionFrame {
   lane_points_left: [float];
   lane_points_right: [float];
   depth_map_ref: ulong;   // handle into the depth-map ring buffer, not inlined
+  mask_ref: ulong;        // handle into the object-mask buffer (YOLOv8m-seg, Part 7.1), not inlined;
+                          // box i's mask is instance i of that frame (amended 2026-09-25)
 }
 root_type DetectionFrame;
 ```
@@ -798,14 +800,23 @@ private:
 
 ## Part 7 — ML Inference Engine and Model Pipeline
 
-### 7.1 Models, unchanged in choice from the original design
+### 7.1 Models
+
+*Amended 2026-09-25.* The original table's lane and depth input sizes matched no released model.
+Object detection became the segmentation variant, so that hazard overlays can follow object
+outlines (Part 10.3). A fourth model detects road signs. The reasons are in `docs/decisions.md`
+(Phase 5, Phase 5 extension, and "Guide amendment: GPU overlay rendering").
 
 | Model | Architecture | Input | Output | Target FPS |
 |---|---|---|---|---|
-| Object Detection | YOLOv8m | 640×640 RGB | boxes + class (vehicle, pedestrian, cyclist, sign, obstacle) | 30+ |
-| Lane Detection | Ultra-Fast-Lane-Detection-v2 | 800×288 RGB | up to 4 lane lines | 30+ |
-| Depth Estimation | MiDaS v3.1 Small | 384×384 RGB | dense relative depth | 15–20 |
+| Object Detection | YOLOv8m-seg (COCO) | 1280×736 RGB | boxes + class (vehicle, pedestrian, cyclist, sign, obstacle) + a per-object mask | 30+ |
+| Road-Sign Detection | YOLOv8s, fine-tuned on MTSD | 1280×736 RGB | boxes + 29 sign classes (incl. speed-limit values) | 30+ |
+| Lane Detection | Ultra-Fast-Lane-Detection-v2 (CULane, ResNet-18) | 1600×320 RGB (a CULane-shaped band) | up to 4 lane lines | 30+ |
+| Depth Estimation | MiDaS v2.1 Small | 448×256 RGB | dense relative depth | 15–20 |
 | Reckless-Driving Classifier | Temporal CNN + LSTM | 30-frame track history | threat level | 10+ per tracked vehicle |
+
+The export commands and shapes in 7.3 are superseded by `host/scripts/export_onnx.py` and
+`host/scripts/build_tensorrt_engines.sh`, which are the source of truth for names and shapes.
 
 ### 7.2 Getting to a working model without training from scratch
 
@@ -899,20 +910,63 @@ private:
 ```
 A standard 5-state EKF (position x/y, heading, speed, yaw rate) fed by IMU prediction and GPS/OBD-speed correction is sufficient — do not add LiDAR-odometry-based correction unless GPS accuracy proves inadequate in Part 13 testing; it's a real accuracy improvement but a nontrivial addition, and the project's actuation logic (Part 9) mainly needs relative distance/closing-speed to objects in the camera/LiDAR frame, not centimeter-accurate global position.
 
-### 8.3 3D scene reconstruction
+### 8.3 3D scene reconstruction: mask-based camera–LiDAR fusion
+
+*Amended 2026-09-25: association uses each object's segmentation mask, not a box or a cluster
+centroid. See `docs/decisions.md`, "Mask-based LiDAR fusion and startup extrinsic check".*
 
 ```cpp
 // scene/SceneReconstruction.h
 class SceneReconstruction {
 public:
-    SceneModel merge(const DetectionFrame& detections, const SceneCloud& lidarCloud,
-                      const VehiclePose& pose);
-    // Associates each 2D detection box with the nearest LiDAR cluster by projecting
-    // the cluster centroid into image space using the extrinsic calibration
-    // (config/lidar_camera_extrinsics.yaml, produced in Part 12.2), giving each
-    // detected object a real-world distance and velocity estimate, not just a pixel box.
+    SceneModel merge(const DetectionFrame& detections, const ObjectMasks& masks,
+                     const SceneCloud& lidarCloud, const VehiclePose& pose,
+                     const ExtrinsicState& extrinsics);   // from ExtrinsicMonitor, Part 12.2.1
 };
 ```
+
+**Idea.** Project every LiDAR point into the camera image, using the LiDAR→camera extrinsics
+(Part 12.2 / 12.2.1) and the camera intrinsics (Part 12.1). The points that land inside an
+object's YOLOv8m-seg mask belong to that object. Each object then has its class and outline from
+the camera, and real 3D points from the LiDAR: distance, 3D position, the point where it meets the
+road (where Part 10.3's barriers and ground rings are placed), and, tracked frame to frame, its
+velocity for TTC. This is the "frustum"/"point-painting" family of fusion methods.
+
+**Why masks, not boxes:** a box around a pedestrian is mostly road and background. Picking points
+by box mixes the pedestrian's distance with the wall's behind them. A mask selects the object's own
+points, which matters most for exactly the thin or partly hidden objects that are hazards
+(pedestrians, cyclists, animals, a car behind a car).
+
+**Rules (each exists because of a specific failure mode):**
+1. **Motion-compensate before projecting.** The Livox pattern fills in over ~100 ms, so points are
+   accumulated over a short window. Every point is corrected by the ego-motion between its own
+   timestamp and the camera frame's (from `SensorFusion`). Otherwise points smear sideways off the
+   object.
+2. **Erode the mask a few pixels before selecting points.** YOLOv8-seg masks are computed at ¼
+   resolution and upsampled, so edges are soft, and a small extrinsic error shifts projections
+   outward. Erosion stops background points leaking in along the silhouette.
+3. **Use the nearest dominant depth cluster, never the mean.** Among an object's selected points,
+   take the nearest well-populated depth mode. One stray background point must not move a
+   pedestrian 10 m away.
+4. **Depth-test for parallax.** The LiDAR and camera sit in different places, so some points the
+   LiDAR sees are hidden from the camera. Keep only the nearest point per small image cell before
+   assigning points to objects.
+5. **Report "no range" honestly.** If too few points survive (distant or small objects), the
+   object has no LiDAR range this frame, and that is said, not guessed. MiDaS relative depth,
+   scaled to metres using the frame's other LiDAR-matched objects, can give an *estimate*. It is
+   flagged as such and is never used for Part 9.3 braking.
+6. **Unexplained LiDAR obstacles are still obstacles.** A LiDAR cluster in the ego corridor that
+   no camera mask accounts for becomes an `UNKNOWN` obstacle in the `SceneModel`. It is shown as a
+   hazard and is eligible for Part 9.3 collision logic. The camera can add information, but it can
+   never veto something the LiDAR physically measures.
+7. **Signs (box-only detector):** points inside a sign's box that return high LiDAR intensity
+   (signs are retroreflective) at a single depth give the sign's position. This places the stop
+   barrier and the other sign behaviours of `docs/architecture/ar-overlay-design.md`.
+
+**Tests (Part 13.1):** `test_mask_lidar_fusion.cpp` checks each rule with a synthetic scene: a
+known camera, known extrinsics, a synthetic mask and a point cloud with a background wall, a stray
+point and occluded points. Expected ranges and assignments are computed by hand, as for the
+decoders.
 
 ---
 
@@ -920,52 +974,158 @@ public:
 
 This is the subsystem the whole safety design in Part 0 exists to constrain. Read Part 0's non-negotiables again before writing any code here.
 
-### 9.1 Multi-object tracker (carried over from the original design, unchanged)
+### 9.1 Multi-object tracker and motion prediction
+
+*Amended 2026-09-25 (see `docs/decisions.md`, "Motion prediction").* The original Appendix Q.7
+tracker propagated each track with `position += velocity * dt` and no uncertainty. It is replaced
+by an interacting-multiple-model (IMM) tracker that estimates each object's motion **with its
+uncertainty** and predicts it forward. The loop structure of the original is kept, because it is
+sound:
+
+> predict every track → Mahalanobis cost matrix → Hungarian assignment → gate → update → create
+> unassigned → drop stale tracks → history.
+
+What changes is *how* tracks are predicted and updated. The Mahalanobis distance now uses each
+track's real innovation covariance $S$, which the original's `mahalanobis()` had no way to compute.
 
 ```cpp
 // safety/MultiObjectTracker.h
 class MultiObjectTracker {
 public:
-    void update(const std::vector<LidarCluster>& detections,
-                const std::vector<YoloDetection>& cameraDetections);
-    std::vector<TrackedVehicle> tracks() const;
+    // Measurements arrive asynchronously (camera 30 Hz, LiDAR 10 Hz), each at its own timestamp.
+    void update(const std::vector<ObjectMeasurement>& measurements, const VehiclePose& egoPose);
+    std::vector<Track> tracks() const;   // state, covariance, IMM model probabilities, class, age
+};
+
+// safety/MotionPredictor.h
+class MotionPredictor {
+public:
+    // Distribution of a track's future position at each horizon (default 0.5/1.0/1.5/2.0 s):
+    // mean + covariance, and the UKF sigma points for sampling.
+    PredictedMotion predict(const Track& t, std::span<const float> horizonsS) const;
+    EgoPath predictEgo(const VehiclePose& pose, const RoadProjectedRoute* route) const;
+    CollisionRisk risk(const Track& t, const EgoPath& ego) const;   // CPA + probability, 9.1.2
 };
 ```
-Implementation: Hungarian assignment over a Mahalanobis-distance cost matrix between predicted track positions and new detections, exactly as specified in the original report's Appendix Q.7 — that code is correct as written and can be used directly:
 
-```cpp
-void MultiObjectTracker::update(
-    const std::vector<LidarCluster>& detections,
-    const std::vector<YoloDetection>& cameraDetections) {
-    for (auto& track : tracks_) { track.position += track.velocity * dt_; track.framesLost++; }
-    Eigen::MatrixXd cost(tracks_.size(), detections.size());
-    for (size_t i = 0; i < tracks_.size(); i++)
-        for (size_t j = 0; j < detections.size(); j++)
-            cost(i, j) = mahalanobis(tracks_[i], detections[j]);
-    auto assignments = hungarian(cost);
-    for (auto [trackIdx, detIdx] : assignments)
-        if (cost(trackIdx, detIdx) < gatingThreshold_) {
-            tracks_[trackIdx].update(detections[detIdx]);
-            tracks_[trackIdx].framesLost = 0;
-        }
-    for (size_t j = 0; j < detections.size(); j++)
-        if (!isAssigned(j, assignments)) createTrack(detections[j]);
-    tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(),
-        [](auto& t) { return t.framesLost > 10; }), tracks_.end());
-    for (auto& track : tracks_) {
-        track.history.push_back(track.currentState());
-        if (track.history.size() > 30) track.history.pop_front();
-        track.threat = threatAssessor_.classify(track.history);
-    }
-}
-```
+**Frames.** Tracking happens in a local **world-fixed** frame: each measurement is transformed with
+the EKF pose (Part 8.2). There a parked car has zero velocity, and a pedestrian's velocity is their
+real walking speed. Results are transformed back into the vehicle frame for risk and display.
+Tracking in the vehicle frame would make every parked car "approach" at the ego speed.
+
+**What is measured.** Measurements come from Part 8.3's mask-based fusion, never from raw box
+centres:
+- **Vehicles:** an L-shape (rectangle) fit to the object's LiDAR points gives a reference point
+  (the rear-axle / near corner) *and* a heading.
+- **Displacement between scans:** registration (ICP) of the object's point cluster against its
+  previous cluster. It matches the shape, so it measures true motion.
+- **Why not the centroid:** the centroid of the visible points moves whenever the *visible part*
+  changes (a car turning, emerging from behind another). That produces phantom lateral velocity,
+  which would falsely trip 9.2's swerving rule.
+- **Camera-only objects** (no LiDAR range this frame; Part 8.3 rule 5) contribute a bearing-only
+  measurement. It narrows direction, not range.
+- **De-skewing:** Livox points carry per-point timestamps. Points are de-skewed for ego-motion
+  (8.3 rule 1) and, once a track exists, for the object's own estimated motion. That second
+  correction is **damped** (a fraction of the estimated velocity, and only for well-converged
+  tracks), so a wrong velocity cannot reinforce itself.
+
+**Motion models, combined by an IMM:**
+
+| Model | State | For | Notes |
+|---|---|---|---|
+| Constant velocity (CV) | $[p_x, p_y, v_x, v_y]$ | pedestrians, animals, unknown obstacles | linear Kalman filter; white-noise acceleration $Q=\sigma_a^2 GG^\top$, $G=[\tfrac{\Delta t^2}{2},\Delta t]^\top$ per axis |
+| Constant turn rate & velocity (CTRV) | $[p_x, p_y, v, \psi, \omega]$ | cars, matatus, trucks, boda-bodas | unscented Kalman filter (the trigonometric model linearises badly in sharp turns); **explicit $\omega\to 0$ branch** falling back to straight-line motion, to avoid dividing by zero |
+| Stopping | CV + strong deceleration prior | vehicles | captures sudden stops (e.g. matatus at unofficial stages) |
+
+CTRV prediction:
+$p_x' = p_x + \tfrac{v}{\omega}\big(\sin(\psi+\omega\Delta t)-\sin\psi\big)$,
+$p_y' = p_y + \tfrac{v}{\omega}\big(\cos\psi-\cos(\psi+\omega\Delta t)\big)$,
+$\psi'=\psi+\omega\Delta t$.
+
+The IMM runs the models in parallel, mixes them each step through a Markov switching matrix, and
+keeps a probability per model. **A rising stopping-model probability is itself an early warning**
+that the vehicle ahead is braking, before its speed has visibly dropped.
+
+**Per-class process noise** (`config/motion_prediction.yaml`, never hard-coded) encodes each road
+user's unpredictability: high lateral noise for boda-bodas, high acceleration noise for
+pedestrians, very high for livestock. It is tuned from data (9.1.3), not guessed.
+
+**Track lifecycle:**
+- **Birth:** a track exists only after several consecutive associated hits (configurable).
+- **Coasting:** a lost track may run on prediction for a bounded time, and is marked
+  `PREDICTED_ONLY` while it does. An occluded pedestrian behind a parked matatu is exactly when
+  prediction matters most, and it is displayed as predicted, not as seen.
+- **Death:** the track is dropped after that bound.
+
+**Timing.** Measurements are applied at their own timestamps. A measurement that arrives after a
+later one has been applied (an *out-of-sequence measurement*; the LiDAR path is slower than the
+camera path) is handled by rewinding to a short buffer of past states and re-applying, never by
+dropping or misordering it.
+
+#### 9.1.1 What can honestly be predicted
+
+Two limits shape every use of this subsystem:
+- **Velocity is noisy.** Differencing positions with noise $\sigma_p$ over $\Delta t$ gives
+  $\sigma_v\approx\sqrt2\,\sigma_p/\Delta t$. With $\sigma_p\approx0.1$ m at 10 Hz, that is
+  ~1.4 m/s per frame. The filter averages it down, trading noise for lag. That is why better
+  measurements (registration, L-shape fits) matter more than filter tuning.
+- **Uncertainty grows roughly with the square of the horizon:**
+  $\sigma_{pos}(t)\approx\sqrt{\sigma_v^2t^2+\tfrac14\sigma_a^2t^4}$. For a pedestrian
+  ($\sigma_v=0.5$ m/s, $\sigma_a=2$ m/s²): ~0.35 m at 0.5 s, ~1.1 m at 1 s, ~4.1 m at 2 s.
+
+Physics predicts usefully to ~1–1.5 s. Beyond that it is *intent*, which motion cannot know.
+Predictions are therefore always kept and shown as **distributions (regions), never single
+lines**.
+
+#### 9.1.2 Collision risk from prediction: closest point of approach
+
+Time to collision (range ÷ closing speed) only sees objects coming straight at the car. It is
+blind to **crossing** traffic and **cut-ins**. For warnings and the display, risk uses the
+**closest point of approach** (as in marine collision-avoidance radar). With relative position
+$\mathbf r$ and relative velocity $\mathbf v$ (object minus ego, both from the predicted paths):
+
+$$t^*=-\frac{\mathbf r\cdot\mathbf v}{\lVert\mathbf v\rVert^2},\qquad d^*=\lVert\mathbf r+\mathbf v\,t^*\rVert$$
+
+The risk is high when $d^*$ is below a safety radius (ego half-width + object half-width + margin)
+and $0<t^*<$ horizon. With uncertainty, the object's predicted distribution (its sigma points, or a
+few hundred samples) is propagated against the **ego path**. The fraction that comes within the
+safety radius inside the horizon is the **collision probability**.
+
+The ego path is predicted from speed and yaw rate (Part 8.2), and from the route when navigating.
+Otherwise "in the path" would mean "straight ahead", which is wrong on every curve.
+
+The risk level $r$ that drives the hazard display (`docs/architecture/ar-overlay-design.md` §3.1)
+becomes the maximum of the TTC-based value, the collision probability, and the 9.2 flag floors.
+
+#### 9.1.3 Proving the uncertainty is honest
+
+A predicted region is only useful if it contains the truth as often as it claims. Two checks:
+- **NIS** (normalised innovation squared, $\nu^\top S^{-1}\nu$) must follow a chi-square
+  distribution. If it is too large on average, the process noise is too small (overconfident). If
+  it is too small, the filter is over-cautious. The per-class noise in
+  `config/motion_prediction.yaml` is tuned until NIS passes, on synthetic data and then on
+  recorded drives.
+- **ADE / FDE** (average and final displacement error) at 1, 2 and 3 s on recorded drives,
+  against where objects actually went. These are report numbers, alongside the NIS results.
+
+#### 9.1.4 Scope
+
+This is physics-based prediction (IMM), because it is verifiable. A learned trajectory predictor
+(e.g. a transformer trained on nuScenes/Argoverse) is a **display-only stretch goal**. It would be
+benchmarked against this baseline on the project's own recordings, and it never becomes an input to
+actuation, for the same auditability reason as 9.3's rule on raw ML classifier output. Map-aware
+prediction (vehicles following their lane, using lane detections and OSM) is the next step if time
+allows. The IMM model probabilities and turn-rate statistics are also the natural input features
+for the Part 7.1 reckless-driving classifier.
 
 ### 9.2 Reckless-driving / hazard classification
 
 Start with the rule-based version described in Part 7.2:
 - **Tailgating**: following distance (from the tracked lead vehicle's LiDAR range) below a speed-dependent threshold sustained for >1s.
 - **Erratic speed**: variance of a tracked vehicle's speed over its 30-frame history above a threshold.
-- **Lane swerving**: lateral position variance above a threshold.
+- **Lane swerving**: lateral position variance above a threshold, computed from the 9.1 track state (L-shape reference point, CTRV heading and turn rate), never from a centroid, whose visible-part shifts fake lateral motion.
+- **Sudden braking ahead** (warning only): the 9.1 IMM stopping-model probability of the lead vehicle above a threshold.
+- **Crossing / cut-in risk** (warning only): 9.1.2 closest point of approach and collision probability.
 - **Forward collision risk** (this is the one that can trigger braking, see 9.3): time-to-collision (closing speed / range) below a threshold to any tracked object directly ahead in the ego lane.
 
 ### 9.3 Decision / Arbiter — the only subsystem allowed to produce an `ActuationRequest`
@@ -989,27 +1149,63 @@ private:
 
 **Never** emit a `BRAKE` request as a direct pass-through of a raw ML classifier's output — rule 1's trigger condition (time-to-collision, a simple, explainable geometric quantity derived from tracked range and closing speed) is deliberately the only thing allowed to request braking, precisely so the braking behaviour of the finished system can be fully explained and defended in the viva from a single, auditable rule rather than "the neural network decided to."
 
+**What motion prediction may and may not do here (amended 2026-09-25).** Rule 1 is unchanged.
+Its time-to-collision uses the in-lane obstacle's **current** tracked range and closing speed,
+i.e. the 9.1 IMM state estimate *now*. It **never** uses predicted future positions, closest point
+of approach, collision probabilities or IMM model probabilities. Those drive warnings (rule 3) and
+the display only. Braking on a forecast risks *phantom braking* (stopping for something that was
+never going to hit), and that is itself a hazard: a following car can hit you. Because the IMM
+changes how closing speed is estimated, `test_motion_predictor.cpp` must bound its closing-speed
+error and lag on synthetic approaches (constant closing, and the lead vehicle braking) before
+Phase 10 relies on it. Any future use of prediction in rule 1 is a separate decision, needing its
+own tests and bench evidence.
+
 Every `ActuationRequest` this class produces is written to the `EventLog` with the full evaluation context (TTC value, range, closing speed, which rule fired) *before* being sent to `VehicleInterface` — this is the data that becomes your report's and viva's actuation-evidence trail (Part 16).
 
 ---
 
 ## Part 10 — AR Renderer and Display Sink
 
-### 10.1 `DisplaySink` interface (kept exactly as specified in the report so the future optical phase is a clean swap)
+### 10.1 `DisplaySink` interface
+
+*Amended 2026-09-25: overlays are rendered on the GPU. See `docs/decisions.md`, "Guide amendment:
+GPU overlay rendering".* The renderer no longer hands the sink a finished picture. It hands over the
+video frame plus an `OverlayScene`: a list of what to draw and where. The sink draws it. This is
+also the cleaner seam for the future optical phase: a `ProjectorSink` draws only the overlay scene
+through its combiner optics and ignores the video, which a pre-composited picture could never
+support.
 
 ```cpp
 // render/DisplaySink.h
-struct CompositedFrame { cv::Mat pixels; uint64_t timestampMs; };
+struct OverlayItem;   // render/OverlayScene.h: one box, band, barrier, badge or icon, with its style
+struct OverlayScene { std::vector<OverlayItem> items; };            // back-to-front draw order
+struct CompositedFrame { cv::Mat video; OverlayScene overlays; uint64_t timestampMs; };
 struct FrameGeometry { int width; int height; float aspectRatio; };
 
 class DisplaySink {
 public:
     virtual ~DisplaySink() = default;
     virtual bool init(const FrameGeometry& geometry) = 0;
-    virtual void present(const CompositedFrame& frame) = 0;
+    virtual void present(const CompositedFrame& frame) = 0;   // draws video + overlays
     virtual FrameGeometry outputGeometry() const = 0;
 };
 ```
+
+Each `OverlayItem` carries its geometry in ONE of three forms:
+- **object mask** (camera pixels): the segmentation mask of one tracked object (Part 7.1,
+  YOLOv8m-seg). This is used for the hazard glow, which follows the object's real outline.
+- **image space** (camera pixels): HUD badges, icons, text, screen-edge fallback indicators;
+- **road space** (metres, vehicle frame): anything that must sit ON the road, i.e. the route
+  band, the stop barrier, no-turn barriers, hump markers. The GPU projects these into the image in
+  the vertex shader, using the same intrinsics/extrinsics the perception side uses (Part 12), so
+  a road-locked item lands exactly where the detections say it is.
+
+It also carries a style: colour, opacity, glow, a shimmer/pulse rate (animated through a time
+uniform in the shader), and a layer. The sink enforces `docs/architecture/ar-overlay-design.md`
+rule 4, *never hide a hazard*, in two ways:
+- a hazard glow is a rim of light plus at most a ~25% tint, so the object stays fully visible;
+- road-space items are masked by hazard objects' silhouettes, so a barrier appears *behind* a
+  pedestrian rather than painted across them.
 
 ### 10.2 `WindowedSink` (the only sink implemented this phase)
 
@@ -1017,37 +1213,110 @@ public:
 // render/WindowedSink.h
 class WindowedSink : public DisplaySink {
 public:
-    bool init(const FrameGeometry& geometry) override;   // creates an SDL2 window + OpenGL context
-    void present(const CompositedFrame& frame) override; // uploads to a texture, draws a fullscreen quad, swaps
+    bool init(const FrameGeometry& geometry) override;   // SDL2 window + OpenGL context, shaders
+    void present(const CompositedFrame& frame) override; // video texture, then overlay pass, swap
     FrameGeometry outputGeometry() const override;
 private:
     SDL_Window* window_;
     SDL_GLContext glContext_;
-    GLuint textureId_;
+    GLuint videoTexture_;
+    GLuint overlayProgram_;   // one shader program, with branches per item kind
 };
 ```
 
+`present()` does two things:
+1. **Video.** Upload the frame to `videoTexture_` and draw it full-screen. The upload uses a pixel
+   buffer object (PBO), so the ~11 MB 2K frame transfers asynchronously. Under WSLg, OpenGL runs
+   on Mesa's Direct3D-12 layer rather than NVIDIA's own GL driver. CUDA/OpenGL interop (sharing the
+   GPU-resident frame directly) is therefore not expected to work there, and the host-to-GPU
+   upload is the portable path; confirm this in 10.4.
+2. **Overlays.** One pass over the `OverlayScene`, with alpha blending:
+   - lines and bands as triangle strips, so edges are anti-aliased and widths are exact at any
+     resolution;
+   - glow as a soft falloff computed in the fragment shader;
+   - pulsing from the time uniform;
+   - road-space items projected in the vertex shader.
+
+The window renders at the display's **native resolution**. On the development laptop's
+2560×1600 panel, a 2560×1440 frame maps 1:1 with 80 px bars. OS scaling must not resample it:
+Windows runs at 150%, so the process must be DPI-aware, or the WSLg scale factor must be 1.
+Otherwise everything is drawn at 1707 px and stretched, which blurs it.
+
 ### 10.3 `ArRenderer`
+
+`ArRenderer` decides WHAT to show. It builds the `OverlayScene` each frame and draws nothing
+itself.
 
 ```cpp
 // render/ArRenderer.h
 class ArRenderer {
 public:
     bool init(DisplaySink& sink);
-    void run();   // loop: consume frameBus + detectionBus + SceneModel + navOverlayBus -> composite -> sink.present()
+    void run();   // loop: consume frameBus + detectionBus + SceneModel + navOverlayBus
+                  //       -> build OverlayScene -> sink.present({frame, scene, t})
 private:
-    void drawBoundingBoxes(cv::Mat& frame, const DetectionFrame& det);
-    void drawLaneOverlay(cv::Mat& frame, const DetectionFrame& det);
-    void drawNavigationOverlay(cv::Mat& frame, const RoadProjectedRoute& route);
-    void drawSpeedAndWarnings(cv::Mat& frame, const VehiclePose& pose, const std::vector<Warning>& warnings);
+    void addHazards(OverlayScene& s, const SceneModel& scene, const std::vector<Warning>& w);
+    void addLaneOverlay(OverlayScene& s, const DetectionFrame& det);
+    void addNavigationOverlay(OverlayScene& s, const RoadProjectedRoute& route, const VehiclePose& pose);
+    void addSignBehaviours(OverlayScene& s, const std::vector<TrackedSign>& signs, const VehiclePose& pose);
+    void addSpeedAndWarnings(OverlayScene& s, const VehiclePose& pose, const std::vector<Warning>& w);
 };
 ```
-`drawNavigationOverlay` renders `route.polyline` as a filled band or centerline directly on the video frame, the same drawing primitives as the other overlays (`cv::polylines`/`cv::fillPoly`). Consider rendering points with `on_measured_surface = false` (the far-field flat-ground fallback from Part 11.4) slightly more transparent or a different shade than the near-field measured-surface points — this gives the driver an honest visual cue that precision degrades with distance, rather than presenting the whole line as equally certain.
-Because this is video-see-through (Part 0), overlays are drawn directly in the camera's own image-space pixel coordinates using the same intrinsic calibration used for detection — there is no separate projector/combiner optical model to compute here, unlike the original design. Keep drawing logic in plain OpenCV (`cv::rectangle`, `cv::polylines`, `cv::putText`) composited onto the frame before it's handed to the `DisplaySink`; there's no need for a full OpenGL scene graph for 2D overlays on a video frame — reserve GPU-side compositing for if profiling shows CPU-side `cv::Mat` drawing is a bottleneck at the target frame rate.
+
+- **Hazards, not boxes** (`docs/architecture/ar-overlay-design.md` §3). No rectangles are drawn
+  on the driver display. A hazard is a tracked object flagged by the risk logic: forward-collision
+  risk (Part 9.2/9.3), a Part 9.2 reckless-driving flag (tailgating, erratic speed, swerving), or a
+  pedestrian or animal in or entering the ego path. Ordinary traffic gets nothing. A hazard is shown
+  in the same road-placed language as the signs:
+  - a barrier on the road at a collision-risk object;
+  - the route line grading amber → red as the stopping distance shrinks;
+  - a following-distance zone painted on the road for tailgating;
+  - a red lane-line glow towards a swerving neighbour;
+  - a ground ring under pedestrians and animals.
+  
+  The object itself gets a subtle **shimmering glow along its outline** (from its segmentation
+  mask), with colour and shimmer pace set by a risk level `r` in [0, 1] derived from TTC and the
+  9.2 flags: amber at caution, red at high risk. This is what makes a warning or a brake
+  intervention never arrive unexplained. It never feeds actuation, which stays solely with the
+  Part 9.3 arbiter. Drawing every detection with its class and confidence belongs to the debug
+  viewer (`host/tools/inference_viewer`), not the driver display.
+- **Navigation.** `addNavigationOverlay` emits `route.polyline` as a road-space band. Points with
+  `on_measured_surface = false` (Part 11.4's far-field flat-ground fallback) are drawn more
+  transparent or in a different shade than the near-field measured-surface points. That gives the
+  driver an honest visual cue that precision degrades with distance, rather than presenting the
+  whole line as equally certain. The same band carries the speed colour-grading of
+  `docs/architecture/ar-overlay-design.md`.
+- **Signs.** `addSignBehaviours` implements `docs/architecture/ar-overlay-design.md`: barriers, the
+  speed badge, hump markers, and the priority/declutter rules.
+- **Predicted motion** (Part 9.1). A hazard's predicted path is drawn as a fading ribbon on the
+  road, whose width is its predicted uncertainty. Crossing barriers are placed where the predicted
+  path meets the ego path. `PREDICTED_ONLY` (coasting, occluded) tracks are drawn visibly as
+  predictions, not as seen objects.
+- **Latency compensation.** Camera-to-screen latency is roughly 40–60 ms, and a crossing car
+  moves ~0.75 m in that time at 15 m/s. Every object-anchored item (glow, ring, barrier) is drawn at
+  the object's position **predicted for the display time**, from the 9.1 state, so overlays stick
+  to moving objects instead of trailing them. The latency itself is measured in 10.4.
+
+This is still video-see-through (Part 0). Overlays live in the camera's own image space (or are
+projected into it with the camera's own calibration), so there is no separate projector/combiner
+optical model to compute here.
+
+**Why the GPU:** the holographic style (translucency, glow, gradients, pulsing) is per-pixel
+blending over several full-screen layers per frame at 2K. The GPU does that in well under a
+millisecond; on the CPU it would compete with the rest of the pipeline for the frame budget.
 
 ### 10.4 Benchmark checkpoint (do this before Part 14 marks this part complete)
 
-Measure actual end-to-end presented frame rate through `WindowedSink` running under WSLg. If it doesn't hit the target (aim for 24+ fps at whatever resolution Part 6 settled on), fall back to the plan noted in the original report: keep CUDA/TensorRT inference in WSL2, and run a thin native Windows process that receives composited frames over a local TCP socket and displays them with a native Win32/DirectX or SDL2-on-Windows window instead of routing through WSLg's translation layer. Document whichever path is used in `docs/decisions.md`.
+Measure the actual end-to-end presented frame rate through `WindowedSink` running under WSLg, at
+the resolution Part 6 settled on, with a realistic overlay scene (at least two shimmering hazard
+glows, a route band, and one barrier). Record the video-upload time and the overlay-pass time separately. If the
+rate doesn't reach the target (aim for 24+ fps), fall back to the plan noted in the original report:
+keep CUDA/TensorRT inference in WSL2, and run a thin native Windows process that displays with
+native OpenGL/DirectX on NVIDIA's own driver, instead of routing through WSLg's translation layer.
+
+With GPU overlays, what crosses the local TCP socket is the video frame plus the small
+`OverlayScene`, serialised with FlatBuffers like every other message. The Windows process runs
+the same shaders. Document whichever path is used in `docs/decisions.md`.
 
 ---
 
@@ -1189,6 +1458,68 @@ Print a 9×6 checkerboard, capture 20–30 images of it at varied angles/distanc
 - **Camera-to-vehicle**: measure the camera's mounting position and orientation relative to the vehicle's reference frame (typically the rear axle midpoint, ground-projected) by hand — tape measure and a level are sufficient for the accuracy this system needs; write the result to `config/camera_extrinsics.yaml`.
 - **LiDAR-to-camera**: place a checkerboard visible to both sensors simultaneously, capture a synchronized camera image and LiDAR scan, and compute the rotation/translation between them (a straightforward point-correspondence solve — OpenCV's `solvePnP` against the checkerboard corners found in both the image and, after manually picking the same corners in the point cloud, works for a one-off calibration; a dedicated LiDAR-camera calibration toolbox is a nice-to-have, not required). Write to `config/lidar_camera_extrinsics.yaml`.
 
+### 12.2.1 Startup verification and bounded refinement of the LiDAR–camera extrinsics
+
+*Added 2026-09-25.* Mounts shift slightly with vibration, temperature, or a knock during
+installation, and mask-based fusion (Part 8.3) is only as good as the extrinsics. So every time the
+system starts, and continuously while it runs, an `ExtrinsicMonitor` checks the alignment and may
+fine-tune it, within strict limits.
+
+```cpp
+// scene/ExtrinsicMonitor.h
+enum class ExtrinsicStatus { UNVERIFIED, VERIFIED, REFINED, DEGRADED };
+struct ExtrinsicState { Eigen::Isometry3d lidarToCamera; ExtrinsicStatus status; float score; };
+
+class ExtrinsicMonitor {
+public:
+    explicit ExtrinsicMonitor(const Eigen::Isometry3d& baseline);   // from Part 12.2's yaml
+    void addFrame(const CameraFrame& frame, const ObjectMasks& masks, const SceneCloud& cloud);
+    ExtrinsicState current() const;
+};
+```
+
+**How it works:**
+- **Baseline.** Part 12.2's checkerboard calibration stays mandatory, done once at installation.
+  It is the reference. Each start begins from the baseline again, never from the last refinement,
+  so small errors cannot accumulate across sessions.
+- **Score.** Alignment is scored two ways:
+  - *edge alignment:* LiDAR depth discontinuities projected onto image edges, via a distance
+    transform of the edge map. This needs no objects in view;
+  - *mask agreement:* the fraction of each object's LiDAR cluster that falls inside its eroded
+    mask.
+- **Verify.** Over the first frames, score the baseline. If it is good enough: `VERIFIED`.
+- **Refine, bounded.** Search a small correction around the baseline: at most ~1° rotation and
+  ~3 cm translation, as configuration. The correction is accepted (`REFINED`) only if **all** of
+  these hold:
+  - there is enough evidence: enough frames, with points spread over depths and image regions;
+  - the improvement is clear *and* also holds on frames not used to fit it;
+  - the solution is not pressed against the bounds. A correction at the bound means the real
+    error is larger than a refinement may fix.
+- **Degrade honestly.** Misalignment beyond the bounds, or no sufficient evidence within a
+  configured time of driving, gives `DEGRADED`:
+  - the baseline is kept;
+  - an `EventLog` fault is logged, and the driver is told to recalibrate;
+  - fused per-object ranges from the camera masks are not used for road-placed display graphics,
+    which fall back to screen-fixed (`ar-overlay-design.md` rule 6);
+  - the arbiter uses **LiDAR-only** ranges in a fixed vehicle-frame corridor, which depend on no
+    camera alignment at all.
+- **Never actuation-critical.** Braking never depends on an unverified refinement. The Part 9.3
+  collision path must work in `DEGRADED` exactly as specified.
+- **Continuous monitoring.** A sudden drop in score while driving (a knocked mount) moves the
+  state to `DEGRADED` immediately.
+- **Out of scope:** intrinsics are *not* auto-adjusted, because the camera is fixed-focus
+  (Part 12.1), and neither is the hand-measured camera-to-vehicle transform.
+- **Evidence.** Every state change and accepted refinement goes to the `EventLog`, with the before
+  and after scores and the correction, for the report.
+- **At startup** the car is usually stationary, often in a poor scene. Verification can then
+  complete, but a refinement may only become possible once driving. That is expected, not a fault.
+
+**Tests (Part 13.1):** `test_extrinsic_monitor.cpp` uses synthetic scenes with a known
+perturbation of the extrinsics. It checks that:
+- a small perturbation is recovered within tolerance;
+- a large one ends `DEGRADED` rather than "fixed" at the bound;
+- a featureless scene never produces `REFINED`.
+
 ### 12.3 What is explicitly *not* calibrated this phase
 
 The projector-combiner angular mapping from the original optical-HUD design is not performed — there is no projector or combiner in this build (Part 0). This step returns in the future optical phase (see the original report's Section 8) and depends on nothing calibrated here changing.
@@ -1223,6 +1554,17 @@ At minimum, one test file per subsystem, covering the logic that doesn't need re
 - `test_decision_arbiter.cpp` — synthetic `SceneModel`/`VehiclePose` inputs covering every rule in Part 9.3, asserting the correct `ActuationRequest` (including the "no request" default case) — **this file should specifically include a test asserting that no combination of inputs produces a `BRAKE` request above `brake_actuator_max_intensity`**, since that's a config file, not a compiled constant, and a bad YAML value should be caught here, not on a bench.
 - `test_ekf.cpp` — a known synthetic trajectory through `SensorFusion`, checking the estimate converges.
 - `test_map_matcher.cpp` — a synthetic noisy GPS track against a small known test-area OSM extract, asserting the matched position snaps onto the correct road edge and that `distanceAlongRouteM` progresses monotonically.
+- `test_motion_predictor.cpp` — Part 9.1 on synthetic trajectories with known noise:
+  - CV, CTRV and stop-and-go motion; the $\omega\to0$ branch;
+  - a pedestrian crossing; occlusion coasting to `PREDICTED_ONLY` and then death;
+  - out-of-sequence measurements;
+  - the centroid-bias case (a turning car's visible part shifting must not produce lateral
+    velocity);
+  - hand-computed CPA/TCPA cases;
+  - NIS within its chi-square bounds;
+  - the **closing-speed error and lag bound** that 9.3 rule 1 relies on.
+- `test_mask_lidar_fusion.cpp` — synthetic camera, extrinsics, masks and point clouds covering every Part 8.3 rule (eroded-mask selection, nearest-depth cluster vs stray/background points, parallax depth test, "no range" when too few points, unexplained LiDAR cluster in the corridor becoming an `UNKNOWN` obstacle).
+- `test_extrinsic_monitor.cpp` — Part 12.2.1: a small known perturbation is recovered, a large one ends `DEGRADED` rather than clamped at the bound, a featureless scene never yields `REFINED`.
 - `test_road_surface_projector.cpp` — synthetic route waypoints, a synthetic `GroundPlaneModel` (including a non-flat patch, e.g. a sloped segment), and synthetic lane detections; assert that near-field points land on the supplied ground geometry (not a flat-ground assumption), far-field points fall back correctly, and the lateral-correction step never moves a point by more than `lateral_correction_max_m`.
 
 Run with `ctest` from the `host/build` directory; wire this into Part 14's phase exit criteria — a phase touching a subsystem with a unit test file is not complete until that test passes.
@@ -1366,12 +1708,12 @@ Deliverables: exported ONNX models, built TensorRT engines (Part 7.3), `TrtEngin
 Exit criteria: live camera feed produces detections/lane lines/depth at the target FPS from Part 7's table; a debug visualization (even a throwaway `cv::imshow` window) shows plausible boxes on real footage.
 
 **Phase 6 — LiDAR and calibration**
-Deliverables: `LidarProcessor` (Part 8.1), **including publishing `GroundPlaneModel` on `groundPlaneBus` rather than discarding the fitted plane**; camera intrinsic calibration (Part 12.1) and LiDAR-to-camera extrinsic calibration (Part 12.2) completed and saved to `config/`.
+Deliverables: `LidarProcessor` (Part 8.1), **including publishing `GroundPlaneModel` on `groundPlaneBus` rather than discarding the fitted plane**; camera intrinsic calibration (Part 12.1) and LiDAR-to-camera extrinsic calibration (Part 12.2) completed and saved to `config/`; `ExtrinsicMonitor` (Part 12.2.1) running at startup and continuously, with `test_extrinsic_monitor.cpp` passing.
 Exit criteria: LiDAR point cloud visibly aligns with camera detections of the same real object in a debug overlay; `GroundPlaneModel` is visibly logged/published on every LiDAR frame, not silently dropped after clustering — check this explicitly, since Phase 9 depends on it and a missing publish step won't produce an obvious error, only a degraded overlay much later.
 
 **Phase 7 — Fusion, scene reconstruction, tracking**
-Deliverables: `SensorFusion` (Part 8.2), `SceneReconstruction` (Part 8.3), `MultiObjectTracker` (Part 9.1).
-Exit criteria: `test_ekf.cpp` and `test_multi_object_tracker.cpp` pass; a tracked object's range/velocity estimate visibly matches reality in a manual sanity check (e.g., walking toward the camera at a known pace).
+Deliverables: `SensorFusion` (Part 8.2), `SceneReconstruction` with mask-based camera–LiDAR fusion (Part 8.3), `MultiObjectTracker` + `MotionPredictor` (IMM, CPA risk; Part 9.1), `config/motion_prediction.yaml`.
+Exit criteria: `test_ekf.cpp`, `test_multi_object_tracker.cpp`, `test_motion_predictor.cpp` (including NIS consistency and the closing-speed bound) and `test_mask_lidar_fusion.cpp` pass; a tracked object's range/velocity estimate visibly matches reality in a manual sanity check (e.g., walking toward the camera at a known pace).
 
 **Phase 8 — Navigation: routing and map-matching**
 Deliverables: `NavigationEngine` (Part 11.2), `MapMatcher` (Part 11.3), against an offline OSM extract for the test area.
@@ -1386,7 +1728,7 @@ Deliverables: rule-based reckless-driving classifier (Part 9.2), `DecisionArbite
 Exit criteria: `test_decision_arbiter.cpp` passes in full, **including the ceiling test** — this is a hard gate, do not proceed to Phase 12 without it green.
 
 **Phase 11 — AR Renderer and display**
-Deliverables: `DisplaySink`/`WindowedSink` (Part 10.1–10.2), `ArRenderer` (Part 10.3) including `drawNavigationOverlay` against Phase 9's `RoadProjectedRoute`.
+Deliverables: `DisplaySink`/`WindowedSink` with GPU overlay rendering (Part 10.1–10.2), `ArRenderer` (Part 10.3) building the `OverlayScene`, including `addNavigationOverlay` against Phase 9's `RoadProjectedRoute`, and the hazard and sign overlays of `docs/architecture/ar-overlay-design.md` (including the mask-based hazard glow).
 Exit criteria: Part 10.4's benchmark checkpoint completed and the resulting display path (WSLg vs. native-Windows fallback) chosen and documented; the navigation overlay renders visibly distinguishing near-field (measured-surface) from far-field (flat-ground fallback) segments, per Part 10.3's note.
 
 **Phase 12 — Brake actuator hardware and mandatory bench gate**
