@@ -34,3 +34,6 @@ data/datasets/
 # Model weights downloaded by tools (e.g. ultralytics fetches yolo26n.pt into the working
 # directory for its AMP check). Project weights live in host/models/weights/, already ignored.
 *.pt
+
+# Offline OSM extracts and OSRM routing data (Part 11.2; rebuilt by scripts/refresh_osm.sh)
+data/maps/

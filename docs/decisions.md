@@ -575,3 +575,38 @@ any evidence it is needed, and the sensors are already an independent second sou
 - terms for caching and display.
 
 If any check fails, the live layer is deferred and layers 1 and 3 ship alone.
+
+## Phase 8 — Navigation
+
+**CI stays OSRM-free.** `libosrm-dev` does not exist on Ubuntu, and building OSRM 6 in CI costs
+about 20 minutes per run. Instead:
+- `MapMatcher`'s logic and the route geometry run in CI behind a `MatchBackend` interface, with a
+  fake backend.
+- `RoadStatus`'s rules are pure, so they run in CI too.
+- OSRM routing, matching and re-weighting are `osrm`-labelled integration tests. They run against
+  an OSM network the test writes with known geometry, and against the real Nairobi map.
+
+**One local frame, on the WGS-84 ellipsoid.** SensorFusion and MapMatcher share
+`common/Geo.h`'s `LocalFrame`. It uses the meridional radius M for north and N·cos(lat) for east,
+at the origin. The first frame used the equatorial radius for both, which read north-south
+distances 0.67% long at Nairobi (7 m per km) and disagreed with OBD speed. The EKF projection test
+had encoded that error and was corrected against reference values (110.574 km per degree of
+latitude at the equator).
+
+**Route arc lengths use the same tangent-plane metric as projection.** Progress, offsets and step
+positions share one scale. Step positions are projected onto our geometry, not taken from OSRM's
+own distances.
+
+**Road re-weighting: pristine copy plus reload, not shared memory.** See the guide amendment to
+11.2.1. It was measured at 1.2 s from closure to reroute on the Nairobi map.
+
+**Map matching sends a trace.** Committed points are at least 1 s apart, and the newest is
+replaced by the current pose. Progress is clamped non-decreasing. Off route and wrong way each
+need 3 consecutive matches. The throttle applies after failed matches too.
+
+**A moving car departs within ±45° of its heading** (OSRM bearings), so a route never starts with
+a U-turn across a dual carriageway.
+
+**`LiveRoadStatus` (TomTom) is deferred until its three gates are checked** (access and cost,
+Nairobi quality, terms). `RoadStatus` already holds provider-neutral live records, so the adapter
+is the only missing piece.

@@ -57,6 +57,7 @@
 #include <cstdint>
 #include <optional>
 
+#include "ar_drive_assist/common/Geo.h"
 #include "ar_drive_assist/common/Types.h"
 
 namespace ar_drive_assist {
@@ -96,8 +97,10 @@ public:
     const Cov& covariance() const { return P_; }
     VehiclePose currentPose(std::uint64_t timestampMs) const;
 
-    // Local east/north metres <-> latitude/longitude, around the first fix.
+    // Local east/north metres <-> latitude/longitude, around the first fix. frame() is the one
+    // conversion MapMatcher must use to turn a fused pose back into latitude/longitude.
     Eigen::Vector2d toLocal(double latDeg, double lonDeg) const;
+    const LocalFrame& frame() const { return frame_; }
 
     static double wrapAngle(double a);  // to (-pi, pi]
 
@@ -110,7 +113,7 @@ private:
     State x_ = State::Zero();
     Cov P_ = Cov::Identity();
     bool initialised_ = false;
-    double lat0_ = 0.0, lon0_ = 0.0, cosLat0_ = 1.0;
+    LocalFrame frame_;
 };
 
 }  // namespace ar_drive_assist

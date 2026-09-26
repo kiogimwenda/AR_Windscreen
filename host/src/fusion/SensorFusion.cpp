@@ -7,7 +7,6 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDeg = kPi / 180.0;
-constexpr double kEarthRadius = 6378137.0;  // WGS-84 equatorial, m
 // Below this yaw rate, CTRV's v/omega terms are replaced by the straight-line limit. 1e-4 rad/s
 // is ~0.006 deg/s: far below anything a car does, far above floating-point trouble.
 constexpr double kOmegaEps = 1e-4;
@@ -23,9 +22,10 @@ double SensorFusion::wrapAngle(double a) {
 SensorFusion::SensorFusion(const FusionNoise& noise) : noise_(noise) {}
 
 Eigen::Vector2d SensorFusion::toLocal(double latDeg, double lonDeg) const {
-    // Equirectangular projection around the origin: east = R cos(lat0) dlon, north = R dlat.
-    return {kEarthRadius * cosLat0_ * (lonDeg - lon0_) * kDeg,
-            kEarthRadius * (latDeg - lat0_) * kDeg};
+    // WGS-84 local tangent plane around the origin (common/Geo.h, LocalFrame).
+    Eigen::Vector2d p;
+    frame_.toLocal({latDeg, lonDeg}, p.x(), p.y());
+    return p;
 }
 
 void SensorFusion::predict(double dt) {
@@ -94,9 +94,7 @@ std::optional<double> SensorFusion::updateGps(double latDeg, double lonDeg) {
     if (!initialised_) {
         // The first fix defines the local origin and the position. Heading and speed are unknown
         // until other sensors report, so their variances start large.
-        lat0_ = latDeg;
-        lon0_ = lonDeg;
-        cosLat0_ = std::cos(latDeg * kDeg);
+        frame_ = LocalFrame({latDeg, lonDeg});
         x_.setZero();
         P_ = Cov::Zero();
         P_(PX, PX) = P_(PY, PY) = noise_.gpsPosStd * noise_.gpsPosStd;

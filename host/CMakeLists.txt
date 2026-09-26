@@ -92,6 +92,13 @@ target_include_directories(inference_viewer PRIVATE include)
 target_link_libraries(inference_viewer PRIVATE ${OpenCV_LIBS} CUDA::cudart TensorRT::TensorRT
                       ar_schemas)
 
+# Phase 8: replays a recorded GPS track (GPX) through NavigationEngine + MapMatcher and draws the
+# result on a map: the "visibly snaps onto the correct road" exit check.
+add_executable(nav_replay tools/nav_replay.cpp src/nav/NavigationEngine.cpp src/nav/MapMatcher.cpp
+               src/nav/MapMatcherOsrm.cpp src/nav/Route.cpp)
+target_include_directories(nav_replay PRIVATE include src/nav)
+target_link_libraries(nav_replay PRIVATE OSRM::osrm ar_schemas)
+
 # The unit suite under test/unit/ is intentionally NOT built from here — see test/CMakeLists.txt.
 # enable_testing() must come before the tests are declared, so ctest can find the integration tests.
 enable_testing()

@@ -24,3 +24,18 @@ target_include_directories(test_preprocess PRIVATE ../include)
 target_link_libraries(test_preprocess PRIVATE ${OpenCV_LIBS} CUDA::cudart GTest::gtest
                       GTest::gtest_main)
 gtest_discover_tests(test_preprocess PROPERTIES LABELS gpu)
+
+# Phase 8: OSRM routing and map-matching, against a road network the test writes and builds with
+# the real OSRM tools, plus checks on the real Nairobi map when it has been built
+# (host/scripts/refresh_osm.sh). Needs the OSRM tools, not a GPU:
+#     ctest --test-dir build -L osrm
+add_executable(test_osrm_navigation integration/test_osrm_navigation.cpp
+               ../src/nav/NavigationEngine.cpp ../src/nav/MapMatcher.cpp
+               ../src/nav/MapMatcherOsrm.cpp ../src/nav/Route.cpp ../src/nav/RoadStatus.cpp
+               ../src/nav/RoadNetworkUpdater.cpp)
+target_include_directories(test_osrm_navigation PRIVATE ../include ../src/nav)
+target_link_libraries(test_osrm_navigation PRIVATE OSRM::osrm ar_schemas GTest::gtest
+                      GTest::gtest_main)
+target_compile_definitions(test_osrm_navigation PRIVATE
+                           AR_MAPS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../data/maps")
+gtest_discover_tests(test_osrm_navigation PROPERTIES LABELS osrm DISCOVERY_TIMEOUT 60)

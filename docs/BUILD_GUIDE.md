@@ -1348,9 +1348,20 @@ This class implements the exact framing/CRC from Part 3 and nothing else — it 
 class NavigationEngine {
 public:
     bool init(const std::string& osrmDataPath);
-    Route routeTo(double destLat, double destLon, const VehiclePose& currentPose);
+    Route routeTo(double destLat, double destLon, const VehiclePose& currentPose,
+                  const LocalFrame& frame);   // frame: SensorFusion::frame() (amended, Phase 8)
+    Route route(const GeoPoint& from, const GeoPoint& to, const double* headingDeg = nullptr);
 };
 ```
+*Amended 2026-09-26 (Phase 8):*
+- `VehiclePose` carries local metres, not latitude/longitude, so the pose is converted with the
+  SAME `LocalFrame` SensorFusion uses (`common/Geo.h`). That frame is a WGS-84 local tangent
+  plane: the first version used one sphere radius and read north-south distances 0.67% long.
+- `Route` (`nav/Route.h`) also carries the OSM node ids along the route, which layer-3 closures
+  need.
+- A moving car's route is constrained to depart within ±45° of its heading, so it never begins
+  with a U-turn.
+
 Use the OSRM C++ API (`osrm::OSRM`, `RouteParameters`, MLD algorithm) against an offline-processed OpenStreetMap extract for the test area. *Amended 2026-09-26:* the test area is **Nairobi**. The extract is Geofabrik's Kenya file clipped with `osmium extract` to the box enclosing a **100 km radius around Nairobi CBD** (1.2864°S, 36.8172°E): lon 35.92–37.72, lat −2.19 to −0.38. It covers Thika, Machakos, Kajiado, Murang'a and Naivasha, and it is refreshed automatically (11.2.1, layer 1). MLD is required, not just preferred, because the live layer (11.2.1, layer 2) re-weights the graph with `osrm-customize`, which only MLD supports. **This subsystem is a primary project objective, not a stretch feature** — the precision, road-locked navigation overlay (11.4) is one of the two things this system does with what it senses (the other being hazard detection/actuation), so it does not get stubbed or deprioritized against the actuation subsystem's testing. `routeTo` returns a `Route` — the full geometry (an ordered list of world-coordinate points along the road network, not just turn text), because 11.3 and 11.4 need that geometry, not only the instructions a plain turn-by-turn UI would need.
 
 ### 11.2.1 Road status: three layers, and the map never overrules the sensors
@@ -1391,8 +1402,15 @@ segment speeds, and hot-swaps the re-weighted graph. It works in five steps:
    - A closure gives its segments speed 0, so routes avoid them.
    - Flow gives its segments the observed speed.
    - `osrm-customize --segment-speed-file` on the Nairobi graph takes seconds.
-   - The engine runs in OSRM shared-memory mode, so `osrm-datastore` swaps the new weights in
-     without restarting navigation.
+   - *Amended 2026-09-26 (Phase 8):* re-weighting is done by `nav/RoadNetworkUpdater`, not with
+     shared memory and `osrm-datastore`:
+     - every update starts from a **pristine copy** of the base map, with the **complete** current
+       override set;
+     - `NavigationEngine` and `MapMatcher` are re-initialised from the new copy.
+     
+     This is correct by construction: a lifted closure cannot linger in the files. It needs no
+     shared-memory setup. It is fast enough: closure to rerouted, including the copy, measured at
+     1.2 s on the Nairobi map. The same mechanism applies layer 3's local closures.
 4. **Staleness.** Flow older than 15 minutes, and incidents past their end time, are removed and
    the segments fall back to their base weights. Each item's age is kept with it. The display
    may say "live traffic 3 min ago", and never presents old data as current.
@@ -1453,12 +1471,26 @@ public:
         double latitude, longitude;    // snapped onto the road graph, not the raw fix
         double distanceAlongRouteM;    // arc-length progress along the current Route
         int laneCountHint;             // from OSM way tags where present; default 1 if untagged — a hint, not ground truth
-        float roadHeadingDeg;
+        float roadHeadingDeg;          // CCW from east, as VehiclePose (amended, Phase 8)
         bool valid;
+        bool onRoute;                  // false once off route / wrong way is confirmed: reroute
+        double lateralOffsetM;         // from the route centre line, left positive
+        bool fromMatch;                // false: dead-reckoned between matches
     };
-    MatchedPosition match(const VehiclePose& fusedPose, const Route& currentRoute);
+    MatchedPosition match(const VehiclePose& fusedPose, const LocalFrame& frame,
+                          const Route& currentRoute);
 };
 ```
+*Amended 2026-09-26 (Phase 8):* the matcher sends OSRM a TRACE, not one fix: up to 8 points at
+least 1 s apart, with the newest replaced by the current pose.
+- Measured on a road 15 m from a parallel one, with 5 m of fix noise: a single fix is nearer the
+  wrong road 7.2% of the time, while the trace kept the car on the right road 99.6% of the time.
+- Progress never decreases; backward jitter is clamped.
+- Off route and wrong way (more than 120° against the route) each need 3 consecutive matches, so
+  one glitch never reroutes.
+- Between matches, progress is dead-reckoned with the fused speed.
+- The matcher's logic sits behind a `MatchBackend` interface, so it is unit-tested in CI with a
+  fake backend.
 Use OSRM's `Match` service/API rather than re-deriving this yourself. Run at 5–10 Hz — road identity and progress-along-route change far slower than the vehicle's raw dynamics, so there is no need to match on every fused-pose update. `laneCountHint` is exactly that, a hint: OSM tagging for lane count is inconsistent and must never be treated as reliable on its own — this is precisely why 11.4's lateral correction step exists and leans on the lane-detection model instead.
 
 ### 11.4 `RoadSurfaceProjector` — the precision, road-locked navigation overlay
@@ -1810,12 +1842,17 @@ Exit criteria:
 - `test_map_matcher.cpp` passes;
 - a route requested between two known Nairobi points returns sensible turn-by-turn geometry;
 - a recorded or live GPS/EKF track fed through `MapMatcher` visibly snaps onto the correct road
-  edge, with `distanceAlongRouteM` increasing monotonically as the track progresses;
+  edge, with `distanceAlongRouteM` increasing monotonically as the track progresses. Use
+  `tools/nav_replay`: a phone-recorded GPX in, a summary and an HTML map out;
 - `test_road_status.cpp` passes:
   - a locally closed edge is avoided;
   - a stale live record falls back to base weights;
   - an OpenLR record that does not decode confidently is dropped, not snapped;
-  - with the network unavailable, routing still succeeds;
+  - with the network unavailable, routing still succeeds.
+  
+  *Amended (Phase 8):* the store's rules are the unit test `test_road_status.cpp`. The routing
+  consequences are the `osrm`-labelled integration test `test_osrm_navigation.cpp`. The OpenLR
+  case belongs to `LiveRoadStatus` and is written with it, after its gates pass;
 - a failed or broken map refresh leaves the previous map in service.
 
 **Phase 9 — Road Surface Projector: precision navigation overlay**

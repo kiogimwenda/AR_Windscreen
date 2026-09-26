@@ -85,8 +85,16 @@ add_unit_test(test_mask_lidar_fusion test_mask_lidar_fusion.cpp
               ${HOST_SRC}/scene/SceneReconstruction.cpp ${HOST_SRC}/inference/Postprocess.cpp)
 target_link_libraries(test_mask_lidar_fusion PRIVATE Eigen3::Eigen)
 
+# --- Phase 8 ----------------------------------------------------------------------------------
+# MapMatcher's own logic and the route geometry, against a fake Match backend: no OSRM, so CI
+# runs it. OSRM routing and matching are integration tests (host/test/CMakeLists.txt, label osrm).
+add_unit_test(test_map_matcher test_map_matcher.cpp ${HOST_SRC}/nav/MapMatcher.cpp
+              ${HOST_SRC}/nav/Route.cpp)
+target_link_libraries(test_map_matcher PRIVATE ar_schemas)
+add_unit_test(test_road_status test_road_status.cpp ${HOST_SRC}/nav/RoadStatus.cpp
+              ${HOST_SRC}/nav/Route.cpp)
+
 # --- Later phases (targets added as each phase implements its subsystem) ------------------------
 # Phase 7:  test_multi_object_tracker.cpp, test_motion_predictor.cpp, test_mask_lidar_fusion.cpp
-# Phase 8:  test_map_matcher.cpp                                  (adds OSRM)
 # Phase 9:  test_road_surface_projector.cpp                       (adds Eigen3)
 # Phase 10: test_decision_arbiter.cpp

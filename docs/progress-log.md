@@ -1917,3 +1917,69 @@ stopped at 1.10°S. Ian asked for a 100 km radius, which now covers Thika, Macha
 Murang'a and Naivasha.
 
 **Verification:** documentation change only.
+
+## 2026-09-26 — Phase 8: navigation (routing, map matching, road status)
+
+**What:**
+- **`scripts/refresh_osm.sh`:**
+  - downloads Geofabrik Kenya and verifies its MD5;
+  - clips to the 100 km box with `osmium extract` (complete ways);
+  - builds OSRM MLD, then smoke-tests CBD → Thika before switching the map, atomically;
+  - keeps two builds and writes `BUILD_INFO`.
+  
+  First build: source dated 2026-09-25, build took 20 s, smoke test 43.7 km.
+- **`common/Geo.h`:** haversine distance, heading, and `LocalFrame` (WGS-84 tangent plane).
+  `SensorFusion` now uses it.
+- **`nav/Route.h/.cpp`:** route, steps, OSM node ids, arc length, `pointAt`, and windowed
+  projection with signed offset and heading.
+- **`NavigationEngine`:** OSRM Route with GeoJSON geometry, steps, lanes and node annotations.
+  A moving car departs within ±45° of its heading.
+- **`MapMatcher` with the OSRM Match backend:** trace window, throttle, never-decreasing progress,
+  dead reckoning, off-route and wrong-way confirmation.
+- **`RoadStatus`:** sensor closures (TTL 2 h, extended on re-sighting), provider-neutral live
+  records (stale after 15 min), sensors take precedence, road observations (merge, save, load),
+  segment-speed CSV.
+- **`RoadNetworkUpdater`:** pristine copy, customize, reload.
+- **`tools/nav_replay`:** GPX in, summary and HTML map out.
+- **Supporting changes:** `osmium-tool` installed (apt); `data/maps/` gitignored.
+
+**Defects found and fixed:**
+1. **The local frame's north scale was 0.67% long.** It used the equatorial radius for both axes.
+   *Fix:* the ellipsoidal M and N radii. The EKF projection test had encoded the error and was
+   corrected against reference values.
+2. **The trace never grew past one point.** Replacing the newest point kept moving its timestamp
+   forward, so OSRM would have matched single fixes. *Found by* `TraceWindowIsSpacedAndBounded`.
+   *Fix:* committed points plus a replaced newest point in each query.
+3. **The throttle only applied after successful matches.** An unmatched stretch would have called
+   OSRM at pose rate. *Found in review.* *Test:* `UnmatchedIsInvalidAndStillThrottled`.
+4. **Offset past a segment end used the infinite line's distance.** *Found in review.* It now uses
+   the segment distance, signed.
+
+**Verification:**
+- **Unit (CI): 159/159.**
+  - `test_map_matcher`, 13 tests: geodesy reference values, frame round trip over ±100 km,
+    projection, doubled-back routes, throttle, trace window, monotonic progress under ±4 m
+    jitter, dead reckoning, off-route confirmation, wrong way, unmatched, lane hint.
+  - `test_road_status`, 10 tests.
+- **Integration (`-L osrm`): 9/9.**
+  - Fixture routes: 960 m, and a right turn at 500 m.
+  - Departure constraint. *Mutation:* disabling it fails the test.
+  - Parallel road 15 m away with 5 m noise: single-fix nearest road wrong 7.2%, **trace 99.6%
+    right**.
+  - Monotonic progress with real matching.
+  - Closure avoided (1030 m detour), then reopens after the TTL; a stale live record changes
+    nothing.
+  - Real Nairobi map:
+    - CBD → Thika: 43.7 km, 35 min, steps name Thika Road;
+    - 5 km synthetic drive: 0 off-route, progress error 2.8 m;
+    - closure on the real map: rerouted in 1.2 s, using none of the closed segments.
+- **`nav_replay` on a synthetic CBD → Westlands GPX** (1 Hz, 4 m noise): 263/266 matched,
+  0 off-route, 0 progress decreases.
+- Formatting clean under clang-format 18 and 22.
+
+**Phase 8 status:**
+- Done: `test_map_matcher` passes; a route between known Nairobi points is sensible.
+- **Open:**
+  - The recorded-track exit check needs a real GPX from Ian (`nav_replay`).
+  - `LiveRoadStatus` is deferred until its three gates are checked.
+- Not wired into `main` yet: the navigation thread belongs with the full pipeline (Phase 11).

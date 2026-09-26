@@ -105,16 +105,20 @@ TEST(Ekf, WrapAngle) {
     EXPECT_NEAR(SensorFusion::wrapAngle(359 * kDeg), -1 * kDeg, 1e-12);
 }
 
-// 0.001 deg of latitude is ~111.3 m north everywhere; 0.001 deg of longitude is 111.3 m x cos(lat)
-// east. At Nairobi (1.29 deg S) that is still ~111.3 m.
+// WGS-84 local tangent plane (common/Geo.h). Reference values: a degree of latitude is 110.574 km
+// at the equator and a degree of longitude 111.320 km (standard geodesy tables). At Nairobi
+// (1.29 deg S): M = 6335.47 km, so 0.001 deg north is 110.575 m; N cos(lat) = 6376.53 km, so
+// 0.001 deg east is 111.291 m. (The first version of this test expected 111.32 m north, the
+// sphere-radius value, which is 0.67% long; corrected 2026-09-26 with the frame.)
 TEST(Ekf, LocalProjection) {
     SensorFusion f;
     f.updateGps(kLat0, kLon0);
     const auto n = f.toLocal(kLat0 + 0.001, kLon0);
     const auto e = f.toLocal(kLat0, kLon0 + 0.001);
     EXPECT_NEAR(n.x(), 0.0, 1e-9);
-    EXPECT_NEAR(n.y(), 111.32, 0.05);
-    EXPECT_NEAR(e.x(), 111.32 * std::cos(kLat0 * kDeg), 0.05);
+    EXPECT_NEAR(n.y(), 110.575, 0.002);
+    EXPECT_NEAR(e.x(), 111.291, 0.002);
+    EXPECT_NEAR(e.y(), 0.0, 1e-9);
 }
 
 TEST(Ekf, NothingHappensBeforeTheFirstGpsFix) {
