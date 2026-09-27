@@ -49,10 +49,12 @@ void writeFile(const std::string& path, const std::string& text) {
 
 const char* kVehicle =
     "wheelbase_m: 2.6\ncamera_height_m: 1.3\nobd_pid_brake_active: \"\"\n"
-    "serial_device: \"/dev/ttyACM0\"\nserial_baud: 115200\n";
+    "serial_device: \"/dev/ttyACM0\"\nserial_baud: 115200\n"
+    "front_bumper_from_rear_axle_m: 3.5\nhalf_width_m: 0.9\n";
 const char* kDecision =
     "ttc_brake_threshold_s: 1.8\nhard_brake_decel_g: 0.4\ntailgating_min_gap_s: 1.0\n"
-    "brake_actuator_max_intensity: 90\n";
+    "brake_actuator_max_intensity: 90\nbrake_request_intensity: 60\n"
+    "ego_path_half_width_m: 1.2\nmin_closing_speed_mps: 0.5\nhub_state_max_age_ms: 100\n";
 
 // Writes a valid config pair, with `key` in `file` replaced by `replacement` (or removed if
 // replacement is empty).
@@ -141,12 +143,23 @@ TEST(SystemManagerConfig, MissingKeyNamesFileAndKey) {
     EXPECT_NE(err.find("'ttc_brake_threshold_s' missing"), std::string::npos) << err;
 }
 
+// Phase 10: the host ceiling may not exceed the hub's own (kHubMaxSafeBrakeIntensity = 90). The
+// Phase 3 version of this test accepted 0..255; a host ceiling above the hub's is never meaningful,
+// and a typo such as 255 must stop the system at startup.
 TEST(SystemManagerConfig, RejectsBrakeCeilingOutOfRange) {
-    for (const char* bad : {"300", "256", "-1"}) {
+    for (const char* bad : {"91", "255", "300", "-1"}) {
         const auto err = loadError(
             configWith("ceiling", "decision_thresholds.yaml", "brake_actuator_max_intensity", bad));
         EXPECT_NE(err.find("brake_actuator_max_intensity"), std::string::npos)
             << bad << ": " << err;
+    }
+}
+
+TEST(SystemManagerConfig, RejectsBrakeRequestAboveTheCeiling) {
+    for (const char* bad : {"91", "-1"}) {
+        const auto err = loadError(
+            configWith("request", "decision_thresholds.yaml", "brake_request_intensity", bad));
+        EXPECT_NE(err.find("brake_request_intensity"), std::string::npos) << bad << ": " << err;
     }
 }
 
@@ -159,7 +172,7 @@ TEST(SystemManagerConfig, RejectsNonIntegerBrakeCeiling) {
 }
 
 TEST(SystemManagerConfig, AcceptsBrakeCeilingBounds) {
-    for (const char* ok : {"0", "255"}) {
+    for (const char* ok : {"60", "90"}) {  // >= brake_request_intensity (60), <= the hub's 90
         const auto dir =
             configWith("bounds", "decision_thresholds.yaml", "brake_actuator_max_intensity", ok);
         EXPECT_EQ(loadError(dir), "") << ok;

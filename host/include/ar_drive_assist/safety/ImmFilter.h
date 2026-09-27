@@ -93,6 +93,12 @@ public:
     // direction is always used as the heading, with its (possibly large) uncertainty.
     void initialiseVelocity(const Eigen::Vector2d& vel, const Eigen::Matrix2d& velCov);
 
+    // Two-point initiation (the tracker's second sighting): position, velocity and their
+    // cross-covariance all re-seeded from the two measurements. The second measurement is then
+    // ALREADY incorporated: do not also call updatePosition() with it.
+    void initialiseTwoPoint(const Eigen::Vector2d& z1, const Eigen::Matrix2d& R1,
+                            const Eigen::Vector2d& z2, const Eigen::Matrix2d& R2, double dt);
+
     // Moves every model forward by dt (IMM steps 1-2). Probabilities are mixed but not updated.
     void predict(double dt);
 

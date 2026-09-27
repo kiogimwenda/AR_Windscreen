@@ -26,6 +26,7 @@ classes:
     stop_tau_s: 0.8
     model_switch_rate: 0.5
     initial_speed_std: 8.0
+    max_speed_mps: 45           # 162 km/h: gates a new track's second sighting
   pedestrian:     # slow, but can turn and stop instantly
     accel_std: 1.5
     yaw_accel_std: 1.0
@@ -33,6 +34,7 @@ classes:
     stop_tau_s: 0.5
     model_switch_rate: 1.0
     initial_speed_std: 2.0
+    max_speed_mps: 8           # a sprint: gates a new track's second sighting
   cyclist:        # bicycles and boda-bodas: vehicle speeds, weave far more
     accel_std: 3.0
     yaw_accel_std: 1.5
@@ -40,6 +42,7 @@ classes:
     stop_tau_s: 0.6
     model_switch_rate: 1.0
     initial_speed_std: 6.0
+    max_speed_mps: 25           # a fast boda-boda: gates a new track's second sighting
   sign:           # static; tracked so it can be confirmed across frames and kept in view
     accel_std: 0.1
     yaw_accel_std: 0.01
@@ -47,6 +50,7 @@ classes:
     stop_tau_s: 0.5
     model_switch_rate: 0.1
     initial_speed_std: 0.5
+    max_speed_mps: 1           # static: gates a new track's second sighting
   obstacle:       # large animals: erratic, and they can bolt
     accel_std: 3.0
     yaw_accel_std: 1.5
@@ -54,6 +58,7 @@ classes:
     stop_tau_s: 0.5
     model_switch_rate: 1.5
     initial_speed_std: 3.0
+    max_speed_mps: 15           # a bolting animal: gates a new track's second sighting
   unclassified:   # LiDAR clusters no camera mask explains (Part 8.3 rule 6): assume little
     accel_std: 3.0
     yaw_accel_std: 1.0
@@ -61,3 +66,4 @@ classes:
     stop_tau_s: 0.6
     model_switch_rate: 1.0
     initial_speed_std: 6.0
+    max_speed_mps: 45           # assume a vehicle: gates a new track's second sighting

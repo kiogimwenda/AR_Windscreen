@@ -2087,3 +2087,87 @@ read page by page).
 
 **Not committed:** the PDF itself (`docs/Tomtom's terms.pdf`), which is TomTom's copyrighted
 document.
+
+## 2026-09-27 — Phase 10: RecklessDrivingDetector and DecisionArbiter (Parts 9.2, 9.3)
+
+**What:**
+- **`safety/RecklessDrivingDetector.h/.cpp`:**
+  - `toEgoFrame` (vehicle-frame position, bumper gap, closing speed including the rotating-frame
+    term, ego-path corridor on the yaw-rate arc, confirmed, measured-range freshness);
+  - seven rules: tailgating (sustained 1 s), erratic speed (detrended), swerving (parabola-
+    detrended lateral spread), sudden braking (IMM STOP probability), crossing (predictor CPA and
+    probability), forward-collision warning band, vulnerable road user in path;
+  - risk r and threat level per the overlay design.
+- **`decision/DecisionArbiter.h/.cpp`:**
+  - the four rules of 9.3, with every condition of rule 1 explicit (arming, object conditions,
+    finite values, bumper gap);
+  - the triple intensity clamp;
+  - `step()` writes the evidence trail (active requests and releases, with context).
+- **Config:**
+  - `decision_thresholds.yaml`: `brake_request_intensity`, `ego_path_half_width_m`,
+    `min_closing_speed_mps`, `hub_state_max_age_ms`;
+  - `vehicle_params.yaml`: `front_bumper_from_rear_axle_m`, `half_width_m`;
+  - `motion_prediction.yaml`: `max_speed_mps` per class;
+  - SystemManager now rejects a ceiling above the hub's 90.
+- **Tracker:** `ObjectMeasurement.rangeMeasured`, `Track.lastMeasuredRangeMs`,
+  `Track.velocityKnown`.
+- Guide 9.2, 9.3 and 12.5 amended.
+
+**Defects found and fixed:**
+1. **Tracker: fast objects never confirmed (Phase 7 defect).** The second sighting was gated with
+   a velocity-less prior (~0.5 m reach), so a car at 20 m/s restarted its track every frame.
+   *Fix:* a max-speed birth gate.
+2. **Tracker: two-point initiation dragged the position back** up to 1.5 m for off-axis fast
+   objects, and the third sighting was rejected. *Fix:* re-seed position, velocity and
+   cross-covariance from the two measurements.
+   - *Regression tests:* `FastVehicleIsTrackedFromItsFirstSightings` (33 m/s, three directions),
+     `FastNeighboursKeepSeparateTracks`.
+3. **UB in `RoadSurfaceProjector`** (Phase 9): the patch-grid key left-shifted negative
+   integers. Found by UBSan. *Fix:* unsigned packing.
+4. **Test bugs found by AddressSanitizer:**
+   - `test_decision_arbiter`: pointers into a reallocating vector → deque;
+   - `test_reckless_driving`: pointers into temporaries (these produced a spurious failure that
+     first looked like a detector bug);
+   - `test_postprocess` (Phase 5): a range-for over an element of a temporary.
+5. **Two unrealistic test scenarios corrected.** The first surge and weave demanded ~1 g. They
+   now use 3.5–5.2 m/s², and the real motion config.
+
+**Requirement changed after measuring (disclosed):**
+- The swerve threshold went from 0.35 to 0.25 m, from a discrimination table (lateral spread):
+
+| Case | Lateral spread |
+|---|---|
+| Weaves (A 0.5–0.8 m, P 2–3 s) | 0.28–0.45 m |
+| Lane changes (3–6 s) | ≤ 0.155 m |
+| Turns (R 25–80 m) | ≤ 0.068 m |
+| Slow weave (P 4 s) | 0.175 m |
+
+- The slow weave cannot be separated from a lane change in 3 s of history: a documented limit.
+
+**Verification:**
+- **`test_decision_arbiter`, 18 tests: the Phase 10 gate, passing.**
+  - every rule, positive and negative;
+  - each arming condition;
+  - each object condition; NaN and infinity;
+  - rule priority; rule 3 never actuating; the zeroed default;
+  - **ceiling:**
+    - fuzz over 200,000 random cycles with random, invalid thresholds: every BRAKE within all
+      three ceilings and all preconditions, more than 1,000 BRAKEs reached;
+    - bad thresholds built in code still clamp to 90;
+    - the real config against the firmware's ceiling (the firmware constant arrives in
+      Phase 12; until then, checked against the documented 90);
+  - the evidence trail;
+  - end to end through the real tracker: a lead car braking at 6 m/s² → **first BRAKE at a true
+    TTC of 1.70 s** (required 1.2–1.9 s);
+  - no phantom braking: steady follow, oncoming in the next lane, parked car outside a bend;
+  - bumper-offset TTC.
+- `test_reckless_driving`: 10 tests. `test_multi_object_tracker`: 14 tests.
+- **Mutations:** 6 arbiter mutants (pedal ignored, always armed, no hub clamp, unconfirmed
+  allowed, unmeasured range allowed, no bumper offset) are all caught. The last needed a new
+  test, `TimeToCollisionIsMeasuredFromTheFrontBumper`.
+- **The whole unit suite under ASan and UBSan: 204/204.** Normal build: 205/205. OSRM 9/9.
+  clang-format 18 and 22 clean.
+
+**Phase 10 status:**
+- Exit criterion met: `test_decision_arbiter.cpp` passes in full, including the ceiling tests.
+- The firmware ceiling cross-check becomes exact when Phase 12 defines `kMaxSafeIntensity`.

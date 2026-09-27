@@ -270,11 +270,14 @@ ProjectedRoute RoadSurfaceProjector::project(const Route& route,
 
     // Ground patch lookup: 2-D grid with cells of the search radius.
     const double cell = cfg_.patchRadiusM;
+    // Cell indices are negative behind or to the right of the car. Left-shifting a negative value
+    // is undefined behaviour before C++20 (UBSan found it), so the halves are packed as unsigned.
     auto key = [&](double x, double y) {
-        return (static_cast<long long>(std::floor(x / cell)) << 32) ^
-               (static_cast<long long>(std::floor(y / cell)) & 0xffffffffLL);
+        const auto ix = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::floor(x / cell)));
+        const auto iy = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::floor(y / cell)));
+        return (static_cast<std::uint64_t>(ix) << 32) | iy;
     };
-    std::unordered_map<long long, std::vector<const Eigen::Vector3f*>> grid;
+    std::unordered_map<std::uint64_t, std::vector<const Eigen::Vector3f*>> grid;
     for (const auto& p : ground.nearFieldPatch) grid[key(p.x(), p.y())].push_back(&p);
     const double flatZ = ground.planeHeightAt(0, 0);
 

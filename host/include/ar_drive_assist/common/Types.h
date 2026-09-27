@@ -34,7 +34,18 @@ struct VehicleParams {
     std::string obdPidBrakeActive;  // empty = the vehicle does not expose it
     std::string serialDevice;
     int serialBaud = 0;
+    // Added in Phase 10. Tracked positions are measured from the rear axle (the vehicle frame's
+    // origin, Part 12.2), but time-to-collision must use the gap from the FRONT BUMPER; without
+    // this every range reads several metres long and braking comes late.
+    double frontBumperFromRearAxleM = 0.0;
+    double halfWidthM = 0.0;
 };
+
+// The hub's own brake ceiling, BrakeActuatorDriver::kMaxSafeIntensity (firmware, Part 4.4): the
+// documented starting value, finalised by the Part 13.3 bench test. The host's configured ceiling
+// may never exceed it. test_decision_arbiter.cpp cross-checks this against the firmware header
+// once the constant exists there (Phase 12).
+constexpr std::uint8_t kHubMaxSafeBrakeIntensity = 90;
 
 // config/decision_thresholds.yaml (Part 12.5)
 struct DecisionThresholds {
@@ -42,6 +53,11 @@ struct DecisionThresholds {
     double hardBrakeDecelG = 0.0;
     double tailgatingMinGapS = 0.0;
     std::uint8_t brakeActuatorMaxIntensity = 0;
+    // Added in Phase 10 (Part 9.3):
+    std::uint8_t brakeRequestIntensity = 0;  // the "<tuned value>" of rule 1; <= the ceiling
+    double egoPathHalfWidthM = 0.0;          // an object is "in lane" within this of the ego path
+    double minClosingSpeedMps = 0.0;         // below this, no time-to-collision is computed
+    double hubStateMaxAgeMs = 0.0;           // older hub reports mean "not known to be armed"
 };
 
 struct Config {

@@ -20,7 +20,7 @@ constexpr int kVehicle = 0, kPedestrian = 1;
 const Eigen::Matrix2d kCov = Eigen::Matrix2d::Identity() * 0.15 * 0.15;
 
 ObjectMeasurement meas(double x, double y, int cls) {
-    return ObjectMeasurement{{x, y}, kCov, cls, std::nullopt};
+    return ObjectMeasurement{{x, y}, kCov, cls, std::nullopt, true};
 }
 
 MeasurementBatch batchAt(std::uint64_t ms, std::vector<ObjectMeasurement> m, EgoPose ego = {}) {
@@ -209,4 +209,42 @@ TEST(Tracker, NewTrackLearnsVelocityInAnyDirection) {
         EXPECT_LT(std::abs(ImmFilter::wrap(std::atan2(v.y(), v.x()) - dir)), 0.35)
             << "direction " << dir;
     }
+}
+
+// A car at 120 km/h (33 m/s, 3.3 m per LiDAR frame) must be picked up as ONE track with the right
+// velocity. Before two-point initiation got its own gate, a new track's second sighting was gated
+// with a velocity prior of ~5 m/s about an arbitrary heading: anything faster than ~0.5 m per
+// frame started a new track every frame and was never confirmed (found by the Phase 10 arbiter
+// tests; every car on a real road moves that fast in the world frame).
+TEST(Tracker, FastVehicleIsTrackedFromItsFirstSightings) {
+    for (double dir : {0.0, 1.2, 3.0}) {  // any direction
+        MultiObjectTracker t(
+            loadTrackerConfig(std::string(HOST_SOURCE_DIR) + "/config/motion_prediction.yaml"));
+        for (int k = 0; k < 10; ++k) {
+            const double s = 3.3 * k;
+            t.update(
+                batchAt(100 * k, {meas(20 + s * std::cos(dir), 5 + s * std::sin(dir), kVehicle)}));
+        }
+        ASSERT_EQ(t.tracks().size(), 1u) << "direction " << dir;
+        EXPECT_EQ(t.tracks()[0].id, 1) << "never restarted";
+        EXPECT_EQ(t.tracks()[0].state, TrackState::CONFIRMED);
+        EXPECT_NEAR(t.tracks()[0].filter.velocity().norm(), 33, 2.0) << "direction " << dir;
+    }
+}
+
+// The wider birth gate must not steal: two cars 3.5 m apart in adjacent lanes at 25 m/s keep
+// their own tracks.
+TEST(Tracker, FastNeighboursKeepSeparateTracks) {
+    MultiObjectTracker t(
+        loadTrackerConfig(std::string(HOST_SOURCE_DIR) + "/config/motion_prediction.yaml"));
+    for (int k = 0; k < 20; ++k) {
+        const double x = 20 + 2.5 * k;
+        t.update(batchAt(100 * k, {meas(x, 0, kVehicle), meas(x + 1.0, 3.5, kVehicle)}));
+    }
+    ASSERT_EQ(t.tracks().size(), 2u);
+    const Track* a = findById(t, 1);
+    const Track* b = findById(t, 2);
+    ASSERT_TRUE(a && b);
+    EXPECT_NEAR(a->filter.position().y(), 0, 0.3);
+    EXPECT_NEAR(b->filter.position().y(), 3.5, 0.3);
 }

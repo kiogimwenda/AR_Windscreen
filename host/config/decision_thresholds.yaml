@@ -5,4 +5,14 @@ hard_brake_decel_g: 0.4           # IMU deceleration threshold for hazard-lights
 tailgating_min_gap_s: 1.0         # following-distance-in-seconds threshold
 brake_actuator_max_intensity: 90  # must match BrakeActuatorDriver::kMaxSafeIntensity (Part 4.4).
                                   # test_decision_arbiter.cpp asserts no input combination ever
-                                  # produces a BRAKE request above this value (Part 13.1).
+                                  # produces a BRAKE request above this value (Part 13.1), and
+                                  # SystemManager refuses to start if it exceeds the hub's 90.
+# Added in Phase 10 (Part 9.3):
+brake_request_intensity: 60       # rule 1's requested intensity; <= brake_actuator_max_intensity.
+                                  # A conservative placeholder, set on the bench in Part 13.3.
+ego_path_half_width_m: 1.2        # an object counts as "in lane" within this of the ego path
+                                  # (half the car's width plus a margin)
+min_closing_speed_mps: 0.5        # below this closing speed no time-to-collision is computed
+                                  # (a stopped car 30 m ahead at 0.1 m/s is not a 300 s TTC event)
+hub_state_max_age_ms: 100         # a hub report older than this means "not known to be armed":
+                                  # the hub reports at 50 Hz, so 100 ms is five missed reports

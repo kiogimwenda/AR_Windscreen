@@ -151,6 +151,8 @@ Config SystemManager::loadConfig(const std::string& configDir) {
     if (cfg.vehicle.serialDevice.empty()) vehicle.fail("serial_device", "must not be empty");
     cfg.vehicle.serialBaud = vehicle.get<int>("serial_baud");
     if (cfg.vehicle.serialBaud <= 0) vehicle.fail("serial_baud", "must be > 0");
+    cfg.vehicle.frontBumperFromRearAxleM = vehicle.positive("front_bumper_from_rear_axle_m");
+    cfg.vehicle.halfWidthM = vehicle.positive("half_width_m");
 
     const ConfigFile decision(configDir, "decision_thresholds.yaml");
     cfg.decision.ttcBrakeThresholdS = decision.positive("ttc_brake_threshold_s");
@@ -160,11 +162,24 @@ Config SystemManager::loadConfig(const std::string& configDir) {
     // uint8_t, so a value like 300 is rejected with a message instead of depending on how the
     // conversion treats overflow. A brake ceiling is the last value to let through silently wrong.
     const auto maxIntensity = decision.get<long long>("brake_actuator_max_intensity");
-    if (maxIntensity < 0 || maxIntensity > std::numeric_limits<std::uint8_t>::max()) {
+    // Phase 10 tightened the upper bound from 255 to the hub's own ceiling: a host ceiling above
+    // the hub's is never meaningful, and a typo such as 255 must be a startup error.
+    if (maxIntensity < 0 || maxIntensity > kHubMaxSafeBrakeIntensity) {
         decision.fail("brake_actuator_max_intensity",
-                      "must be 0..255 (value: " + std::to_string(maxIntensity) + ")");
+                      "must be 0.." + std::to_string(kHubMaxSafeBrakeIntensity) +
+                          " (the hub's own ceiling; value: " + std::to_string(maxIntensity) + ")");
     }
     cfg.decision.brakeActuatorMaxIntensity = static_cast<std::uint8_t>(maxIntensity);
+    const auto request = decision.get<long long>("brake_request_intensity");
+    if (request < 0 || request > maxIntensity) {
+        decision.fail("brake_request_intensity", "must be 0..brake_actuator_max_intensity (" +
+                                                     std::to_string(maxIntensity) +
+                                                     "; value: " + std::to_string(request) + ")");
+    }
+    cfg.decision.brakeRequestIntensity = static_cast<std::uint8_t>(request);
+    cfg.decision.egoPathHalfWidthM = decision.positive("ego_path_half_width_m");
+    cfg.decision.minClosingSpeedMps = decision.positive("min_closing_speed_mps");
+    cfg.decision.hubStateMaxAgeMs = decision.positive("hub_state_max_age_ms");
 
     return cfg;
 }

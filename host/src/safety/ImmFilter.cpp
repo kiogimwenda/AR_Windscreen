@@ -247,6 +247,51 @@ void ImmFilter::initialiseVelocity(const Eigen::Vector2d& vel, const Eigen::Matr
     }
 }
 
+void ImmFilter::initialiseTwoPoint(const Eigen::Vector2d& z1, const Eigen::Matrix2d& R1,
+                                   const Eigen::Vector2d& z2, const Eigen::Matrix2d& R2,
+                                   double dt) {
+    // Textbook two-point initiation: the state is re-seeded ENTIRELY from the two measurements.
+    //   position = z2                      cov R2
+    //   velocity = (z2 - z1) / dt          cov (R1 + R2) / dt^2
+    //   cov(position, velocity) = R2 / dt  (z2 appears in both)
+    // The first version only replaced the velocity and then Kalman-updated the position from the
+    // birth prior. That prior is tiny across the arbitrary initial heading, so the position was
+    // pulled back towards the birth point (1.5 m for a car at 33 m/s heading 69 deg), the next
+    // prediction was off, and the third sighting was rejected: the track restarted every two
+    // frames (found by Tracker.FastVehicleIsTrackedFromItsFirstSightings).
+    const Eigen::Vector2d vel = (z2 - z1) / dt;
+    initialiseVelocity(vel, (R1 + R2) / (dt * dt));
+    const double v = vel.norm();
+    Eigen::Matrix2d J = Eigen::Matrix2d::Zero();  // d(v, psi) / d(vx, vy), as in initialiseVelocity
+    if (v >= 1e-6) {
+        const double psi = std::atan2(vel.y(), vel.x());
+        J << std::cos(psi), std::sin(psi), -std::sin(psi) / v, std::cos(psi) / v;
+    }
+    const Eigen::Matrix2d crossCart = R2 / dt;  // cov(position, velocity), Cartesian
+    const Eigen::Matrix2d crossPolar = crossCart * J.transpose();  // cov(position, (v, psi))
+    for (int j = 0; j < kNumModels; ++j) {
+        x_[j](PX) = z2.x();
+        x_[j](PY) = z2.y();
+        P_[j].topRows<2>().setZero();
+        P_[j].leftCols<2>().setZero();
+        P_[j].topLeftCorner<2, 2>() = R2;
+        for (int r = 0; r < 2; ++r) {
+            P_[j](r, V) = P_[j](V, r) = crossPolar(r, 0);
+            P_[j](r, PSI) = P_[j](PSI, r) = crossPolar(r, 1);
+        }
+        // The heading variance may have been capped at pi^2; keep P positive semi-definite by
+        // shrinking the cross terms if needed.
+        Eigen::LLT<Cov> llt(P_[j]);
+        for (double f = 0.9; llt.info() != Eigen::Success && f > 0.01; f *= 0.7) {
+            for (int r = 0; r < 2; ++r) {
+                P_[j](r, V) = P_[j](V, r) = f * crossPolar(r, 0);
+                P_[j](r, PSI) = P_[j](PSI, r) = f * crossPolar(r, 1);
+            }
+            llt.compute(P_[j]);
+        }
+    }
+}
+
 void ImmFilter::predict(double dt) {
     if (dt <= 0.0) return;
     mix(dt);

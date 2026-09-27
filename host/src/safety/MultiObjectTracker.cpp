@@ -19,6 +19,14 @@ bool classesCompatible(int32_t track, int32_t meas) {
 
 }  // namespace
 
+double TrackerConfig::maxSpeedFor(int32_t cls) const {
+    constexpr double kDefaultMaxSpeedMps = 45.0;
+    auto it = maxSpeedByClass.find(cls);
+    if (it != maxSpeedByClass.end()) return it->second;
+    it = maxSpeedByClass.find(-1);
+    return it != maxSpeedByClass.end() ? it->second : kDefaultMaxSpeedMps;
+}
+
 MotionNoise TrackerConfig::noiseFor(int32_t cls) const {
     const auto it = noiseByClass.find(cls);
     if (it != noiseByClass.end()) return it->second;
@@ -58,6 +66,11 @@ TrackerConfig loadTrackerConfig(const std::string& path) {
         m.stopTau = req(n, "stop_tau_s").as<double>();
         m.switchRate = req(n, "model_switch_rate").as<double>();
         m.initialSpeedStd = req(n, "initial_speed_std").as<double>();
+        const double vmax = req(n, "max_speed_mps").as<double>();
+        if (vmax <= 0)
+            throw std::runtime_error("config: " + path + ": class '" + name +
+                                     "' max_speed_mps <= 0");
+        c.maxSpeedByClass[id] = vmax;
         if (m.accelStd <= 0 || m.stopTau <= 0 || m.initialSpeedStd <= 0) {
             throw std::runtime_error("config: " + path + ": class '" + name +
                                      "' has a non-positive noise value");
@@ -139,7 +152,22 @@ void MultiObjectTracker::process(const MeasurementBatch& batch) {
             for (size_t j = 0; j < batch.measurements.size(); ++j) {
                 const bool ok =
                     classesCompatible(tracks_[i].objectClass, batch.measurements[j].objectClass);
-                cost[i][j] = ok ? tracks_[i].filter.mahalanobis2(zw[j], Rw[j]) : kReject;
+                if (!ok) {
+                    cost[i][j] = kReject;
+                } else if (!tracks_[i].velocityKnown) {
+                    // Two-point initiation gate: any direction, up to the class's top speed.
+                    const double dt = (t - tracks_[i].lastUpdateMs) / 1000.0;
+                    const int32_t cls = tracks_[i].objectClass >= 0
+                                            ? tracks_[i].objectClass
+                                            : batch.measurements[j].objectClass;
+                    const double reach = cfg_.maxSpeedFor(cls) * dt / 3.0;
+                    const Eigen::Matrix2d S = tracks_[i].filter.covariance().topLeftCorner<2, 2>() +
+                                              Rw[j] + reach * reach * Eigen::Matrix2d::Identity();
+                    const Eigen::Vector2d d = zw[j] - tracks_[i].filter.position();
+                    cost[i][j] = d.dot(S.inverse() * d);
+                } else {
+                    cost[i][j] = tracks_[i].filter.mahalanobis2(zw[j], Rw[j]);
+                }
             }
         }
         const std::vector<int> a = hungarian(cost);
@@ -155,21 +183,23 @@ void MultiObjectTracker::process(const MeasurementBatch& batch) {
         Track& tr = tracks_[trackOf[j]];
         const ObjectMeasurement& m = batch.measurements[j];
         if (tr.hits == 1 && t > tr.lastUpdateMs) {
-            // Second sighting: two-point initialisation of speed and heading (see
-            // ImmFilter::initialiseVelocity). The velocity covariance follows from the two
-            // positions' covariances.
+            // Second sighting: two-point initiation (ImmFilter::initialiseTwoPoint) re-seeds
+            // position AND velocity from the two measurements, so this measurement is not applied
+            // again as an update.
             const double dt = (t - tr.lastUpdateMs) / 1000.0;
             const Eigen::Vector2d first = tr.history.back().second.head<2>();
-            const Eigen::Matrix2d firstCov = tr.birthCov;
-            tr.filter.initialiseVelocity((zw[j] - first) / dt, (firstCov + Rw[j]) / (dt * dt));
+            tr.filter.initialiseTwoPoint(first, tr.birthCov, zw[j], Rw[j], dt);
+            tr.velocityKnown = true;
+        } else {
+            tr.filter.updatePosition(zw[j], Rw[j]);
         }
-        tr.filter.updatePosition(zw[j], Rw[j]);
         if (m.headingVehicle) tr.filter.updateHeadingModPi(batch.ego.psi + *m.headingVehicle, 0.1);
         if (tr.objectClass < 0 && m.objectClass >= 0) tr.objectClass = m.objectClass;
         matched[trackOf[j]] = true;
         ++tr.hits;
         tr.misses = 0;
         tr.lastUpdateMs = t;
+        if (m.rangeMeasured) tr.lastMeasuredRangeMs = t;
         if (tr.state == TrackState::PREDICTED_ONLY ||
             (tr.state == TrackState::TENTATIVE && tr.hits >= cfg_.confirmHits)) {
             tr.state = TrackState::CONFIRMED;
@@ -215,6 +245,7 @@ void MultiObjectTracker::process(const MeasurementBatch& batch) {
         tr.hits = 1;
         tr.birthCov = Rw[j];
         tr.lastUpdateMs = tr.lastTimeMs = t;
+        if (m.rangeMeasured) tr.lastMeasuredRangeMs = t;
         tracks_.push_back(std::move(tr));
     }
 

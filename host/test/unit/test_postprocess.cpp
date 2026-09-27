@@ -289,7 +289,10 @@ TEST(DecodeUfld, LargeLogitsStayFinite) {
         t.rowLane(1, k, 5);
         t.locRow[(5 * t.p.numClsRow + k) * t.p.numLanes + 1] = 500.0f;
     }
-    for (const auto& pt : t.decode(kUnitBand)[1]) {
+    // Named first: iterating t.decode(...)[1] directly ranges over an element of a destroyed
+    // temporary (AddressSanitizer found it; range-for does not extend the life of the array).
+    const auto lanes = t.decode(kUnitBand);
+    for (const auto& pt : lanes[1]) {
         ASSERT_TRUE(std::isfinite(pt.x));
     }
 }

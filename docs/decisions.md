@@ -715,3 +715,35 @@ clauses below is affected. This is a reading of the terms, not legal advice.
 
 **The terms PDF is not committed.** It is TomTom's copyrighted document, and a 6 MB binary; the
 reference above is the URL.
+
+## Phase 10 — Decision / Arbiter
+
+**Rule 1's conditions are explicit and each is tested:**
+- ARMED means: a fresh hub report (≤ 100 ms), kill switch off, an AckStatus with no fault, and a
+  healthy EventLog. Unknown is not armed.
+- Only a CONFIRMED track with a LiDAR-measured range (≤ 200 ms), in the ego path, closing, with
+  finite values, may brake.
+- The gap is measured from the front bumper.
+
+**Triple clamp on the brake intensity:** `brake_request_intensity`, then
+`brake_actuator_max_intensity`, then the hub's compiled 90. SystemManager refuses a configured
+ceiling above 90. The Phase 3 loader accepted up to 255, and that test was changed deliberately.
+
+**The warning and the brake share one ego-frame computation (`toEgoFrame`),** so they cannot
+disagree about what is in the lane.
+
+**Tailgating = the ego car's time gap to its lead**, matching the overlay design's
+following-distance zone.
+
+**Swerving threshold 0.25 m, from a discrimination table.** Slow weaves (period ~4 s) are not
+separable from quick lane changes in a 3 s history, and are not flagged (documented limit).
+
+**Tracker two-point initiation fixed (Phase 7 defect, found by Phase 10):**
+1. **The second sighting of a new track is gated by the class's maximum plausible speed in any
+   direction** (`max_speed_mps` in motion_prediction.yaml), not by the velocity-less filter.
+   Before, any object moving more than ~0.5 m per frame, which includes every car on a real road
+   in the world frame, restarted its track every frame and was never confirmed.
+2. **Two-point initiation re-seeds position AND velocity** from the two measurements (with the
+   consistent cross-covariance) instead of Kalman-updating the position from the birth prior.
+   The prior's thin covariance dragged the position back up to 1.5 m for fast objects travelling
+   off-axis.

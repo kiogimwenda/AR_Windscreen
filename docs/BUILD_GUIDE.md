@@ -1164,6 +1164,52 @@ own tests and bench evidence.
 
 Every `ActuationRequest` this class produces is written to the `EventLog` with the full evaluation context (TTC value, range, closing speed, which rule fired) *before* being sent to `VehicleInterface` — this is the data that becomes your report's and viva's actuation-evidence trail (Part 16).
 
+*Amended 2026-09-27 (Phase 10): what rule 1 checks, made explicit.* The four rules are
+unchanged. The implementation (`decision/DecisionArbiter.h`) spells out every condition, and
+each is tested:
+
+**ARMED requires all of the following** (unknown counts as not armed):
+- a hub `SensorReport` no older than `hub_state_max_age_ms` (100 ms, five missed 50 Hz reports);
+- `killSwitchEngaged == 0`;
+- an `AckStatus` received, with `actuatorFaultCode == 0`;
+- the `EventLog` still `healthy()`. A system that cannot record actuation evidence must not
+  actuate (the Phase 3 hook).
+
+**An object may trigger rule 1 only if all of the following hold:**
+- it is CONFIRMED: not tentative, and not `PREDICTED_ONLY` coasting while unseen;
+- its range was MEASURED by the LiDAR within 200 ms, never a MiDaS estimate (8.3 rule 5; tracks
+  carry `lastMeasuredRangeMs`);
+- it is in the ego path, a corridor of `ego_path_half_width_m` about the arc the car is driving
+  (curvature = yaw rate / speed);
+- it is closing faster than `min_closing_speed_mps`;
+- every number involved is finite.
+
+**The gap is from the FRONT BUMPER** (`vehicle_params.yaml: front_bumper_from_rear_axle_m`).
+Tracked positions are from the rear axle, so without this every range reads several metres long.
+
+**The intensity** is `brake_request_intensity`, clamped to both `brake_actuator_max_intensity`
+and the hub's compiled ceiling. `SystemManager` refuses to start if the configured ceiling exceeds
+the hub's 90 (Phase 3 accepted 0–255).
+
+**Logging.** `step()` logs every non-NONE request and the first NONE after one (the release),
+with its context. Idle NONE cycles are not logged.
+
+**Rule 3's warnings, and the renderer's hazard glow, come from `RecklessDrivingDetector`
+(9.2).** It shares the arbiter's ego-frame computation (`toEgoFrame`), so a warning and a brake
+decision can never disagree about what is in the lane.
+
+*Amended 2026-09-27 (Phase 10): 9.2 as built.*
+- **Tailgating** is the EGO car's time gap to the vehicle directly ahead (the following-distance
+  zone of the overlay design), below `tailgating_min_gap_s` for over 1 s at more than 3 m/s.
+- **Erratic speed** is the spread of speed AFTER removing a straight-line trend, so smooth
+  acceleration is not erratic.
+- **Swerving** is the lateral spread after removing a parabola along the vehicle's own direction
+  of travel, so a steady turn is not a swerve. The threshold is 0.25 m, from a discrimination
+  table: weaves 0.28–0.45 m, lane changes ≤ 0.155 m, turns ≤ 0.068 m.
+  - **Limit:** within the tracker's 30-state (3 s) history, a slow weave (period ~4 s) is
+    indistinguishable from a quick lane change and is not flagged. A longer history is the fix.
+- **Risk `r`** follows the overlay design §3.1. Sudden braking ahead also sets the 0.4 floor.
+
 ---
 
 ## Part 10 — AR Renderer and Display Sink
@@ -1688,7 +1734,7 @@ This is not a one-time calibration like 12.1/12.2 — it's a repeatable sanity c
 
 ### 12.5 Decision thresholds
 
-`config/decision_thresholds.yaml` starts with conservative placeholder values and is tuned during Part 13's field testing, never guessed once and left alone:
+`config/decision_thresholds.yaml` starts with conservative placeholder values and is tuned during Part 13's field testing, never guessed once and left alone. *(Phase 10 added `brake_request_intensity`, `ego_path_half_width_m`, `min_closing_speed_mps` and `hub_state_max_age_ms`, all required; see 9.3's amendment and the file's comments. `vehicle_params.yaml` gained `front_bumper_from_rear_axle_m` and `half_width_m`, to be measured on the test vehicle in Phase 14.)*
 ```yaml
 ttc_brake_threshold_s: 1.8      # time-to-collision below which a brake request is emitted
 hard_brake_decel_g: 0.4         # IMU deceleration threshold for hazard-lights-on

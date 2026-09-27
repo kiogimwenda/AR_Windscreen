@@ -101,6 +101,23 @@ target_link_libraries(test_road_surface_projector PRIVATE Eigen3::Eigen ar_schem
 target_compile_definitions(test_road_surface_projector PRIVATE
                            HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
+# --- Phase 10 ---------------------------------------------------------------------------------
+# The hard gate before Phase 12 (Part 14): test_decision_arbiter must pass in full, including the
+# ceiling tests. It loads the real config files and reads the firmware's brake driver header.
+set(PHASE7_SAFETY ${HOST_SRC}/safety/MultiObjectTracker.cpp ${HOST_SRC}/safety/ImmFilter.cpp
+                  ${HOST_SRC}/safety/Hungarian.cpp ${HOST_SRC}/safety/MotionPredictor.cpp
+                  ${HOST_SRC}/safety/RecklessDrivingDetector.cpp)
+add_unit_test(test_reckless_driving test_reckless_driving.cpp ${PHASE7_SAFETY})
+target_link_libraries(test_reckless_driving PRIVATE Eigen3::Eigen yaml-cpp::yaml-cpp)
+target_compile_definitions(test_reckless_driving PRIVATE
+                           HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
+add_unit_test(test_decision_arbiter test_decision_arbiter.cpp ${PHASE7_SAFETY}
+              ${HOST_SRC}/decision/DecisionArbiter.cpp ${HOST_SRC}/system/SystemManager.cpp
+              ${HOST_SRC}/system/EventLog.cpp)
+target_link_libraries(test_decision_arbiter PRIVATE Eigen3::Eigen yaml-cpp::yaml-cpp ar_schemas
+                      Threads::Threads)
+target_compile_definitions(test_decision_arbiter PRIVATE
+                           HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
+
 # --- Later phases (targets added as each phase implements its subsystem) ------------------------
 # Phase 7:  test_multi_object_tracker.cpp, test_motion_predictor.cpp, test_mask_lidar_fusion.cpp
-# Phase 10: test_decision_arbiter.cpp
