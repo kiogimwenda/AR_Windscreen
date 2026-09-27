@@ -94,7 +94,13 @@ target_link_libraries(test_map_matcher PRIVATE ar_schemas)
 add_unit_test(test_road_status test_road_status.cpp ${HOST_SRC}/nav/RoadStatus.cpp
               ${HOST_SRC}/nav/Route.cpp)
 
+# --- Phase 9 ----------------------------------------------------------------------------------
+add_unit_test(test_road_surface_projector test_road_surface_projector.cpp
+              ${HOST_SRC}/nav/RoadSurfaceProjector.cpp ${HOST_SRC}/nav/Route.cpp)
+target_link_libraries(test_road_surface_projector PRIVATE Eigen3::Eigen ar_schemas yaml-cpp::yaml-cpp)
+target_compile_definitions(test_road_surface_projector PRIVATE
+                           HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
+
 # --- Later phases (targets added as each phase implements its subsystem) ------------------------
 # Phase 7:  test_multi_object_tracker.cpp, test_motion_predictor.cpp, test_mask_lidar_fusion.cpp
-# Phase 9:  test_road_surface_projector.cpp                       (adds Eigen3)
 # Phase 10: test_decision_arbiter.cpp

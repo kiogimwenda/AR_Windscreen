@@ -15,6 +15,11 @@ table RoadOverlayPoint {
   image_x: float; image_y: float;
   world_distance_m: float;
   on_measured_surface: bool;   // true = locked to real LiDAR ground geometry, false = flat-ground fallback
+  // Appended in Phase 9 (fields may only be appended). The vehicle-frame position (x forward,
+  // y left, z up, metres) at pose_timestamp_ms: the renderer needs it to draw a road-space band
+  // and to move the line with the car's own motion up to the displayed frame (Part 10.3).
+  x_m: float; y_m: float; z_m: float;
+  in_image: bool;              // image_x/image_y are only meaningful when true
 }
 
 table RoadProjectedRoute {
@@ -22,5 +27,8 @@ table RoadProjectedRoute {
   polyline: [RoadOverlayPoint];
   next_turn_instruction: string;
   next_turn_distance_m: float;
+  // Appended in Phase 9.
+  pose_timestamp_ms: ulong;    // the fused pose the vehicle-frame points belong to
+  lane_corrected: bool;        // the lane model corrected the line this frame
 }
 root_type RoadProjectedRoute;

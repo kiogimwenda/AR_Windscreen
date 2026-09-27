@@ -47,17 +47,6 @@ bool inBox(const Box& b, const Eigen::Vector2d& px) {
 
 }  // namespace
 
-bool CameraModel::project(const Eigen::Vector3d& pc, Eigen::Vector2d& px) const {
-    if (pc.z() <= 0.1) return false;
-    const double x = pc.x() / pc.z(), y = pc.y() / pc.z();
-    const double r2 = x * x + y * y;
-    const double radial = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
-    const double xd = x * radial + 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
-    const double yd = y * radial + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
-    px = {fx * xd + cx, fy * yd + cy};
-    return px.x() >= 0 && px.y() >= 0 && px.x() < width && px.y() < height;
-}
-
 ObjectMask erodeMask(const ObjectMask& m, int cells) {
     ObjectMask out = m;
     for (int it = 0; it < cells; ++it) {

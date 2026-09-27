@@ -54,18 +54,12 @@
 #include <optional>
 #include <vector>
 
+#include "ar_drive_assist/common/Camera.h"
 #include "ar_drive_assist/inference/Postprocess.h"
 
 namespace ar_drive_assist {
 
-struct CameraModel {  // config/camera_intrinsics.yaml (Part 12.1)
-    double fx = 1000, fy = 1000, cx = 960, cy = 540;
-    int width = 1920, height = 1080;
-    double k1 = 0, k2 = 0, p1 = 0, p2 = 0, k3 = 0;  // OpenCV distortion model
-
-    // Camera-frame point (x right, y down, z forward) -> raw image pixel. False if behind.
-    bool project(const Eigen::Vector3d& pc, Eigen::Vector2d& px) const;
-};
+// CameraModel: common/Camera.h (shared with RoadSurfaceProjector).
 
 struct FusionExtrinsics {                // Part 12.2 / 12.2.1 (ExtrinsicMonitor's current state)
     Eigen::Isometry3d cameraFromLidar;   // LiDAR frame -> camera frame

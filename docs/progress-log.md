@@ -1983,3 +1983,70 @@ Murang'a and Naivasha.
   - The recorded-track exit check needs a real GPX from Ian (`nav_replay`).
   - `LiveRoadStatus` is deferred until its three gates are checked.
 - Not wired into `main` yet: the navigation thread belongs with the full pipeline (Phase 11).
+
+## 2026-09-27 — Sign detector v3 evaluated and rejected; v2 stays
+
+**What:**
+- Stopped v3 at epoch 27 by request. Its best was epoch 1, and its own validation mAP50-95
+  drifted from 0.573 to 0.544. Resuming had reset the early-stopping counter, so patience never
+  fired (noted in the experiment report).
+- Compared v2 and v3 fairly on v2's unmasked validation set, and on the 300 Kenyan images.
+
+**Result:**
+- **v2 is better:** mAP50 0.716 vs 0.702, mAP50-95 0.581 vs 0.564, recall 0.612 vs 0.598. v3's
+  precision is slightly higher (0.829 vs 0.816).
+- **In Kenya, v3 is worse on speed limits:**
+  - a correct 30 fell below the display floor;
+  - the 30 → 50 misread became more confident (0.798).
+  
+  Both crops were verified by eye as clear 30s.
+
+**Decision:** keep v2 (already the integrated engine). Report §9, decisions entry.
+
+## 2026-09-27 — Phase 9: `RoadSurfaceProjector` (Part 11.4)
+
+**What:**
+- **`nav/RoadSurfaceProjector.h/.cpp`:**
+  1. anchor at the matched progress, and take the route geometry ahead in the route's frame;
+  2. place the car from the fused pose (lateral offset and relative heading);
+  3. lane correction (heading plus lateral, rate-capped per frame, decay, taper after the next
+     turn, reset on a new road);
+  4. heights (measured patch, then plane, then flat);
+  5. projection through the shared camera model;
+  6. next-turn instruction; `toMessage()`.
+- **Supporting changes:**
+  - `common/Camera.h`: `CameraModel` moved from SceneReconstruction, plus `unproject` and
+    `cameraFromVehicle` from roll/pitch/yaw;
+  - `lidar/GroundPlaneModel.h`: the type defined (Phase 6 fills it);
+  - schema fields appended;
+  - `config/road_projection.yaml` extended;
+  - guide 11.4 amended.
+
+**Why:** Part 11.4, the road-locked navigation line, is a primary objective.
+
+**Verification:**
+- **15 unit tests, all expected values by hand:**
+  - straight road, including the exact pixel row;
+  - offset and yawed car;
+  - 200 m-radius curve;
+  - 5% measured uphill with flat fallback beyond 30 m, drawn higher in the image than a flat
+    road;
+  - patch gap → plane, unmeasured;
+  - lane correction reaching 1.75 m in two capped frames, and one bad frame moving at most 1 m;
+  - a 2° compass error corrected by the lanes;
+  - decay without lanes;
+  - taper after a turn;
+  - reset on the next road;
+  - turn instructions;
+  - pixel → ground through a distorted lens on a pitched camera;
+  - invalid match;
+  - the message;
+  - the real config file.
+- **Mutations, each caught:** no rate cap, no taper, flipped heading sign, ignored patch.
+- Unit suite 174/174; OSRM integration 9/9; clang-format 18 and 22 clean.
+
+**Phase 9 status:**
+- Software done.
+- **Open:** the exit check (a debug overlay tracking the correct lane on a real stretch) needs
+  the camera, LiDAR and GPS running together. That is blocked on hardware (Phase 6), like
+  Phase 7's check.

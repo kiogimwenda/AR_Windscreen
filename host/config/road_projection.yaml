@@ -1,5 +1,15 @@
-# RoadSurfaceProjector tuning — see docs/BUILD_GUIDE.md Part 11.4.
+# RoadSurfaceProjector tuning — see docs/BUILD_GUIDE.md Part 11.4 (amended in Phase 9).
 horizon_m: 60                    # how far ahead to project the route line
 waypoint_spacing_m: 1.5
 lateral_correction_max_m: 1.0    # caps how far a single lane-detection frame can nudge the line
-                                 # sideways, so one bad detection can't fling the overlay across lanes
+                                 # sideways, so one bad detection can't fling the overlay across lanes.
+                                 # A per-FRAME limit on a persistent correction: a real 1.75 m lane
+                                 # offset is still reached in two frames.
+heading_correction_max_deg: 1.0  # the same, for the heading correction the lanes give (a car
+                                 # compass is good to ~3 deg: 3 m sideways at 60 m)
+lane_fit_min_m: 5                # lane boundaries are fitted between these distances ahead
+lane_fit_max_m: 30
+correction_decay_s: 10           # with no lanes, the corrections fade with this time constant
+taper_after_turn_m: 10           # the lateral (lane) correction fades out over this distance
+                                 # after the next turn: the lane on the new road is not known yet
+patch_radius_m: 1.0              # measured-ground points within this radius give a point's height

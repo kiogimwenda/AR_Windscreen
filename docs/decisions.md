@@ -610,3 +610,36 @@ a U-turn across a dual carriageway.
 **`LiveRoadStatus` (TomTom) is deferred until its three gates are checked** (access and cost,
 Nairobi quality, terms). `RoadStatus` already holds provider-neutral live records, so the adapter
 is the only missing piece.
+
+**Sign detector: v2 stays deployed; v3 (ambiguous signs painted out) is rejected (2026-09-27).**
+On v2's unmasked validation set, v3 was lower on mAP50 (0.702 vs 0.716), mAP50-95 (0.564 vs 0.581)
+and recall. On Kenyan imagery it lost a correct 30 below the 0.5 floor and grew more confident in
+a 30 → 50 misread (0.798 vs 0.574). Details: `docs/experiments/2026-09-26-sign-detector.md` §9.
+Speed-digit errors are the next target: a digit-reading second stage, and Kenyan data.
+
+## Phase 9 — Road-surface projector
+
+**The projector outputs vehicle-frame 3D points as well as image points, with their pose
+timestamp.** Fields are appended to `road_projected_route.fbs`. The renderer needs 3D to draw a
+road-space band and to move the line with ego motion.
+
+**Lanes give two corrections.** Heading is a pose error, so it rotates the whole line. Lateral is
+the lane position: it holds along the current road and tapers out after the next turn.
+`lateral_correction_max_m` is applied as a per-frame rate limit on a persistent correction. An
+absolute cap would never reach a normal 1.75 m lane offset from the OSM centre line.
+
+**Heights:**
+- measured patch (onMeasuredSurface);
+- fitted plane where the patch has a gap, NOT marked measured;
+- flat ground beyond the LiDAR's range.
+
+**One camera model (`common/Camera.h`) for fusion and projection,** with an iterative inverse
+distortion for pixel → ground.
+
+**For Phase 11, noted now (Part 10.3 latency compensation):** in video see-through, the driver
+sees a camera frame that is already old. Overlays must be placed where things were **when the
+displayed frame was captured**, not at the display time. Predicting to display time would make
+overlays lead the video they sit on. What compensation must cover is the gap between the
+detection/pose data and the capture time of the frame actually shown: the renderer may show a
+newer frame than the one the detections came from. The 10.3 wording ("predicted for the display
+time") should be read that way, and amended when the renderer is built.

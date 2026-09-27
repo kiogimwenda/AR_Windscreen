@@ -37,3 +37,6 @@ data/datasets/
 
 # Offline OSM extracts and OSRM routing data (Part 11.2; rebuilt by scripts/refresh_osm.sh)
 data/maps/
+
+# Recorded GPS drives (GPX): private location history, never committed (Phase 8 nav_replay)
+data/drives/

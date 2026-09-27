@@ -1531,6 +1531,39 @@ lateral_correction_max_m: 1.0    # caps how far a single lane-detection frame ca
                                   # so one bad detection can't fling the overlay across lanes
 ```
 
+*Amended 2026-09-27 (Phase 9):*
+
+**Output.** Each point carries its **vehicle-frame 3D position** as well as its image position,
+with the pose timestamp it belongs to (`road_projected_route.fbs`, fields appended). The
+renderer needs the 3D points for two things:
+- to draw a road-space band;
+- to move the line with the car's own motion between that pose and the displayed frame (10.3).
+
+Image points alone can do neither.
+
+**Two corrections from the lanes (step 5), not one.** The lane centre line, fitted 5–30 m ahead,
+gives:
+- a **heading** correction. The car's compass is good to ~3°, which is 3 m sideways at 60 m. This
+  is a pose error, so it rotates the whole line.
+- a **lateral** correction. It puts the line in the car's lane rather than on the OSM centre line.
+  It applies along the current road and tapers out over 10 m after the next turn, since the lane
+  on the new road is not known yet.
+
+Both are persistent states. `lateral_correction_max_m` (and the new `heading_correction_max_deg`)
+limit how much ONE frame can change them. That meets the guide's intent ("one bad detection can't
+fling the overlay across lanes"), where an absolute 1 m cap would never reach a normal 1.75 m lane
+offset. Without lanes the corrections decay (10 s time constant). They reset on the next road.
+Both lane boundaries must be found, and the lane width must be 2.3–5 m, or the frame is not used.
+
+**Heights (steps 2–3) in three cases:**
+- **measured:** the mean of near-field patch points within 1 m (`onMeasuredSurface = true`);
+- **the fitted plane:** where the patch has a gap (a car ahead hides the road), marked NOT
+  measured;
+- **flat ground at the car's height:** beyond the LiDAR's range, not measured.
+
+**Camera.** The camera model (`common/Camera.h`) is shared with SceneReconstruction, including
+its inverse (pixel → ground) for the lane points.
+
 ### 11.5 `SystemManager`
 
 ```cpp

@@ -202,3 +202,38 @@ a rule in `docs/architecture/ar-overlay-design.md` §2 (speed limits).
 - Kraków footage: "City Driving 4K – Kraków Poland 2024", Relaxing Roads 4K, CC BY 3.0.
 - Kenyan imagery: KartaView contributors (CC BY-SA 4.0) and the Wikimedia Commons authors listed
   in `data/footage/kenya/*manifest.csv`.
+
+## 9. Addendum (2026-09-27): v3, ambiguous signs painted out — tried and rejected
+
+**What v3 was:** improvement 1 of §7.
+- Retrained from v2's best on `mtsd_yolo_v3`, where ambiguous and uncertain-unit signs are
+  painted grey instead of left visible but unlabelled.
+- Settings: lr0 0.002, 1 warmup epoch, patience 10.
+- It was paused once (after epoch 9) and resumed. Resuming reset ultralytics' early-stopping
+  counter, so the patience never triggered.
+- Stopped by request at epoch 27: its best was epoch 1, and its own (masked) validation
+  mAP50-95 fell from 0.573 to 0.544.
+
+**Fair comparison, on v2's UNMASKED validation set.** 5210 images, imgsz 1280, conf 0.001,
+IoU 0.7, identical for both:
+
+| Model | mAP50 | mAP50-95 | Precision | Recall |
+|---|---|---|---|---|
+| **v2 (best)** | **0.716** | **0.581** | 0.816 | **0.612** |
+| v3 (best = epoch 1) | 0.702 | 0.564 | **0.829** | 0.598 |
+
+(v2's 0.581 here vs 0.572 in §5: this run uses ultralytics' standalone-val defaults. Both models
+were measured the same way.)
+
+**Kenyan imagery (the 300 images of §6, visual audit):**
+- The models agree on every detection at ≥ 0.5 except speed limits, where **v3 is worse on both
+  counts**. Both crops were checked by eye and are unambiguous 30 signs.
+- The Eastern Bypass **30**: v2 0.645 (shown); **v3 0.469 (below the 0.5 floor, lost)**.
+- The known 30 → **50** misread (`nairobi_1319027_00066`): v2 0.574; **v3 0.798**. More confident
+  in the wrong limit, which is the worst direction for the speed display (§7: a wrong limit is
+  worse than a missing one).
+
+**Decision: keep v2.** v3 is rejected: slightly higher precision, at the cost of recall,
+mAP, and a more confident speed misread. Painting out ambiguous signs did not help on its own.
+The speed-digit problem needs improvement 2 (a digit-reading second stage on the native-
+resolution crop) and Kenyan training data, not a relabelled MTSD.
