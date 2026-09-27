@@ -119,5 +119,13 @@ target_link_libraries(test_decision_arbiter PRIVATE Eigen3::Eigen yaml-cpp::yaml
 target_compile_definitions(test_decision_arbiter PRIVATE
                            HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
+# --- Phase 11 ---------------------------------------------------------------------------------
+# The renderer's scene logic (what to draw, where, in which colour). No GPU: WindowedSink itself
+# is checked by tools/render_bench (captured frames) and the gpu-labelled integration test.
+add_unit_test(test_ar_renderer test_ar_renderer.cpp ${HOST_SRC}/render/ArRenderer.cpp
+              ${HOST_SRC}/render/SignTracker.cpp ${HOST_SRC}/render/OverlayScene.cpp
+              ${HOST_SRC}/nav/RoadSurfaceProjector.cpp ${HOST_SRC}/nav/Route.cpp ${PHASE7_SAFETY})
+target_link_libraries(test_ar_renderer PRIVATE Eigen3::Eigen ar_schemas yaml-cpp::yaml-cpp)
+
 # --- Later phases (targets added as each phase implements its subsystem) ------------------------
 # Phase 7:  test_multi_object_tracker.cpp, test_motion_predictor.cpp, test_mask_lidar_fusion.cpp

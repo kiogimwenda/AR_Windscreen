@@ -747,3 +747,37 @@ separable from quick lane changes in a 3 s history, and are not flagged (documen
    consistent cross-covariance) instead of Kalman-updating the position from the birth prior.
    The prior's thin covariance dragged the position back up to 1.5 m for fast objects travelling
    off-axis.
+
+## Phase 11 — AR renderer and display
+
+**Display path: WSLg (Part 10.4).**
+- Measured render and swap rate at 2560×1440 with the full overlay scene: 54–82 fps against a
+  24 fps target.
+- WSLg ignores vsync, so the on-screen rate is checked by eye, and again with the real camera.
+- The native-Windows fallback is not needed now.
+
+**GPU selection is explicit.** WindowedSink sets `GALLIUM_DRIVER=d3d12` and
+`MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA` before the GL context exists, then verifies
+`GL_RENDERER`. The defaults were llvmpipe (software), and, forced to D3D12, the integrated Intel
+GPU.
+
+**The sink draws into an offscreen framebuffer at video resolution, then scales it into the
+window.** The same frame can be read back, so rendering is checked by eye (captures) and by GPU
+tests.
+
+**Road items interpolate perspective-correctly.** The vertex shader projects with distortion
+itself, then outputs w = depth. With w = 1, band edges were a sawtooth (seen in the first
+capture).
+
+**Rule 4 is depth-aware** (occluders carry depth). **The route band is translucent** (core 60%),
+so lane markings show through.
+
+**`DisplaySink::init` takes the camera model.** The shader's projection is tested against
+`CameraModel::project` to 2 px, through distortion. The test samples separate dashes near the
+image edge, because a continuous-band version could not see distortion errors.
+
+**`SignTracker`** implements rules 2, 3 and 7 and speed-value agreement. **Map-geometry
+behaviours** (no-turn barriers, roundabout exits) are banners until the map supplies junction
+geometry.
+
+**Renderer tuning values are code defaults** until Part 13 tunes them. Then they move to config.

@@ -39,3 +39,12 @@ target_link_libraries(test_osrm_navigation PRIVATE OSRM::osrm ar_schemas GTest::
 target_compile_definitions(test_osrm_navigation PRIVATE
                            AR_MAPS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../data/maps")
 gtest_discover_tests(test_osrm_navigation PROPERTIES LABELS osrm DISCOVERY_TIMEOUT 60)
+
+# Phase 11: WindowedSink on the real GPU: shader projection vs the camera model, rule 4's
+# depth-aware occlusion, video pass-through. Hidden window; needs a display (WSLg) and the GPU.
+add_executable(test_windowed_sink integration/test_windowed_sink.cpp ../src/render/WindowedSink.cpp
+               ../src/render/OverlayScene.cpp)
+target_include_directories(test_windowed_sink PRIVATE ../include)
+target_link_libraries(test_windowed_sink PRIVATE ${OpenCV_LIBS} SDL2::SDL2 OpenGL::GL GLEW::GLEW
+                      Eigen3::Eigen GTest::gtest GTest::gtest_main)
+gtest_discover_tests(test_windowed_sink PROPERTIES LABELS gpu DISCOVERY_TIMEOUT 60)

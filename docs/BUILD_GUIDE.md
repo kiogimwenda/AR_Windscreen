@@ -1353,6 +1353,30 @@ optical model to compute here.
 blending over several full-screen layers per frame at 2K. The GPU does that in well under a
 millisecond; on the CPU it would compete with the rest of the pipeline for the frame budget.
 
+*Amended 2026-09-27 (Phase 11), as built:*
+- **`DisplaySink::init`** also receives the camera model and `cameraFromVehicle`. The sink
+  projects road-space items, so it must use exactly the perception side's calibration
+  (`common/Camera.h`). A GPU test checks that the vertex shader lands road points within 2 px of
+  `CameraModel::project`, through lens distortion.
+- **Rule 4 is depth-aware.** Each hazard occluder carries its camera depth, and a road item is
+  hidden only where it lies BEHIND the hazard. Silhouette-only masking hid a collision barrier in
+  front of the very car it marked.
+- **The route is moved to the capture time of the frame actually displayed**, not "the display
+  time". In video see-through the driver watches a camera frame that is already old. Overlays
+  must sit where things were when that frame was captured, or they lead the video.
+- **Signs go through `SignTracker`:**
+  - rule 2's 3-frame / 0.5 confirmation;
+  - speed-value agreement over the last 3 readings of one physical sign (all speed classes
+    associate as one sign);
+  - left-hand traffic: signs more than 4 m right are ignored;
+  - limit persistence, end-of-restriction and road change back to the map's maxspeed;
+  - stop barriers clear after the car has stood still near them for 1 s.
+- **Behaviours still needing map geometry are banners (rule 6)** until the map provides it:
+  no-turn barriers at the junction mouth, and the roundabout route curve with exit highlighting.
+- **Tuning values** (`RendererConfig`) are code defaults for now and move to configuration when
+  tuned in Part 13: route width, far-field opacity 0.45, ease-off 0.15 g, comfortable 0.25 g,
+  hard 0.4 g.
+
 ### 10.4 Benchmark checkpoint (do this before Part 14 marks this part complete)
 
 Measure the actual end-to-end presented frame rate through `WindowedSink` running under WSLg, at
@@ -1365,6 +1389,28 @@ native OpenGL/DirectX on NVIDIA's own driver, instead of routing through WSLg's 
 With GPU overlays, what crosses the local TCP socket is the video frame plus the small
 `OverlayScene`, serialised with FlatBuffers like every other message. The Windows process runs
 the same shaders. Document whichever path is used in `docs/decisions.md`.
+
+*Result (2026-09-27, Phase 11), and the display path chosen: **WSLg**.*
+- **GPU selection.** Debian's Mesa under WSLg defaults to llvmpipe (software, on the CPU). Forced
+  to Direct3D 12, it picked the integrated Intel GPU. `WindowedSink` therefore sets
+  `GALLIUM_DRIVER=d3d12` and `MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA` before creating the context.
+  It reads back `GL_RENDERER` ("D3D12 (NVIDIA GeForce RTX 5060 Laptop GPU)", OpenGL 4.6), reports
+  a software renderer, and can refuse one.
+- **Measured** with `tools/render_bench` at 2560×1440, over real road video, with two shimmering
+  hazard glows, the route band, a barrier, a ring, a zone, markers, labels and a badge:
+
+  | Mode | GPU upload | GPU overlay pass | Frame rate |
+  |---|---|---|---|
+  | Hidden window | 10.5 ms | 2.6 ms | 54 fps |
+  | Visible window | 6.7 ms | 1.7 ms | 82 fps |
+
+  The target is 24+ fps, met by more than 2×. The 11 MB video upload, not the overlays, is the
+  main cost.
+- **Caveat:** WSLg ignores vsync (83 fps with vsync on), so the rate frames actually REACH the
+  screen cannot be measured from inside WSL. The compositor may drop some. On-screen smoothness
+  is confirmed by eye, and again with the real camera in Part 13.
+- **The native-Windows fallback is not needed now,** and remains the plan if a later check finds
+  WSLg's on-screen rate too low.
 
 ---
 

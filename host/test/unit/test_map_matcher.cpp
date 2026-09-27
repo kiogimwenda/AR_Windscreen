@@ -278,3 +278,16 @@ TEST(MapMatcher, LaneHintComesFromTheCurrentStepAndDefaultsToOne) {
         EXPECT_EQ(m.laneCountHint, along < 500 ? 1 : 3) << "along " << along;
     }
 }
+
+// After a long gap (logger paused, GPS lost), the trace starts afresh: the query after the gap
+// holds only the new position, not points from minutes earlier (found on Ian's recorded drive).
+TEST(MapMatcher, LongGapStartsAFreshTrace) {
+    const Route r = lRoute();
+    std::vector<std::vector<TracePoint>> traces;
+    MapMatcher mm = matcherOn(r, {}, &traces);
+    for (int k = 0; k < 10; ++k) mm.match(pose(1000 * k, 10.0 * k, 0, 0, 36), kFrame, r);
+    ASSERT_GE(traces.back().size(), 5u);
+    mm.match(pose(9000 + 600000, 400, 0, 0, 36), kFrame, r);  // 10 minutes later
+    ASSERT_EQ(traces.back().size(), 1u);
+    EXPECT_EQ(traces.back()[0].timestampMs, 609000u);
+}

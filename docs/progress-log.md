@@ -2171,3 +2171,107 @@ document.
 **Phase 10 status:**
 - Exit criterion met: `test_decision_arbiter.cpp` passes in full, including the ceiling tests.
 - The firmware ceiling cross-check becomes exact when Phase 12 defines `kMaxSafeIntensity`.
+
+## 2026-09-27 — Phase 11: AR renderer and display (Part 10)
+
+**What:**
+- **`render/OverlayScene.h`:** items in road, image or mask space; style; hazard occluders with
+  depth; the palette and risk colours; the ellipse fallback.
+- **`render/DisplaySink.h`,** with the camera in `init`.
+- **`render/WindowedSink`** (SDL2, OpenGL 3.3 core, GLEW):
+  - explicit NVIDIA D3D12 selection, with renderer verification;
+  - PBO video upload;
+  - offscreen framebuffer and letterboxed window blit; `capture()`;
+  - road items: CPU tessellation with near-plane trimming, projected in the vertex shader with
+    the camera model including distortion, perspective-correct;
+  - depth-aware rule-4 occlusion;
+  - mask glow: halo, rim, 22% tint, shimmer;
+  - text and badges rasterised by OpenCV and cached;
+  - GPU timer queries.
+- **`render/SignTracker`** and **`render/ArRenderer`:**
+  - route band: measured vs far opacity, speed and deceleration grading to stop targets and lower
+    limits, ego-motion shift to the frame's capture time, next-turn label;
+  - hazards: glow, occluder, collision barrier with gap, pedestrian ring, tailgating zone, red
+    lane line toward a swerver, chevron when off-screen, nothing for ordinary traffic;
+  - signs by priority, at most 3;
+  - HUD.
+- **`tools/render_bench`:** Part 10.4 benchmark, with captures.
+- **Config and docs:** GLEW and OpenGL added to the host build; guide Part 10 amended and 10.4
+  result recorded.
+
+**Defects found and fixed:**
+1. **Software rendering by default.** Found by the GL probe. *Fix:* explicit D3D12/NVIDIA
+   selection with a check.
+2. **Sawtooth band edges** (affine interpolation). Found in the first capture. *Fix:*
+   perspective-correct w.
+3. **A barrier hidden behind the car it marked** (occlusion ignored depth). Found in the first
+   capture. *Fix:* depth-aware occluders.
+4. **The route band was too opaque and hid lane markings.** Found in the first capture. *Fix:*
+   translucent core, narrower halo.
+5. **The projection test could not detect missing distortion.** Continuous bands hid the shift.
+   Found by mutation. *Fix:* separate dashes near the image edge, and the test asserts that the
+   distortion effect it relies on is large (70 px).
+6. **A dangling pointer to a temporary scene in a renderer test.** Found by ASan.
+
+**Verification:**
+- **`test_ar_renderer`, 18 tests:**
+  - near/far route opacity (exit criterion); ego-motion shift; turning egoShift by hand;
+  - deceleration grading; next turn;
+  - ordinary traffic; collision hazard; pedestrian ring; tailgating zone; honest degradation and
+    chevron;
+  - sign confirmation; speed-value agreement and persistence; end of restriction and road change;
+    opposite carriageway;
+  - HUD grading, including no speed source;
+  - stop barrier escalation and clearing; declutter cap with hazards kept; no-parking at low speed.
+- **Mutations: 6 renderer mutants all caught.**
+- **`test_windowed_sink` (gpu), 3 tests:**
+  - shader vs CameraModel within 2 px at 13 dashes, through barrel distortion;
+  - depth-aware occlusion;
+  - video pass-through.
+  
+  Two GPU mutants caught: depth-blind occlusion, and no distortion.
+- **Visual:** captures on real 2K road video reviewed (the first one found defects 2–4).
+- **Benchmark:** 54–82 fps.
+- **Totals:** unit suite 223/223, also under ASan/UBSan. osrm and gpu labels 29/29. clang-format
+  18 and 22 clean.
+
+**Phase 11 status:**
+- Exit criteria met:
+  - the 10.4 benchmark is done, and the path (WSLg) chosen and documented;
+  - the navigation overlay distinguishes near- from far-field.
+- On-screen smoothness under WSLg to be confirmed by eye.
+- Live bus wiring (`ArRenderer::run`) is to be done with the full pipeline, when the sensors exist.
+
+## 2026-09-27 — Phase 8 exit check: Ian's recorded drive; Phase 11 on-screen check
+
+**Recorded drive.** `data/drives/GPX Test Drive.gpx` (private, gitignored), from Open GPX
+Tracker on iOS.
+- 2,773 fixes at 1 Hz, 43.7 km, 79 min, inside the Nairobi map.
+- Four logger gaps (96 s, 107 s, 10 min, 16 min; about 30 min in total), probably the app
+  pausing while the phone was locked.
+
+**Replay (`nav_replay`):**
+- Route start to end: 42.58 km, 25 steps.
+- **All 2,773 fixes matched.**
+- **Progress never decreased**, and reached the end (42,579 of 42,579 m).
+
+**How well it snapped** (statistics only; no coordinates recorded here):
+- **Raw fix to snapped position:** median 3.1 m, p95 9.3 m, p99 20.5 m, max 33.8 m. 95.7% within
+  10 m, 98.7% within 20 m. That is the size of normal phone-GPS error.
+- **Off-route: 215 fixes (7.8%).** 213 raw fixes were more than 40 m from the planned route, in
+  two stretches (185 s and 28 s). The drive genuinely left OSRM's route there, and off-route
+  detection matched the raw evidence.
+- **Consecutive snapped jumps over 60 m: 4,** all at recording gaps. In each, raw and snapped
+  moved equally, at plausible speeds (1–20 km/h). None is a matcher teleport.
+
+**Defect found and fixed:** after a long gap, the trace still held points from minutes earlier,
+so OSRM joined them as one drive. The first fix after the 10-minute gap snapped 41 m off.
+- *Fix:* a gap over 10 s starts a fresh trace (`traceGapResetMs`). That fix is now 0.8 m.
+- *Test:* `LongGapStartsAFreshTrace`.
+
+**Phase 8 status:**
+- Exit criterion met quantitatively.
+- The visual check of the HTML map (`data/drives/nav_replay.html`) is Ian's.
+
+**Phase 11:** Ian watched `render_bench --show` under WSLg: "the frames look smooth", on-screen, at
+least for now. That was the caveat left by WSLg ignoring vsync.

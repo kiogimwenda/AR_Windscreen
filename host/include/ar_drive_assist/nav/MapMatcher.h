@@ -67,6 +67,10 @@ struct MapMatcherConfig {
     std::uint64_t minIntervalMs = 100;  // 10 Hz at most (Part 11.3: 5-10 Hz)
     std::uint64_t traceSpacingMs = 1000;
     std::size_t traceLength = 8;
+    // A gap longer than this (no poses: logger paused, GPS lost, tunnel) starts a fresh trace.
+    // Old points would make OSRM join positions minutes apart as one continuous drive: on Ian's
+    // recorded drive, the first fix after a 10-minute gap snapped 41 m off (2026-09-27).
+    std::uint64_t traceGapResetMs = 10000;
     double gpsRadiusM = 15;  // ~3-6 sigma of the fused position (Part 8.2: 2.5 m GPS)
     double offRouteM = 25;
     double wrongWayDeg = 120;

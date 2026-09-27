@@ -43,6 +43,9 @@ find_package(Eigen3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(SDL2 REQUIRED)
+# Phase 11: WindowedSink's OpenGL (GLEW loads the entry points).
+find_package(OpenGL REQUIRED)
+find_package(GLEW REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 find_package(Flatbuffers REQUIRED)
 find_package(GTest REQUIRED)
@@ -77,7 +80,7 @@ add_executable(ar_drive_assist ${SOURCES})
 target_include_directories(ar_drive_assist PRIVATE include)
 target_link_libraries(ar_drive_assist PRIVATE
     ${OpenCV_LIBS} ${PCL_LIBRARIES} Eigen3::Eigen glm::glm
-    spdlog::spdlog SDL2::SDL2 CUDA::cudart TensorRT::TensorRT
+    spdlog::spdlog SDL2::SDL2 OpenGL::GL GLEW::GLEW CUDA::cudart TensorRT::TensorRT
     flatbuffers OSRM::osrm
     ar_schemas yaml-cpp::yaml-cpp
 )
@@ -98,6 +101,12 @@ add_executable(nav_replay tools/nav_replay.cpp src/nav/NavigationEngine.cpp src/
                src/nav/MapMatcherOsrm.cpp src/nav/Route.cpp)
 target_include_directories(nav_replay PRIVATE include src/nav)
 target_link_libraries(nav_replay PRIVATE OSRM::osrm ar_schemas)
+
+# Phase 11: Part 10.4's benchmark checkpoint, and a visual check of WindowedSink.
+add_executable(render_bench tools/render_bench.cpp src/render/WindowedSink.cpp
+                            src/render/OverlayScene.cpp)
+target_include_directories(render_bench PRIVATE include)
+target_link_libraries(render_bench PRIVATE ${OpenCV_LIBS} SDL2::SDL2 OpenGL::GL GLEW::GLEW Eigen3::Eigen)
 
 # The unit suite under test/unit/ is intentionally NOT built from here — see test/CMakeLists.txt.
 # enable_testing() must come before the tests are declared, so ctest can find the integration tests.

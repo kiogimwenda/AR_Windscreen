@@ -81,6 +81,9 @@ MapMatcher::MatchedPosition MapMatcher::match(const VehiclePose& pose, const Loc
     // spacing old and the trace would never grow past one point: found by
     // TraceWindowIsSpacedAndBounded.)
     const TracePoint tp{fix, t, cfg_.gpsRadiusM};
+    if (!committed_.empty() && t > committed_.back().timestampMs + cfg_.traceGapResetMs) {
+        committed_.clear();  // after a long gap the old trace says nothing about this position
+    }
     if (committed_.empty() || t >= committed_.back().timestampMs + cfg_.traceSpacingMs) {
         committed_.push_back(tp);
         while (committed_.size() > cfg_.traceLength) committed_.erase(committed_.begin());
