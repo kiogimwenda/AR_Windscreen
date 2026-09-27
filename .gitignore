@@ -40,3 +40,6 @@ data/maps/
 
 # Recorded GPS drives (GPX): private location history, never committed (Phase 8 nav_replay)
 data/drives/
+
+# Third-party legal documents kept for reference only (copyrighted; cite the URL instead)
+docs/Tomtom's terms.pdf

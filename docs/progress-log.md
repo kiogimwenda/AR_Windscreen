@@ -2050,3 +2050,40 @@ Murang'a and Naivasha.
 - **Open:** the exit check (a debug overlay tracking the correct lane on a real stretch) needs
   the camera, LiDAR and GPS running together. That is blocked on hardware (Phase 6), like
   Phase 7's check.
+
+## 2026-09-27 — TomTom live-layer checks (Part 11.2.1 gates), first results
+
+**What:**
+- Ran 15 requests against the TomTom Traffic API with Ian's free key: flow at 10 Nairobi points
+  of different road classes at zoom 10, 4 at zoom 18, and incidents in a central Nairobi box.
+- Tried to read the terms.
+
+**Results:** see the decisions entry of the same date.
+- **Bulk feed:** not self-service (needs a client certificate).
+- **Standard API:** works.
+- **Coverage:** major roads well covered, minor roads partly.
+- **Closures:** many "probable" and stale, which led to the 24 h / "certain" rule.
+- **Terms:** unread.
+
+**Still needed before building the layer:**
+- a weekday rush-hour quality run;
+- comparison against Ian's recorded drives;
+- the terms.
+
+## 2026-09-27 — TomTom terms read: live layer deferred
+
+**What:** read TomTom's Portal Terms & Conditions from Ian's PDF export (23 pages; image-only PDF,
+read page by page).
+
+**Result:**
+- **Gate 3 is not met for our use.** In-vehicle use and turn-by-turn navigation need a separate
+  written agreement (2.1). The free key is for internal evaluation and testing only (2.2).
+- Merging TomTom data into our OSM routing graph conflicts with the derived-database (11.6.1) and
+  copyleft (20.2.3) clauses.
+- Details and quotes: decisions entry of the same date.
+
+**Decision:** layer 2 deferred, as 11.2.1 prescribes when a gate fails. Navigation runs on layers
+1 and 3.
+
+**Not committed:** the PDF itself (`docs/Tomtom's terms.pdf`), which is TomTom's copyrighted
+document.

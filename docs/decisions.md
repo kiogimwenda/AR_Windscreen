@@ -643,3 +643,75 @@ overlays lead the video they sit on. What compensation must cover is the gap bet
 detection/pose data and the capture time of the frame actually shown: the renderer may show a
 newer frame than the one the detections came from. The 10.3 wording ("predicted for the display
 time") should be read that way, and amended when the renderer is built.
+
+**TomTom live-layer checks, first results (2026-09-27, Ian's free key).** The key is stored
+outside the repo, in `~/.config/ar_windscreen/`, mode 600, and never printed.
+
+1. **Access: partly met.**
+   - The **Intermediate Traffic** feed (bulk, OpenLR) is **not self-service**. TomTom's docs:
+     "a secure API that uses an API Key in combination with a client certificate". An evaluation
+     variant has "limited geographic coverage".
+   - The standard **Traffic API works** on the free key: flow segment data v4, incident details
+     v5.
+   - Design consequence: without the bulk feed, the live layer polls flow along the ROUTE, not
+     the whole network. It uses incidents by bounding box.
+2. **Quality: first look only** (Sunday 09:35; the real test is a weekday rush hour, plus Ian's
+   drives).
+   - **Flow:** major roads covered (Thika Rd, Uhuru Hwy, Mombasa Rd, Waiyaki Way; confidence
+     0.98–1.0). At zoom 18, minor roads partly covered: Ngong Rd and a Kileleshwa estate road
+     yes, Eastleigh 1st Avenue no (snapped 1.5 km away). Segments are long (3–20 km), so speeds
+     are coarse averages. Most roads read current = free-flow speed at that hour, so the data
+     could not yet be told apart from a default.
+   - **Incidents:** 78 in central Nairobi (19 jams, 54 road closed, 5 road works).
+     - Of the 54 closures, 51 are only "probable", 15 were last reported over 30 days ago, and
+       5 over a year ago (oldest 2024-08-04, Ralph Bunche Rd ↔ Woodlands Rd), none with an end
+       time.
+     - **Rule added for when the layer is built:** a live closure makes a road impassable only if
+       it is "certain" or was reported within 24 h. Older "probable" closures become a routing
+       penalty, not a closure. Sensor closures are unaffected and still win.
+3. **Terms: not yet checked.** TomTom's terms page loads its text with JavaScript, which the
+   available tools cannot read. Caching and display terms remain unconfirmed.
+
+**TomTom gate 3 (terms): NOT met for our use → the live layer (11.2.1 layer 2) stays deferred
+(2026-09-27).**
+Source: TomTom Portal Terms & Conditions (docs.tomtom.com/legal/terms-and-conditions), read from
+Ian's 23-page PDF export of 2026-09-27. A few lines are lost at the PDF's page breaks; none of the
+clauses below is affected. This is a reading of the terms, not legal advice.
+
+- **2.1:** the licence to use the Maps APIs excludes "any **Automotive Usage** or **Navigation
+  Functionality** except as specifically permitted to you by TomTom under a **separate written
+  agreement**".
+  - "Automotive Usage" means a solution "integrated with a vehicle".
+  - "Navigation Functionality" means "the real-time provision of directions ... that guide a user
+    through each turn in a route ... and which may include the ability to change the route in
+    real time".
+  
+  The AR windscreen is both.
+- **2.2:** the free licence is for "**Evaluation Use only**", defined as "internal evaluation and
+  testing".
+- **11.4:** results may be cached only when cache-control headers are present, and no longer than
+  their max-age. (Our 15-minute staleness window must also respect the header.)
+- **11.6.1:** no "secondary or derived database populated wholly or partially" with the delivered
+  content. Re-weighting our own OSRM graph with TomTom speeds is at least arguably that.
+- **11.6.9:** no use "in connection with ... high-risk systems ... critical to the health and
+  safety ... of people". A driver-assistance system with a braking path is at least arguably one,
+  even though map data never reaches the brake here.
+- **20.2.3:** no combining TomTom content with open data or software in a way that could make it
+  subject to an open-source or copyleft licence. Our base map is OpenStreetMap (ODbL,
+  share-alike).
+- **18:** API keys are confidential information. The key is already kept outside the repo and
+  never printed.
+
+**Consequence:**
+- The checks already done (a few hundred requests, on the desk) fit "internal evaluation and
+  testing".
+- Routing a car with TomTom data, even for our own test drives, needs TomTom's written permission.
+  Merging it into the OSM graph conflicts with 11.6.1 and 20.2.3 regardless.
+- Per 11.2.1, layer 2 is deferred. Layers 1 (refreshed OSM) and 3 (own sensors) are complete on
+  their own.
+- If a live layer is wanted later, the route is a written request to TomTom (for an academic
+  research prototype, stating the in-vehicle use and the OSM combination). Only an explicit
+  permission changes this decision.
+
+**The terms PDF is not committed.** It is TomTom's copyrighted document, and a 6 MB binary; the
+reference above is the URL.
