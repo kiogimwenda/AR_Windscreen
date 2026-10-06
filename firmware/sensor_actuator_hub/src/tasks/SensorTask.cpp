@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include <cmath>
+
 #include "drivers/GestureDriver.h"
 #include "drivers/GpsDriver.h"
 #include "drivers/ImuDriver.h"
@@ -17,6 +19,10 @@
 // (2)'s self-check, which disarms the hub if this loop ever stalls for more than 200 ms. The bench
 // build also sends BENCH_TELEMETRY (actuator current, applied duty, load cell) at the same rate,
 // for tools/bench_rig/log_actuator_bench.py (Part 13.3).
+namespace {
+constexpr uint32_t kGpsFreshMs = 1500;  // a fix older than this is reported as not valid
+}  // namespace
+
 void SensorTask(void*) {
     HubContext& h = hubContext();
     ImuDriver imu;
@@ -47,7 +53,10 @@ void SensorTask(void*) {
         r.latitude = fix.lat;
         r.longitude = fix.lon;
         r.speedKph = fix.speedKph;
-        r.gpsFixValid = fix.valid ? 1 : 0;
+        // `fix` keeps the last fix between NMEA sentences (and forever if the GNSS goes quiet, in a
+        // tunnel or with a broken wire). Valid only while fresh, so the host never fuses a stale
+        // repeat as a new measurement.
+        r.gpsFixValid = (fix.valid && millis() - fix.timestampMs < kGpsFreshMs) ? 1 : 0;
         r.accelX = s.ax;
         r.accelY = s.ay;
         r.accelZ = s.az;
@@ -55,7 +64,7 @@ void SensorTask(void*) {
         r.gyroY = s.gy;
         r.gyroZ = s.gz;
         r.headingDeg = s.headingDeg;
-        r.obdSpeedKph = od.valid ? od.speedKph : 0.0f;
+        r.obdSpeedKph = od.valid ? od.speedKph : NAN;  // 0 would read as "stopped" to the EKF
         r.obdRpm = od.rpm;
         // Brake pedal: the brake-light switch where fitted (BOM note C), else the OBD value
         // (usually 0xFF, unknown). The optocoupler line reads "released" when not fitted:

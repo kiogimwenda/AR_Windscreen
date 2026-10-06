@@ -2432,3 +2432,42 @@ current loop), and why a crystal sits within millimetres of the MCU.
 
 **Not done:** PCB layout, enclosure design, ordering (Phase 12B, Ian's work; guidance in
 hardware/README.md). The IMU and GNSS header pin orders must be matched to the purchased breakouts.
+
+## 2026-10-06 — Hub SensorReports into the EKF
+
+**What:** the bridge from the hub's 50 Hz SensorReports to the EKF, plus the fixes it exposed.
+- `host/.../fusion/HubReportFeeder.{h,cpp}`: time from the hub clock; GNSS on new fixes only; OBD
+  speed rate-limited, NaN skipped, GNSS speed as fallback; gyro and compass through `ImuMount`;
+  averaged longitudinal acceleration; `egoState()` for the tracker/arbiter; `updateHubState()`.
+- `SensorFusion::predict(dt, a)`: measured acceleration as a control input (`accelInputStd`).
+- Config: `imu_mount_rpy_deg` loaded and validated (`VehicleParams::imuMountRpyDeg`).
+- Firmware SensorTask: `gpsFixValid` only while the fix is < 1.5 s old; `obdSpeedKph` NaN when
+  invalid. Protocol field comments updated in both copies (layout unchanged).
+- Guide Part 8.2 amended.
+
+**Defects found:**
+1. **Firmware: a lost GNSS kept being reported as a valid fix forever** (the driver keeps the last
+   fix; SensorTask copied its validity, set once at update time). *Fix:* validity by age.
+2. **Firmware: no OBD reading was reported as 0 km/h**, indistinguishable from standing still.
+   *Fix:* NaN.
+3. **EKF: speed lagged hard braking by ~1.1 m/s** (constant-speed model). *Fix:* acceleration input;
+   lag now 0.17 m/s with a slope bias included.
+
+**Teaching notes:** why repeated measurements over-weight a Kalman filter (independence assumption;
+N repeats shrink the variance by N); why hub time beats host arrival time (the hub's schedule is
+fixed, USB delivery jitters); control input vs measurement (acceleration drives the prediction,
+OBD corrects it; the input's noise sets how far the filter trusts the accelerometer over OBD).
+
+**Verification:**
+- New `test_hub_report_feeder` (10 tests) on a simulated drive (straight, 0.15 rad/s turn, -3 m/s^2
+  braking; IMU tilted 3/-12/25 deg; 5 Hz GNSS with 1.5 m noise; 10 Hz integer-km/h OBD with a 2 s
+  NaN dropout; 100 Hz gyro; magnetometer with 2 deg bias; accelerometer with a 3 % grade's bias):
+  worst position 1.44 m, heading 1.63 deg, steady speed 0.26 m/s, braking lag 0.17 m/s (1.13 m/s
+  without the input); uncalibrated mount: heading error 16.5 deg. Each GNSS fix fed exactly once;
+  NaN OBD never fed; resets and long gaps not predicted across; non-finite IMU values skipped.
+- New EKF test for the acceleration input; 2 new config tests.
+- Mutations caught: GNSS fed every report, NaN OBD fed, acceleration input dropped.
+- Host unit suite **245/245** (plain and ASan); firmware native 38/38; firmware builds; app links.
+
+**Not done:** VehicleInterface itself (serial I/O) waits for the hub (Phase 3 with hardware); it will
+call `HubReportFeeder::feed()` for every SensorReport.

@@ -914,3 +914,30 @@ filter (none on CAN_RX/HX711_DOUT, which are data).
 
 **The IMU and GNSS headers are placeholders for breakouts:** their pin order must be matched to the
 purchased boards before layout (hardware/README.md).
+
+## Hub reports into the EKF (2026-10-06)
+
+**A pure feeder (`fusion/HubReportFeeder`) between the decoded SensorReport and SensorFusion**, so
+every rule is tested without hardware; VehicleInterface calls it once it exists (Phase 3, with the
+hub).
+
+**Each field at its own sensor's rate, not the report's 50 Hz.** GNSS only on a new fix (valid and
+moved), OBD speed at most every 100 ms, compass at most once a second (the in-car magnetometer is
+biased; GNSS motion corrects heading), gyro every report. Repeats would make the filter falsely
+confident.
+
+**Hub time, not host arrival time**, for dt; gaps over 1 s and hub resets are not predicted across.
+
+**Protocol semantics tightened (no layout change):** the firmware now sends `gpsFixValid = 1` only
+while the fix is under 1.5 s old, and `obdSpeedKph = NaN` when OBD has no valid reading. Before,
+a lost GNSS kept reporting its last fix as valid indefinitely, and a lost OBD reported 0 km/h, which
+the EKF would have taken as "stopped". Both protocol copies updated identically (field comments).
+
+**The IMU's longitudinal acceleration became the EKF's control input** (`predict(dt, a)`), with
+`accelInputStd = 1.5 m/s^2` chosen by sweeping 0.5/1.0/1.5/2.0 in a simulated drive whose
+accelerometer carries a 3 % grade's bias: 0.5 trusted the biased input over OBD (0.60 m/s steady
+error); 1.5 gave 0.26 m/s steady and 0.17 m/s lag after 3 s of -3 m/s^2 braking, against 1.13 m/s
+with no input. The plain `predict(dt)` is unchanged for other callers.
+
+**The IMU mount comes from `vehicle_params.yaml: imu_mount_rpy_deg`**, validated at startup (three
+angles, each within +-180 deg).

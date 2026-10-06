@@ -50,7 +50,7 @@ void writeFile(const std::string& path, const std::string& text) {
 const char* kVehicle =
     "wheelbase_m: 2.6\ncamera_height_m: 1.3\nobd_pid_brake_active: \"\"\n"
     "serial_device: \"/dev/ttyACM0\"\nserial_baud: 115200\n"
-    "front_bumper_from_rear_axle_m: 3.5\nhalf_width_m: 0.9\n";
+    "front_bumper_from_rear_axle_m: 3.5\nhalf_width_m: 0.9\nimu_mount_rpy_deg: [0.0, 0.0, 0.0]\n";
 const char* kDecision =
     "ttc_brake_threshold_s: 1.8\nhard_brake_decel_g: 0.4\ntailgating_min_gap_s: 1.0\n"
     "brake_actuator_max_intensity: 90\nbrake_request_intensity: 60\n"
@@ -129,6 +129,26 @@ TEST(SystemManagerConfig, LoadsTheRealConfigFiles) {
     EXPECT_DOUBLE_EQ(cfg.decision.hardBrakeDecelG, 0.4);
     EXPECT_DOUBLE_EQ(cfg.decision.tailgatingMinGapS, 1.0);
     EXPECT_EQ(cfg.decision.brakeActuatorMaxIntensity, 90);
+}
+
+// Added 2026-10-06: the IMU's mounting in the windscreen pod (BUILD_GUIDE 12.2.2).
+TEST(SystemManagerConfig, LoadsTheImuMount) {
+    const Config cfg = SystemManager::loadConfig(
+        configWith("imumount", "vehicle_params.yaml", "imu_mount_rpy_deg", "[3.0, -12.5, 25]"));
+    EXPECT_DOUBLE_EQ(cfg.vehicle.imuMountRpyDeg[0], 3.0);
+    EXPECT_DOUBLE_EQ(cfg.vehicle.imuMountRpyDeg[1], -12.5);
+    EXPECT_DOUBLE_EQ(cfg.vehicle.imuMountRpyDeg[2], 25.0);
+}
+
+TEST(SystemManagerConfig, RejectsABadImuMount) {
+    for (const char* bad : {"[0, 0]", "[0, 0, 0, 0]", "[0, 200, 0]", "[0, .nan, 0]", "\"level\""}) {
+        const auto err =
+            loadError(configWith("imubad", "vehicle_params.yaml", "imu_mount_rpy_deg", bad));
+        EXPECT_NE(err.find("imu_mount_rpy_deg"), std::string::npos) << bad << ": " << err;
+    }
+    EXPECT_NE(loadError(configWith("imumissing", "vehicle_params.yaml", "imu_mount_rpy_deg", ""))
+                  .find("'imu_mount_rpy_deg' missing"),
+              std::string::npos);
 }
 
 TEST(SystemManagerConfig, MissingFileNamesTheFile) {

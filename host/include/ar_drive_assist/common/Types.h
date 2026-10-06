@@ -11,6 +11,7 @@
 // built subsystem actually reads. Later phases add their own section together with the code that
 // consumes it, so no field sits here unvalidated and unused.
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -39,6 +40,9 @@ struct VehicleParams {
     // this every range reads several metres long and braking comes late.
     double frontBumperFromRearAxleM = 0.0;
     double halfWidthM = 0.0;
+    // Added 2026-10-06. The BNO085's mounting in the windscreen pod: [roll, pitch, yaw] in the
+    // vehicle frame, degrees (fusion/ImuMount, BUILD_GUIDE 12.2.2). Identity until calibrated.
+    std::array<double, 3> imuMountRpyDeg{0.0, 0.0, 0.0};
 };
 
 // The hub's own brake ceiling, BrakeActuatorDriver::kMaxSafeIntensity (firmware, Part 4.4): the

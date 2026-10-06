@@ -236,3 +236,23 @@ TEST(Ekf, CovarianceStaysSymmetricPositiveDefinite) {
     Eigen::SelfAdjointEigenSolver<SensorFusion::Cov> es(P);
     EXPECT_GT(es.eigenvalues().minCoeff(), 0.0);
 }
+
+// Added 2026-10-06: the measured longitudinal acceleration as a control input. Speed follows it,
+// and the speed variance grows by the input's (small) error instead of the car's whole range.
+TEST(SensorFusion, AccelerationInputDrivesSpeedAndShrinksItsUncertainty) {
+    SensorFusion withA, plain;
+    for (SensorFusion* f : {&withA, &plain}) {
+        f->updateGps(-1.2864, 36.8172);
+        f->updateObdSpeed(10.0);
+    }
+    for (int i = 0; i < 50; ++i) {  // 1 s at 50 Hz, braking at -3 m/s^2
+        withA.predict(0.02, -3.0);
+        plain.predict(0.02);
+    }
+    EXPECT_NEAR(withA.state()(SensorFusion::V), plain.state()(SensorFusion::V) - 3.0, 0.05);
+    EXPECT_LT(withA.covariance()(SensorFusion::V, SensorFusion::V),
+              plain.covariance()(SensorFusion::V, SensorFusion::V));
+    SensorFusion nanA = withA;
+    nanA.predict(0.02, std::nan(""));  // a non-finite input falls back to the plain model
+    EXPECT_TRUE(std::isfinite(nanA.state()(SensorFusion::V)));
+}

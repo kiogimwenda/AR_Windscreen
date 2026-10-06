@@ -6,9 +6,11 @@
 #include <yaml-cpp/yaml.h>
 
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <vector>
 
 #include "ar_drive_assist/vehicle/HubProtocol.h"
 
@@ -153,6 +155,15 @@ Config SystemManager::loadConfig(const std::string& configDir) {
     if (cfg.vehicle.serialBaud <= 0) vehicle.fail("serial_baud", "must be > 0");
     cfg.vehicle.frontBumperFromRearAxleM = vehicle.positive("front_bumper_from_rear_axle_m");
     cfg.vehicle.halfWidthM = vehicle.positive("half_width_m");
+    // Exactly three angles, each a real rotation: a mount entered in radians, or with a sign
+    // slip past +-180, would silently rotate every gyro reading.
+    const auto rpy = vehicle.get<std::vector<double>>("imu_mount_rpy_deg");
+    if (rpy.size() != 3) vehicle.fail("imu_mount_rpy_deg", "must be [roll, pitch, yaw] in degrees");
+    for (std::size_t i = 0; i < 3; ++i) {
+        if (!std::isfinite(rpy[i]) || std::abs(rpy[i]) > 180.0)
+            vehicle.fail("imu_mount_rpy_deg", "angles must be within -180..180 degrees");
+        cfg.vehicle.imuMountRpyDeg[i] = rpy[i];
+    }
 
     const ConfigFile decision(configDir, "decision_thresholds.yaml");
     cfg.decision.ttcBrakeThresholdS = decision.positive("ttc_brake_threshold_s");

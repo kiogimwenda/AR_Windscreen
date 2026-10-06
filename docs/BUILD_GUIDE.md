@@ -1236,6 +1236,26 @@ through `fusion/ImuMount` (vehicle-frame yaw rate, longitudinal acceleration, ve
 calibrated per Part 12.2.2. Fed raw, a 12° pitch alone makes the yaw rate 2 % low and adds a fifth
 of the body's roll rate to it in every corner.*
 
+*Amended 2026-10-06: hub reports into the EKF.* `fusion/HubReportFeeder` turns each 50 Hz
+SensorReport into the filter's steps, at each sensor's own rate, because a SensorReport is a
+snapshot of whatever each sensor last said and a Kalman filter assumes every update is new:
+- time from the **hub's** timestamp (fixed 20 ms schedule; USB arrival jitters); gaps over 1 s and
+  hub resets (time backwards) are not predicted across;
+- **GNSS only when a new fix arrives** (valid, and a different position): feeding a 5 Hz fix at
+  50 Hz would make the filter ~3x over-confident;
+- OBD speed at most every 100 ms; **NaN means no reading** (the hub used to send 0, which reads as
+  "stopped"); without OBD, the GNSS ground speed of each new fix;
+- gyro every report and compass at most once a second, both rotated by `ImuMount` (12.2.2);
+- **the measured longitudinal acceleration is the EKF's control input**:
+  `SensorFusion::predict(dt, a)`. Without it the constant-speed model lagged ~1.1 m/s behind 3 s of
+  −3 m/s² braking; with it, 0.17 m/s, including a 3 % road grade's bias on the accelerometer. The
+  input noise (`accelInputStd` 1.5 m/s²) was chosen by measurement (decisions.md).
+The hub side changed with it: `gpsFixValid` is 1 only while the fix is under 1.5 s old (the
+firmware kept repeating its last fix as valid forever), and `obdSpeedKph` is NaN when invalid.
+Measured on a simulated drive (straight, turn, hard braking, tilted IMU): worst position error
+1.44 m, heading 1.63°, steady speed 0.26 m/s; with the IMU mount left uncalibrated, heading error
+reached 16°. `VehicleInterface` (Phase 3, with the hub) calls `feed()` for every SensorReport.
+
 ### 8.3 3D scene reconstruction: mask-based camera–LiDAR fusion
 
 *Amended 2026-09-25: association uses each object's segmentation mask, not a box or a cluster

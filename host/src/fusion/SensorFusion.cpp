@@ -29,6 +29,15 @@ Eigen::Vector2d SensorFusion::toLocal(double latDeg, double lonDeg) const {
 }
 
 void SensorFusion::predict(double dt) {
+    predictImpl(dt, 0.0, noise_.accelStd);
+}
+
+void SensorFusion::predict(double dt, double accelMps2) {
+    if (!std::isfinite(accelMps2)) return predict(dt);
+    predictImpl(dt, accelMps2, noise_.accelInputStd);
+}
+
+void SensorFusion::predictImpl(double dt, double accel, double accelStd) {
     if (!initialised_ || dt <= 0.0) return;
     const double psi = x_(PSI), v = x_(V), w = x_(OMEGA);
     const double s0 = std::sin(psi), c0 = std::cos(psi);
@@ -58,6 +67,11 @@ void SensorFusion::predict(double dt) {
     }
     x_(PSI) = wrapAngle(psi + w * dt);
     F(PSI, OMEGA) = dt;
+    // The measured acceleration over dt (zero for the plain predict): speed changes by a dt and
+    // the position gains the extra 1/2 a dt^2 along the heading.
+    x_(PX) += 0.5 * accel * dt * dt * c0;
+    x_(PY) += 0.5 * accel * dt * dt * s0;
+    x_(V) += accel * dt;
 
     // Process noise from two white-noise inputs, longitudinal acceleration and yaw acceleration,
     // mapped into the state by G (how each input moves each state variable over dt).
@@ -67,8 +81,7 @@ void SensorFusion::predict(double dt) {
     G(V, 0) = dt;
     G(PSI, 1) = 0.5 * dt * dt;
     G(OMEGA, 1) = dt;
-    const Eigen::Vector2d q(noise_.accelStd * noise_.accelStd,
-                            noise_.yawAccelStd * noise_.yawAccelStd);
+    const Eigen::Vector2d q(accelStd * accelStd, noise_.yawAccelStd * noise_.yawAccelStd);
     P_ = F * P_ * F.transpose() + G * q.asDiagonal() * G.transpose();
 }
 

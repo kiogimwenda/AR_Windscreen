@@ -64,8 +64,14 @@ namespace ar_drive_assist {
 
 struct FusionNoise {
     // Process noise: how far the real car can depart from constant turn-rate-and-velocity.
-    double accelStd = 2.0;     // m/s^2, longitudinal acceleration (a hard stop is ~7)
-    double yawAccelStd = 0.5;  // rad/s^2, change of yaw rate
+    double accelStd = 2.0;  // m/s^2, longitudinal acceleration (a hard stop is ~7)
+    // When the IMU's measured acceleration is the control input (predict(dt, a)): how wrong that
+    // input can be. A 3 % road grade alone tilts gravity into it by ~0.3 m/s^2. Chosen by a sweep
+    // in a simulated drive with that bias (test_hub_report_feeder, 2026-10-06): 0.5 trusted the
+    // biased input over OBD (0.60 m/s steady error); 1.5 gave 0.26 m/s steady and 0.17 m/s lag
+    // after 3 s of hard braking (1.13 m/s with no input at all).
+    double accelInputStd = 1.5;  // m/s^2
+    double yawAccelStd = 0.5;    // rad/s^2, change of yaw rate
     // Measurement noise (1 sigma). Tuned in Part 12 / Phase 15 against real sensors.
     double gpsPosStd = 2.5;    // m, NEO-M8N open sky
     double obdSpeedStd = 0.3;  // m/s
@@ -84,6 +90,11 @@ public:
     // Prediction step (Part 8.2: IMU-driven, 100 Hz). Does nothing until the first GPS fix has
     // set the origin and position.
     void predict(double dt);
+    // The same, with the longitudinal acceleration MEASURED (the IMU, vehicle frame, gravity
+    // removed: HubReportFeeder) as a control input: v grows by a dt instead of being assumed
+    // constant, and the acceleration's process noise is the measurement's error, not the car's
+    // whole range. Added 2026-10-06: without it, speed lagged ~1.1 m/s behind 3 s of hard braking.
+    void predict(double dt, double accelMps2);
 
     // Updates. Each returns the normalised innovation squared (NIS, y^T S^-1 y) so tests and
     // monitoring can check the filter's consistency, or nullopt if the filter is not initialised.
@@ -105,6 +116,7 @@ public:
     static double wrapAngle(double a);  // to (-pi, pi]
 
 private:
+    void predictImpl(double dt, double accel, double accelStd);
     template <int M>
     double update(const Eigen::Matrix<double, M, 1>& z, const Eigen::Matrix<double, M, 5>& H,
                   const Eigen::Matrix<double, M, M>& R, bool angleInnovation);

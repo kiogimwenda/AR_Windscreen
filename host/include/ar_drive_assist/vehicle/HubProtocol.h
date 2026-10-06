@@ -89,13 +89,13 @@ struct SensorReport {
     double latitude;
     double longitude;
     float speedKph;
-    uint8_t gpsFixValid;  // 0/1
+    uint8_t gpsFixValid;  // 0/1; 1 only while the fix is under 1.5 s old (not a stale repeat)
     // IMU
     float accelX, accelY, accelZ;  // g
     float gyroX, gyroY, gyroZ;     // deg/s
     float headingDeg;
     // OBD-II
-    float obdSpeedKph;
+    float obdSpeedKph;  // NaN when the OBD reading is not valid (0 would mean "stopped")
     uint16_t obdRpm;
     uint8_t obdBrakePedalActive;  // 0/1, from OBD PID if available, else 0xFF = unknown
     // Gesture

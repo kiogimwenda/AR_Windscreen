@@ -73,6 +73,11 @@ add_unit_test(test_ekf test_ekf.cpp ${HOST_SRC}/fusion/SensorFusion.cpp)
 target_link_libraries(test_ekf PRIVATE Eigen3::Eigen ar_schemas)
 add_unit_test(test_imu_mount test_imu_mount.cpp ${HOST_SRC}/fusion/ImuMount.cpp)
 target_link_libraries(test_imu_mount PRIVATE Eigen3::Eigen)
+# Added 2026-10-06: hub SensorReports into the EKF (headers only from the arbiter and detector).
+add_unit_test(test_hub_report_feeder test_hub_report_feeder.cpp
+              ${HOST_SRC}/fusion/HubReportFeeder.cpp ${HOST_SRC}/fusion/ImuMount.cpp
+              ${HOST_SRC}/fusion/SensorFusion.cpp)
+target_link_libraries(test_hub_report_feeder PRIVATE Eigen3::Eigen ar_schemas)
 add_unit_test(test_hungarian test_hungarian.cpp ${HOST_SRC}/safety/Hungarian.cpp)
 add_unit_test(test_motion_predictor test_motion_predictor.cpp ${HOST_SRC}/safety/ImmFilter.cpp
               ${HOST_SRC}/safety/MotionPredictor.cpp)
