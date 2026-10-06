@@ -941,3 +941,31 @@ with no input. The plain `predict(dt)` is unchanged for other callers.
 
 **The IMU mount comes from `vehicle_params.yaml: imu_mount_rpy_deg`**, validated at startup (three
 angles, each within +-180 deg).
+
+## VehicleInterface, built against a simulated hub (2026-10-06)
+
+**Built and tested before the hub exists, against `tools/hub_sim`, which compiles the firmware's
+own SafetyCore and FrameParser** (only HubSim.cpp sees the firmware headers: the two protocol
+copies cannot share a translation unit). The host is therefore tested against the hub logic the
+STM32 will run, not against a mock of it.
+
+**The host has its own frame codec (`FrameDecoder`), written independently and tested against the
+firmware's** in both directions, byte for byte, with every single-bit corruption rejected.
+
+**A zeroed command after 150 ms without a new request, and a 300 ms hold on brake commands.**
+Part 3.3 requires "no request" to be said explicitly; this also means a stalled arbiter cannot leave
+a brake standing (measured: released 134 ms after the last request, with the link healthy).
+
+**Heartbeats every 50 ms**, twice the 10 Hz minimum, so one late heartbeat never brushes the 200 ms
+watchdog.
+
+**Acks are logged when they show the brake applied or the hub's state changes**, not every one: a
+persisting fault would otherwise fsync a line seven times a second.
+
+**The port opens in the constructor when started from main**, so a missing hub fails startup naming
+the device, instead of failing on the subsystem thread after "running" was printed. The EKF objects
+are declared before SystemManager so they outlive its threads.
+
+**ModemManager** (desktop Linux) probes new ACM devices with AT commands; that would trip the hub's
+frame-error fault at every connection. Documented in Appendix D (found via the simulator's
+pseudo-terminal echo, which did the same).

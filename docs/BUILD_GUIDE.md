@@ -1783,6 +1783,29 @@ private:
 ```
 This class implements the exact framing/CRC from Part 3 and nothing else — it does not interpret `ActuationRequest.reason_code` or apply any thresholds; all decision logic lives in `DecisionArbiter` (Part 9). Keep this boundary strict: if a future change means the arbiter's logic needs to see hub state to decide something, it reads `latestSensorReport()`, it does not reach into `VehicleInterface`'s serial handling.
 
+*Amended 2026-10-06 (built before the hub exists, against a simulated hub):*
+- **`vehicle/VehicleInterface`**: POSIX termios, raw 8N1. HEARTBEAT every 50 ms (twice the
+  minimum); the arbiter's latest request as an ActuationCommand; a **zeroed command when no new
+  request arrives for 150 ms**, so a stalled arbiter cannot leave a request standing; brake commands
+  carry a **300 ms hold** the arbiter renews each cycle. Every SensorReport to a callback
+  (`HubReportFeeder`, Part 8.2) and into `HubState`; acks into `HubState`, and to the EventLog when
+  they show the brake applied or the hub's state changed. Report gaps over 200 ms logged as faults.
+  Registers the crash frame; the final-command hook sends one zeroed command after all threads
+  are joined. Command timestamps always count up (`nextTimestamp`). `main` starts it
+  (`--serial <device>` overrides the config; `--no-hub` for development without one).
+- **`vehicle/FrameDecoder`**: the host's own codec, written independently of the firmware's and
+  tested against it byte for byte.
+- **`tools/hub_sim`**: a software hub on a pseudo-terminal that compiles the **firmware's own**
+  `SafetyCore` and `FrameParser`. `test_vehicle_interface` runs the host against it end to end:
+  arming, a 255 request applied as 90, release 134 ms after the arbiter goes quiet, the watchdog
+  releasing 188 ms after the host stops, the final zeroed command releasing in 2 ms, fault 5 from
+  an unplugged power box reaching HubState and the log, garbage survived, report gaps logged, and
+  reports driving the EKF. Run the real program against it:
+  `build/host/hub_sim` (prints the device), then
+  `build/host/ar_drive_assist host/config logs/session.log --serial /dev/pts/N`.
+Phase 3's exit test is unchanged: it needs the real hub, which now only replaces the
+pseudo-terminal.
+
 ### 11.2 `NavigationEngine` — routing
 
 ```cpp
@@ -2545,6 +2568,7 @@ If mirrored mode isn't available (pre-22H2 Windows), fall back to binding the US
 | `SensorReport` stops arriving | USB-CDC re-enumerated after WSL2 restart | Re-run `attach_usb_devices.ps1` (Part 2.2) |
 | Actuator doesn't release on unplug test | Watchdog timing or IWDG not actually enabled | Re-check Part 4.6/4.3, this is a hard blocker, do not proceed until fixed |
 | AR overlay stutters badly | WSLg OpenGL translation layer bottleneck | Part 10.4's native-Windows-display fallback |
+| Hub disarmed with fault 4 (frame errors) for a second or two right after the host connects | Something else wrote to `/dev/ttyACM0` first: on desktop Linux, **ModemManager probes new ACM devices with AT commands** | `sudo systemctl stop ModemManager`, or a udev rule `ENV{ID_MM_DEVICE_IGNORE}="1"` for the hub's USB IDs (0483:5740). Found with hub_sim (2026-10-06), where pseudo-terminal echo did the same |
 | Navigation line floats above or sinks through the road | `LidarProcessor` still discarding the ground plane instead of publishing `GroundPlaneModel` | Part 8.1's "important change" note — re-check the plane is actually reaching `groundPlaneBus` |
 | Navigation line sits in the wrong lane | Lateral-correction step in `RoadSurfaceProjector` not applying, or `lateral_correction_max_m` set too low to matter | Part 11.4 step 5; check lane-detection confidence isn't being silently filtered out upstream |
 | Navigation line jumps or jitters between frames | Map-matching running faster than needed and reacting to per-fix GPS noise | Part 11.3 — confirm `MapMatcher` is throttled to 5–10 Hz, not run on every raw fix |

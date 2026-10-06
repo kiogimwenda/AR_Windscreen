@@ -78,6 +78,18 @@ add_unit_test(test_hub_report_feeder test_hub_report_feeder.cpp
               ${HOST_SRC}/fusion/HubReportFeeder.cpp ${HOST_SRC}/fusion/ImuMount.cpp
               ${HOST_SRC}/fusion/SensorFusion.cpp)
 target_link_libraries(test_hub_report_feeder PRIVATE Eigen3::Eigen ar_schemas)
+# VehicleInterface against HubSim: the simulated hub compiles the FIRMWARE's SafetyCore and
+# FrameCodec (its include directory is used by HubSim.cpp only; see tools/hub_sim/HubSim.h).
+add_library(hub_sim STATIC ${HOST_SRC}/../tools/hub_sim/HubSim.cpp)
+target_include_directories(hub_sim PRIVATE ${HOST_SRC}/../../firmware/sensor_actuator_hub/include
+                           PUBLIC ${HOST_SRC}/../tools/hub_sim)
+target_compile_features(hub_sim PRIVATE cxx_std_17)
+add_unit_test(test_vehicle_interface test_vehicle_interface.cpp
+              ${HOST_SRC}/vehicle/VehicleInterface.cpp ${HOST_SRC}/system/SystemManager.cpp
+              ${HOST_SRC}/system/EventLog.cpp ${HOST_SRC}/fusion/HubReportFeeder.cpp
+              ${HOST_SRC}/fusion/ImuMount.cpp ${HOST_SRC}/fusion/SensorFusion.cpp)
+target_link_libraries(test_vehicle_interface PRIVATE hub_sim Eigen3::Eigen yaml-cpp::yaml-cpp
+                      ar_schemas Threads::Threads)
 add_unit_test(test_hungarian test_hungarian.cpp ${HOST_SRC}/safety/Hungarian.cpp)
 add_unit_test(test_motion_predictor test_motion_predictor.cpp ${HOST_SRC}/safety/ImmFilter.cpp
               ${HOST_SRC}/safety/MotionPredictor.cpp)

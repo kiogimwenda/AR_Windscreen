@@ -2471,3 +2471,48 @@ OBD corrects it; the input's noise sets how far the filter trusts the accelerome
 
 **Not done:** VehicleInterface itself (serial I/O) waits for the hub (Phase 3 with hardware); it will
 call `HubReportFeeder::feed()` for every SensorReport.
+
+## 2026-10-06 — VehicleInterface against a simulated hub (Phase 3, without hardware)
+
+**What:**
+- `host/.../vehicle/FrameDecoder.h`: host frame codec (independent of the firmware's).
+- `host/.../vehicle/VehicleInterface.{h,cpp}`: serial link (termios), heartbeats, commands from
+  ActuationRequests, zeroed command on a quiet arbiter, brake hold, reports to HubReportFeeder and
+  HubState, ack and gap logging, crash frame, final zeroed command.
+- `host/tools/hub_sim/`: the firmware's SafetyCore + FrameParser behind a pseudo-terminal, as a
+  library for tests and a `hub_sim` tool (status line each second; k/b toggle the kill switch and
+  power box).
+- `main.cpp`: starts VehicleInterface (`--serial`, `--no-hub`), feeds the EKF, registers the
+  final-command hook. Guide 11.1 amended; Appendix D: ModemManager.
+
+**Defects found:**
+1. **Running the real program against hub_sim: 1.5 s disarmed at startup, fault 4.** The new
+   pseudo-terminal echoed the hub's reports back into its own input (83 garbled frames) until the
+   host set raw mode. *Fix:* hub_sim sets its terminal raw at creation. Real-world equivalent
+   (ModemManager probing ACM devices) documented.
+2. **Ack logging would fsync ~7 lines/s during a persisting fault.** *Fix:* log on change, and every
+   ack with the brake applied.
+3. **A missing hub would have failed on the subsystem thread after "running".** *Fix:* open on
+   construction from main. EKF objects moved before SystemManager (lifetimes).
+4. **UBSan in my own test:** EXPECT_EQ bound a reference to a packed field. *Fix:* copy to locals.
+
+**Teaching notes:** pseudo-terminals (a master/slave pair that behaves like a serial port, with a
+line discipline that echoes unless set raw); why the host never relies on itself to release (the
+hub's watchdog does; the host's zeroed command and short hold only make it faster); why two
+independent codecs tested against each other beat one tested against itself.
+
+**Verification:**
+- `test_vehicle_interface`: 15 tests. Codec cross-checks (300 random frames both ways, identical
+  bytes; every single-bit corruption rejected with the next frames delivered; the crash frame is a
+  zeroed command to the firmware). End to end against the firmware's SafetyCore: armed by
+  heartbeats; 255 requested -> 90 applied and logged; **quiet arbiter -> released in 134 ms**;
+  **host stopped -> hub watchdog released in 188 ms** (fault 3); **final zeroed command -> 2 ms**;
+  power box unplugged -> fault 5 in HubState and the log, re-arms when back; garbage survived;
+  report gap logged and its end; reports drive the EKF to 10 m/s heading east.
+- 20 repeated runs: 0 failures. ThreadSanitizer (under `setarch -R`): no warnings.
+- Mutations caught: timestamps not forced upward, no heartbeats, no zeroed command.
+- Host unit suite **260/260** (plain and ASan). Full application builds and ran against hub_sim:
+  armed in the first heartbeats, 0 frame errors, clean ordered shutdown with the final zeroed
+  command, hub disarmed with fault 3 afterwards.
+
+**Phase 3 exit criteria still need the real hub** (13.2 loopback with the Phase 2 firmware).

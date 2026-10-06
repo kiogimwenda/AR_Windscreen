@@ -108,6 +108,14 @@ add_executable(render_bench tools/render_bench.cpp src/render/WindowedSink.cpp
 target_include_directories(render_bench PRIVATE include)
 target_link_libraries(render_bench PRIVATE ${OpenCV_LIBS} SDL2::SDL2 OpenGL::GL GLEW::GLEW Eigen3::Eigen)
 
+# Phase 3 (with no hub yet): a software hub on a pseudo-terminal, running the FIRMWARE's own
+# SafetyCore and FrameCodec. HubSim.cpp alone sees the firmware's include directory.
+find_package(Threads REQUIRED)
+add_executable(hub_sim tools/hub_sim/main.cpp tools/hub_sim/HubSim.cpp)
+target_include_directories(hub_sim PRIVATE tools/hub_sim
+                           ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/sensor_actuator_hub/include)
+target_link_libraries(hub_sim PRIVATE Threads::Threads)
+
 # The unit suite under test/unit/ is intentionally NOT built from here — see test/CMakeLists.txt.
 # enable_testing() must come before the tests are declared, so ctest can find the integration tests.
 enable_testing()
