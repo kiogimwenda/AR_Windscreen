@@ -21,6 +21,34 @@ The single most important structural fact about this system is the split between
 
 Everything else in the architecture follows from keeping that boundary intact.
 
+## Physical architecture (added 2026-09-30, BUILD_GUIDE Part 4.8)
+
+The hub side of the hard boundary is now two boxes, joined by a 25-way cable:
+
+```
+                 roof: Livox Mid-360 (15° forward wedge) ─── Ethernet ───────────────┐
+                                                                                     │
+ windscreen pod (behind mirror)                                                      ▼
+ ┌────────────────────────────────────────────┐   USB (camera) ────────────►  laptop (host)
+ │ camera ── one rigid carrier plate ── IMU   │   USB (hub link, Part 3) ◄──►  RTX 5060
+ │ STM32F405 · GNSS · status LEDs            │
+ └───────────────┬────────────────────────────┘
+                 │ DB-25, 2 m: brake PWM/EN, magnet, relays, CAN TX/RX/STBY, +5 V,
+                 │ kill sense, box-present, brake light, current sense
+ under-dash power box                                     E-stop (driver's reach)
+ ┌───────────────┴────────────────────────────┐              │ coil loop
+ │ pull-downs → 74HCT244 → BTS7960 · ACS712    │◄─────────────┘
+ │ magnet MOSFET · 5 relays · 40 A kill relay  │── actuator, cable magnet
+ │ SN65HVD230 ── OBD-II port (short stub)      │── car's indicators, horn, lights
+ │ 12 V protection · 5 V buck · LiDAR feed     │── 12 V ACC + fused battery
+ └─────────────────────────────────────────────┘
+```
+
+The boundary's rule is kept physically: every line from the pod reads "off" at the power board
+when the pod is not driving it (reset, unpowered, cable out), and the hub's firmware reports the
+power box's absence as fault 5. The IMU shares the camera's carrier, so its readings are rotated
+into the vehicle frame (`fusion/ImuMount`) before the EKF sees them.
+
 ## Threads (Part 5.1)
 
 One process, one thread per subsystem, connected by single-producer/single-consumer ring buffers

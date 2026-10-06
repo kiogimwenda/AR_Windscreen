@@ -75,6 +75,7 @@ enum class MessageType : uint8_t {
     ACTUATION_COMMAND = 0x02,  // host -> hub
     ACK_STATUS = 0x03,         // hub -> host
     HEARTBEAT = 0x04,          // host -> hub, required at >=10 Hz (see Part 3.4)
+    BENCH_TELEMETRY = 0x05,    // hub -> host, BENCH BUILD ONLY (Part 13.3 instrumentation)
 };
 
 // HEARTBEAT carries no payload: it is sent with length 0 and exists purely so the hub's watchdog
@@ -118,6 +119,26 @@ struct AckStatus {
     uint8_t actuatorFaultCode;       // 0 = none; see Appendix B for codes
     uint16_t appliedBrakeIntensity;  // what the hub actually applied, post-ceiling
 };
+
+// Added in Phase 12. Sent at 50 Hz by the bench firmware build only (`pio run -e bench`): the
+// telemetry Part 13.3 logs. The vehicle build never sends it.
+struct BenchTelemetry {
+    uint32_t timestampMs;
+    float currentAmps;          // BrakeActuatorDriver::readCurrentAmps()
+    uint8_t appliedIntensity;   // PWM duty actually driven, 0-255 scale, after every ceiling
+    uint8_t cableMagnetOn;      // 0/1
+    uint8_t armed;              // 0/1
+    uint8_t faultCode;          // Appendix B
+    float loadCellNewtons;      // HX711 load cell on the pedal fixture (BOM 5.2)
+    uint8_t loadCellValid;      // 0/1
+    uint8_t killSwitchEngaged;  // 0/1
+    // Part 13.3 item 5, measured by the hub itself (the host cannot see anything while the USB
+    // cable is unplugged): for the most recent host-link loss, ms from the last valid host frame
+    // to the brake being released, and to the measured actuator current falling below 0.2 A.
+    // 0xFFFF = no link loss since boot. Reported once the cable is plugged back in.
+    uint16_t lastLossReleaseMs;
+    uint16_t lastLossCurrentZeroMs;
+};
 #pragma pack(pop)
 
 // --- Layout guarantees ------------------------------------------------------------------------
@@ -128,12 +149,14 @@ static_assert(sizeof(SensorReport) == 63, "SensorReport layout changed - update 
 static_assert(sizeof(ActuationCommand) == 9,
               "ActuationCommand layout changed - update BOTH copies");
 static_assert(sizeof(AckStatus) == 8, "AckStatus layout changed - update BOTH copies");
+static_assert(sizeof(BenchTelemetry) == 22, "BenchTelemetry layout changed - update BOTH copies");
 
 // SensorReport is the largest payload and sits 1 byte under the cap. Anything added to it needs
 // MAX_PAYLOAD raised on both ends first, or frames will be silently rejected as oversized.
 static_assert(sizeof(SensorReport) <= MAX_PAYLOAD, "SensorReport exceeds MAX_PAYLOAD");
 static_assert(sizeof(ActuationCommand) <= MAX_PAYLOAD, "ActuationCommand exceeds MAX_PAYLOAD");
 static_assert(sizeof(AckStatus) <= MAX_PAYLOAD, "AckStatus exceeds MAX_PAYLOAD");
+static_assert(sizeof(BenchTelemetry) <= MAX_PAYLOAD, "BenchTelemetry exceeds MAX_PAYLOAD");
 
 // Both ends memcpy multi-byte fields directly, which is only correct because both are
 // little-endian and use IEEE-754 floats of these exact widths.

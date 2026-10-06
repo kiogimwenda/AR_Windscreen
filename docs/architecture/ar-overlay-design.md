@@ -266,6 +266,13 @@ Something ahead is closing: a car braking hard, a stopped vehicle, a pedestrian,
   pipeline latency would otherwise make graphics trail a crossing car by most of a metre.
 - **Warnings, not brakes:** predictions drive warnings and display only. Braking stays on measured,
   current range and closing speed (Part 9.3 rule 1).
+- **Camera shake** *(added 2026-09-30, planned for Phase 14)*: the IMU now shares the camera's
+  carrier in the windscreen pod (BUILD_GUIDE Part 4.8), so its pitch and roll rates are the
+  camera's own. A bump that pitches the camera by 1° shifts the whole image by 1°, and from 1.3 m
+  up a road point 60 m ahead sits only 1.2° below the horizon: an uncorrected 1° jolt throws the
+  far end of the route band off the road entirely. Integrating the gyro over the ~40–60 ms
+  latency and rotating road-anchored overlays by it keeps the band on the road through bumps. To be measured on
+  real road footage before it is claimed.
 
 ### 3.9 What the driver never sees
 Per-class boxes, class names and confidence scores. They belong to the development viewer

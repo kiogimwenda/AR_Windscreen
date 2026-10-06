@@ -3,6 +3,9 @@
 # Consumed by SceneReconstruction (Part 8.3) and RoadSurfaceProjector (Part 11.4) — the latter
 # introduces no new calibration dependency of its own, it reuses this one.
 # TEMPLATE ONLY; filled in during Phase 6.
+# The LiDAR is roof-mounted and pitched forward ~15 deg (BUILD_GUIDE Part 4.8.6, amended
+# 2026-09-30). The tilt lives in this transform and in the camera's: nothing downstream assumes a
+# level LiDAR (GroundPlaneModel and SceneReconstruction work in the vehicle frame).
 rotation_matrix: []            # 3x3, row-major
 translation_m: []              # [tx, ty, tz]
 reprojection_error_px: 0.0

@@ -96,16 +96,20 @@ TEST(EventLog, AckStatusLineNamesTheFaultCode) {
     ack.actuatorFaultCode = 2;
     ack.appliedBrakeIntensity = 0;
     log.logAckStatus(ack);
+    ack.actuatorFaultCode = 5;
+    log.logAckStatus(ack);
     ack.actuatorFaultCode = 200;
     log.logAckStatus(ack);
 
     const auto lines = readLines(path);
-    ASSERT_EQ(lines.size(), 3u);
+    ASSERT_EQ(lines.size(), 4u);
     EXPECT_NE(lines[1].find("ACK_STATUS hub_ts=999 accepted=0 fault=2 fault_name=KILL_SWITCH "
                             "applied=0"),
               std::string::npos);
+    // Two-box hub (BUILD_GUIDE 4.8): the inter-box cable unplugged.
+    EXPECT_NE(lines[2].find("fault=5 fault_name=POWER_BOX"), std::string::npos);
     // An unknown code is still logged, with its number, rather than dropped.
-    EXPECT_NE(lines[2].find("fault=200 fault_name=UNKNOWN"), std::string::npos);
+    EXPECT_NE(lines[3].find("fault=200 fault_name=UNKNOWN"), std::string::npos);
 }
 
 TEST(EventLog, NewlinesAndQuotesCannotSplitOrBreakALine) {

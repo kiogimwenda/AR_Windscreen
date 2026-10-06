@@ -43,3 +43,7 @@ data/drives/
 
 # Third-party legal documents kept for reference only (copyrighted; cite the URL instead)
 docs/Tomtom's terms.pdf
+
+# Python bytecode
+__pycache__/
+*.pyc

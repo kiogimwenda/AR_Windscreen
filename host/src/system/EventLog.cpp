@@ -52,6 +52,8 @@ const char* faultName(std::uint8_t code) {
             return "LINK_TIMEOUT";
         case 4:
             return "FRAME_ERRORS";
+        case 5:
+            return "POWER_BOX";  // two-box hub: inter-box cable unplugged (BUILD_GUIDE 4.8)
         default:
             return "UNKNOWN";
     }

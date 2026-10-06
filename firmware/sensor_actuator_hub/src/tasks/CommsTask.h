@@ -1,6 +1,3 @@
 #pragma once
-// TODO(Part 4.3): CommsTask.
-//
-// Filled in during Phase 2.
-
-void CommsTask(void* params);
+// CommsTask — reads the host's frames from USB-CDC (Part 3). Priority 3.
+void CommsTask(void*);

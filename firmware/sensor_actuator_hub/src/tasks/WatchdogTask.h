@@ -1,6 +1,3 @@
 #pragma once
-// TODO(Part 4.6): WatchdogTask.
-//
-// Filled in during Phase 2.
-
-void WatchdogTask(void* params);
+// WatchdogTask — the independent release path. Highest priority (5). Part 4.6.
+void WatchdogTask(void*);

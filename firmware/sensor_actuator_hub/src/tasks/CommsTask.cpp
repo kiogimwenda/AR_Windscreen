@@ -1,17 +1,36 @@
 #include "tasks/CommsTask.h"
 
-#include "hub/Crc16.h"
-#include "hub/Protocol.h"
+#include <Arduino.h>
 
-// TODO(Part 4.3): Owns the USB-CDC link to the host: decodes incoming frames (discarding any with
-// a bad CRC without acting on them), tracks time-since-last-valid-host-frame for the watchdog, and
-// transmits SensorReport / AckStatus frames.
-//
-// Filled in during Phase 2.
-//
-// The two includes above are NOT premature. Protocol.h's static_asserts on struct layout only
-// execute in a translation unit that actually compiles the header — and the layout question they
-// exist to answer is specifically about THIS target, the Cortex-M4, not the x86-64 host where the
-// unit tests run. Including them here means a plain `pio run` cross-compiles those asserts for ARM,
-// so a host/hub layout disagreement becomes a firmware build failure. Without this, Phase 1's
-// "identical on both ends" claim would rest on two tests that both ran on x86-64.
+#include "tasks/HubContext.h"
+
+// Every byte from the host goes through the FrameParser. A CRC-valid frame refreshes the link in
+// SafetyCore (any type counts, Part 3.4 (1)); a HEARTBEAT re-arms after a disarm; an
+// ACTUATION_COMMAND is judged by SafetyCore and answered with an ACK_STATUS (Part 3.3). A bad frame
+// counts towards Appendix B fault 4 and is never acted on.
+void CommsTask(void*) {
+    HubContext& h = hubContext();
+    hub::FrameParser parser;
+    for (;;) {
+        while (Serial.available() > 0) parser.push(static_cast<uint8_t>(Serial.read()));
+        for (hub::FrameParser::Result r; (r = parser.next()) != hub::FrameParser::Result::NONE;) {
+            const uint32_t now = millis();
+            if (r == hub::FrameParser::Result::ERROR) {
+                xSemaphoreTake(h.coreMutex, portMAX_DELAY);
+                h.core.onFrameError();
+                xSemaphoreGive(h.coreMutex);
+                continue;
+            }
+            hub_protocol::ActuationCommand cmd{};
+            const bool isCommand =
+                parser.type() == hub_protocol::MessageType::ACTUATION_COMMAND && parser.as(cmd);
+            xSemaphoreTake(h.coreMutex, portMAX_DELAY);
+            h.core.onValidFrame(now, parser.type());
+            hub_protocol::AckStatus ack{};
+            if (isCommand) ack = h.core.onCommand(now, cmd);
+            xSemaphoreGive(h.coreMutex);
+            if (isCommand) sendFrame(hub_protocol::MessageType::ACK_STATUS, &ack, sizeof ack);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+}

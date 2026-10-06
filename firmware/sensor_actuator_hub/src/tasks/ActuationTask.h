@@ -1,6 +1,3 @@
 #pragma once
-// TODO(Part 4.5): ActuationTask.
-//
-// Filled in during Phase 2.
-
-void ActuationTask(void* params);
+// ActuationTask — applies what SafetyCore decides, every 10 ms. Priority 4 (Part 4.3, 4.5).
+void ActuationTask(void*);

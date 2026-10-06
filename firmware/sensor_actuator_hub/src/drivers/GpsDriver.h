@@ -1,8 +1,17 @@
 #pragma once
-// TODO(Part 4.4): GpsDriver — u-blox over UART2 via TinyGPSPlus. Non-blocking read() of
-// lat/lon/speed/fix-valid.
-//
-// Part 4.4's rule for every driver in this directory: a small class with init(), a read/poll
-// method, and nothing else. No driver reaches into another driver's state.
-//
-// Filled in during Phase 2.
+// GpsDriver — u-blox receiver on USART2, NMEA parsed by TinyGPS++. See docs/BUILD_GUIDE.md
+// Part 4.4. read() drains the UART without blocking. Not yet run on hardware.
+
+#include <cstdint>
+
+class GpsDriver {
+public:
+    struct Fix {
+        double lat = 0, lon = 0;
+        float speedKph = 0;
+        bool valid = false;
+        uint32_t timestampMs = 0;
+    };
+    bool init();
+    bool read(Fix& out);  // false if no new fix since the last call
+};

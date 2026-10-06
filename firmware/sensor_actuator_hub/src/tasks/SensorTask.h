@@ -1,6 +1,3 @@
 #pragma once
-// TODO(Part 4.3): SensorTask.
-//
-// Filled in during Phase 2.
-
-void SensorTask(void* params);
+// SensorTask — reads the sensors and sends a SENSOR_REPORT at a fixed 50 Hz. Priority 3.
+void SensorTask(void*);

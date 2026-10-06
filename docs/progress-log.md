@@ -2275,3 +2275,131 @@ so OSRM joined them as one drive. The first fix after the 10-minute gap snapped 
 
 **Phase 11:** Ian watched `render_bench --show` under WSLg: "the frames look smooth", on-screen, at
 least for now. That was the caveat left by WSLg ignoring vsync.
+
+## 2026-09-27 — Phase 12 preparation: hub firmware (Phase 2's code) and bench tooling
+
+**Context:**
+- Ian started Phase 12. The firmware was still the Phase 0 stub (Phase 2 deferred: no hardware),
+  and the brake actuator is not yet designed or bought (BOM note B).
+- Ian chose to write the firmware and bench tools now, with no hardware. **Nothing below is
+  proven on hardware.**
+
+**What:**
+- **`include/hub/Config.h`:**
+  - pins (proposals for the Black Pill F411);
+  - timings: 50 Hz reports, 200 ms link and self-check limits, 500 ms IWDG;
+  - brake: ceiling 90, 1.5 s maximum duration, 20 kHz PWM, overcurrent 8 A for 30 ms
+    (PLACEHOLDER), ACS712 constants;
+  - frame-error window.
+- **`include/hub/SafetyCore.h`:** Parts 3.4, 4.5, 4.6 and Appendix B in one class.
+- **`include/hub/FrameCodec.h`:** encoder, and a resynchronising parser.
+- **Drivers:** BrakeActuatorDriver (BTS7960 + ACS712 + cable magnet; the third ceiling),
+  RelayDriver (active-low, safe at boot), SafetyInputs (fail-safe kill-switch sense, brake-light
+  switch), ImuDriver (BNO085), GpsDriver (TinyGPS++), ObdDriver (non-blocking ELM327 state
+  machine), GestureDriver (APDS-9960), LoadCell (HX711, bench).
+- **Tasks:** Comms, Sensor (50 Hz with `vTaskDelayUntil`), Actuation (10 ms), Watchdog (20 ms,
+  direct release, IWDG); `main` puts the hardware in its safe state before anything else.
+- **Protocol:** `BENCH_TELEMETRY` (0x05, 22 B) appended to both copies, which stay identical.
+- **`platformio.ini`:** a bench env; the APDS-9960 library.
+- **`tools/bench_rig/log_actuator_bench.py`:** Part 13.3 checklist tool.
+- **Guide:** Part 4 amended.
+
+**Defects found while building it:**
+1. **Frame parser: a corrupted length field held back later good frames** until the bogus frame
+   failed (~300 ms at the host's rates, enough for a spurious link timeout).
+   - *Fix:* re-scan swallowed bytes, plus early delivery of an embedded valid frame.
+   - *Test:* every single-bit flip of a command is rejected, and each of the next 5 heartbeats is
+     delivered on its last byte.
+2. **STM32 core specifics** (found by the first `pio run`): its UART class is `Uart`, and
+   `Serial2` is not created on this board variant. Both UARTs are now declared explicitly.
+
+**Verification:**
+- **`pio test -e native`: 27/27.**
+  - 20 SafetyCore/FrameCodec tests, including:
+    - arming; the ceiling; duration and the hub's cap;
+    - link loss at exactly >200 ms; re-arm only on a heartbeat, without resuming the old
+      command; report-loop stall;
+    - kill switch; overcurrent spike vs latch, where the latch survives everything;
+    - replayed/stale commands; the zeroed command; relays;
+    - frame-error fault and recovery; fault priority;
+    - **a 600,000-event fuzz** of invariants (≤ 90, braking only while armed, magnet iff braking,
+      nothing applied when `mustRelease`, the latch never clears);
+    - the known heartbeat frame bytes (`AA 04 00 00 5C 10`, from an independent Python CRC);
+    - garbage round trip; every single-bit corruption; oversized length.
+  - 7 existing CRC/protocol tests.
+- **Mutations: 7 SafetyCore mutants all caught:** no clamp, 400 ms timeout, any frame re-arms, no
+  replay check, disarm keeps the command, latch clears, no report self-check.
+- **`pio run`:** vehicle build 55 KB flash, 4.4% RAM; bench build 55 KB. Both succeed.
+- **Host:** 224/224. The ceiling cross-check is now exact against the firmware literal.
+- **Bench tool `selftest`:** 8/8 (CRC, frame vector, struct sizes, parser).
+- clang-format 18 and 22 clean; protocol copies identical.
+
+**Phase 12 status: NOT started physically; the gate is unmet.** Needed, in order:
+1. **Supervisor approval of the actuator design** (BOM note B).
+2. **Parts:** hub board and sensors, BTS7960, ACS712, E-stop and relay, cable magnet, actuator,
+   bench rig (BOM §5).
+3. **Phase 2 bring-up on the bench** (Part 4.7): reports at 50 Hz, a relay toggled by command,
+   the relay released within 200 ms of unplugging.
+4. **The Part 13.3 checklist** with `log_actuator_bench.py`, three consecutive full passes.
+
+## 2026-09-30 — Two-box hub: design, firmware, host and documentation
+
+**What:** Ian's two-box hub design (windscreen pod + under-dash power box + roof LiDAR), carried
+through the whole project. Design in BUILD_GUIDE Part 4.8; choices indexed in `decisions.md`.
+
+**Research behind it (sources in the guide):** Livox Mid-360 manual (no glass in the field of view;
+−7° to +52°; 55 °C; mounting plate); athermic windscreens and their uncoated window by the mirror;
+KEBS's 2019 first-registration rule for imports and CAN's adoption for OBD; STM32F4 USB clock
+accuracy (HSI unsuitable, no crystal-less recovery on the F405); CAN stub length; the STM32duino
+core's CAN and USB build switches.
+
+**Firmware (`firmware/sensor_actuator_hub`):**
+- Board: `genericSTM32F405RG`; new pin map in `Config.h` (the pod board's netlist); `SystemClock.cpp`
+  (8 MHz HSE, HSI fallback).
+- `SafetyCore`: power-box presence (fault 5, disarm, release, re-arm on heartbeat), current reading
+  ignored while absent.
+- `ObdCan.h` (new, hardware-free): ISO 15765-4 poller that listens before it transmits.
+  `ObdDriverCan.cpp` (bxCAN HAL wrapper); the ELM327 driver kept as `ObdDriverElm327.cpp` behind
+  `-DHUB_OBD_ELM327` (`env:hub_elm327`).
+- Drivers: one brake enable line; relays active-high; IMU and gesture on explicit I2C buses (gesture
+  on I2C2 at 100 kHz); `StatusLeds`; `powerBoxPresent()`; `ignitionOn` from the presence line.
+- `platformio.ini`: USB CDC actually enabled (see defect 1), CAN HAL, `HSE_VALUE`.
+
+**Host:** `fusion/ImuMount` (vehicle-frame yaw rate, longitudinal acceleration and heading; two-step
+calibration; knock check) with 8 tests; EventLog names fault 5; `vehicle_params.yaml`
+`imu_mount_rpy_deg`; a LiDAR-tilt note in `lidar_camera_extrinsics.yaml`.
+
+**Bench tool:** item 6 (inter-box cable unplug); six items per attempt; fault 5 decoded.
+
+**Docs:** BUILD_GUIDE Parts 0, 1, 4.1–4.8, 6, 8.2, 10, 12.2.2 (new), 13.3 (item 6), 13.4, 14
+(Phase 2 amended, Phase 12 six items, Phase 12B new), 15.2, Appendix B (fault 5), glossary,
+references; BOM (superseded items marked, new items, §9 PCBs, budget ≈ KES 195,000–270,000);
+system-architecture.md (physical layout); ar-overlay-design.md §3.8 (planned camera-shake
+compensation); `hardware/README.md`.
+
+**Defects found:**
+1. **The firmware had no USB stack.** `-DUSB_CDC_ON_BOOT=1` is an ESP32 flag; STM32duino ignored it,
+   so `Serial` was a hardware UART. The host link could never have worked. *Fix:*
+   `-D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC`. *Check:* the linked firmware now contains the USB CDC
+   symbols (48; before: none).
+2. **The generic F405 board definition runs from the internal oscillator,** unfit for USB. *Fix:*
+   `SystemClock.cpp` with the 8 MHz crystal. *Check:* the map file shows our `SystemClock_Config`
+   linked, not the variant's weak one.
+3. **Design, caught before any hardware:** a floating current-sense line would have latched a false
+   overcurrent on every cable unplug; CAN_H/L up to the pod would have hung a 2.5 m stub on the car's
+   bus; a passive presence loop would have read "present" with the ignition off. All three fixed in
+   the design and (1st) in SafetyCore.
+
+**Verification:**
+- `pio test -e native`: **38/38** (was 27): 3 new SafetyCore tests (disconnect, floating current,
+  reconnect) plus power-box toggling in the 600,000-event fuzz; 8 new OBD poller tests (frame layout,
+  parsing, 500k/11-bit lock, busy bus never transmitted on at a wrong rate, quiet bus fails once per
+  candidate, back-off, loss and recovery, request rate).
+- **Mutations:** 4 power-box mutants and 5 OBD-poller mutants, all caught.
+- `pio run`: `stm32f4_hub` 70.6 KB flash / 7.3 % RAM; `bench` 71.3 KB; `hub_elm327` 70.8 KB. All build.
+- Host unit suite **232/232** (plain and ASan), including 8 ImuMount tests; the host application links.
+- Bench tool `selftest` passes.
+
+**Not done (hardware):** everything physical. Phase 2 bring-up now uses an F405 development board and
+a DB-25 cable; Phase 12B (PCBs, enclosures) is new and needs Ian's work and a supervisor's view of the
+design.

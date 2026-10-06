@@ -8,3 +8,8 @@ serial_baud: 115200
 front_bumper_from_rear_axle_m: 3.5   # rear-axle reference point to the front bumper; the time-to-
                                       # collision gap is measured from the bumper (Part 9.3)
 half_width_m: 0.9                     # half the body width, for the ego path corridor
+# IMU mounting (added 2026-09-30, two-box hub): the BNO085 rides in the windscreen pod beside the
+# camera, tilted with it. [roll, pitch, yaw] of the IMU in the vehicle frame, degrees, found by the
+# two-step calibration of BUILD_GUIDE Part 12.2.2 (host/include/ar_drive_assist/fusion/ImuMount.h).
+# Identity until calibrated in Phase 14. Recalibrate whenever the pod or its camera pitch moves.
+imu_mount_rpy_deg: [0.0, 0.0, 0.0]

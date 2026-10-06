@@ -1,8 +1,15 @@
 #pragma once
-// TODO(Part 4.4): GestureDriver — APDS-9960 on I2C1 (shared with the IMU). poll() returns a single
-// discrete gesture event.
-//
-// Part 4.4's rule for every driver in this directory: a small class with init(), a read/poll
-// method, and nothing else. No driver reaches into another driver's state.
-//
-// Filled in during Phase 2.
+// GestureDriver — APDS-9960 on I2C (shared bus). See docs/BUILD_GUIDE.md Part 4.4. Not yet run on
+// hardware.
+
+#include <cstdint>
+
+class GestureDriver {
+public:
+    enum class Event : uint8_t { NONE = 0, LEFT, RIGHT, UP, DOWN, HOLD };
+    bool init();
+    Event poll();
+
+private:
+    bool ok_ = false;
+};

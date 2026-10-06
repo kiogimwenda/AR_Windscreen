@@ -49,6 +49,8 @@ This project has one hard rule that overrides every other instruction in this do
 
 **What this system does:** fuses camera, LiDAR, GPS, IMU, and OBD-II data into a real-time model of the road ahead; classifies hazards and reckless surrounding-vehicle behaviour; renders that understanding as an augmented-reality overlay on the laptop's screen — including a precision, road-locked turn-by-turn navigation overlay that tracks the actual road surface rather than floating over it — and, through a dedicated microcontroller hub, triggers indicators/lights/horn automatically and can apply a force-limited brake-pedal actuation when a collision risk crosses a defined threshold and the driver has not already braked.
 
+**Physical layout** *(amended 2026-09-30, Part 4.8)*: a **windscreen pod** behind the mirror (camera, IMU, GNSS and the hub's microcontroller), an **under-dash power box** (everything that switches current, and the OBD connection), a **roof-mounted LiDAR** tilted 15° forward, and the E-stop and gesture sensor within the driver's reach. The laptop remains the display.
+
 **Navigation precision is a primary objective, not a stretch feature.** The route overlay must appear locked to the road surface and to the correct lane at close range, not as a generic arrow floating over the video. This is achieved by combining three things that already exist elsewhere in this system rather than by adding a new sensing modality: OSRM routing and map-matching (which road, how far along it), the LiDAR's ground-plane model from Part 8.1 (the real measured surface close to the vehicle, so the line doesn't float or sink through slopes and dips), and the lane-detection model's output (a lateral correction so the line sits in the correct lane rather than trusting GPS's few-metre error). Part 11.2–11.4 specify this pipeline in full. Precision degrades gracefully with distance — near-field (within LiDAR range) is measured-surface-accurate, far-field falls back to a flat-ground assumption — and the report should describe this honestly rather than imply uniform accuracy end-to-end.
 
 **What is explicitly out of scope for this build** (do not implement these; they are future work — see Part 16's future-work section):
@@ -169,6 +171,13 @@ ar-drive-assist/
 ```
 
 **Rule for the agent building this:** create every directory and an empty placeholder file (or a stub with just a header guard and a `// TODO` comment matching the relevant Part number) in one pass at the start of Part 14, Phase 0, before writing any real logic. This keeps the structure stable while individual files are filled in phase by phase.
+
+*Amended 2026-09-30 (the two-box hub, Part 4.8): a top-level `hardware/` holds the custom PCBs and
+mechanical parts (`hardware/pod_board/`, `hardware/power_board/` as KiCad projects,
+`hardware/enclosures/` for the printable pod, power box, gesture puck and LiDAR wedge). In the
+firmware: `include/hub/SafetyCore.h`, `FrameCodec.h` and `ObdCan.h` (hardware-free, tested
+natively), `src/SystemClock.cpp`, and `ObdDriver` split into `ObdDriverCan.cpp` /
+`ObdDriverElm327.cpp`.*
 
 ### 1.1 Progress log format
 
@@ -535,6 +544,14 @@ monitor_speed = 115200
 build_flags = -DUSB_CDC_ON_BOOT=1
 ```
 
+*Amended 2026-09-30 (4.8): the board is an **STM32F405RGT6** on the custom pod board (bring-up on
+any F405RG development board with an 8 MHz crystal); `platformio.ini`'s board is
+`genericSTM32F405RG`. The snippet above is superseded in two more ways: FreeRTOS comes from
+`stm32duino/STM32duino FreeRTOS` (docs/decisions.md, Phase 2), and `-DUSB_CDC_ON_BOOT=1` is an ESP32
+flag that STM32duino ignores. The USB serial port needs `-D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC`;
+without it the firmware had no USB stack at all. The bxCAN driver needs `-D HAL_CAN_MODULE_ENABLED`,
+and the crystal `-D HSE_VALUE=8000000U`.*
+
 ### 4.2 Pin/peripheral allocation (record actual pins used in `Config.h`, this is a template)
 
 | Peripheral | Bus | Notes |
@@ -547,6 +564,13 @@ build_flags = -DUSB_CDC_ON_BOOT=1
 | Brake actuator H-bridge (PWM + direction + current-sense) | 1 timer channel PWM, 2 GPIO direction, 1 ADC channel current sense | |
 | Kill-switch sense line | 1 GPIO input | **read-only on the hub — the switch itself cuts actuator power in hardware, this line only tells firmware it happened, it is not what enforces the cut** |
 | USB-CDC to host | USB | carries the Part 3 protocol |
+
+*Amended 2026-09-30 (4.8): `Config.h` is now the pod board's netlist and the authority. In
+summary: I2C1 (PB6/PB7) BNO085; I2C2 (PB10/PB11) gesture puck; USART2 (PA2/PA3) GNSS; **CAN1
+(PB8/PB9) OBD-II via the power board's SN65HVD230**, replacing the ELM327 (which remains a
+fallback on USART3, PC10/PC11); TIM1 PA8 brake PWM; PA0 current; everything that reaches the power
+box goes through the 25-way cable of 4.8.3, and **relays are now active-high** (MOSFETs with gate
+pull-downs), no longer the active-low relay module.*
 
 ### 4.3 FreeRTOS task layout
 
@@ -625,6 +649,12 @@ public:
 };
 ```
 
+*Amended 2026-09-30 (4.8.5): `ObdDriver` has two implementations, one built: CAN (default,
+`src/drivers/ObdDriverCan.cpp`, with every decision in `include/hub/ObdCan.h`) and the ELM327
+fallback (`-DHUB_OBD_ELM327`). `BrakeActuatorDriver` drives one enable line (R_EN and L_EN are tied
+on the power board). New: `StatusLeds` (link, armed, fault on the pod), and
+`safety_inputs::powerBoxPresent()`.*
+
 ### 4.5 ActuationTask logic
 
 ```cpp
@@ -667,6 +697,46 @@ void WatchdogTask(void*) {
 }
 ```
 
+*Amended 2026-09-27 (Phase 12 prep; firmware written before any hardware exists):*
+- **All actuation safety rules live in `include/hub/SafetyCore.h`**, a class with no hardware in
+  it, unit-tested on the laptop (`pio test -e native`). The tasks are thin: CommsTask reports
+  frames and commands to it, ActuationTask applies what `tick()` returns, SensorTask reports each
+  SensorReport sent (the 3.4 (2) self-check). WatchdogTask reads `mustRelease()` WITHOUT the core's
+  mutex and releases the hardware directly, so a task hung while holding the mutex cannot keep the
+  brake on.
+- **Re-arming needs a HEARTBEAT that arrives while every other condition holds.** Every disarm
+  forgets the last command, so a re-arm never resumes an old brake request.
+- **Three brake ceilings:** SafetyCore clamps, then `BrakeActuatorDriver::apply()` clamps again at
+  the last line before the PWM. `static_assert` keeps the driver's literal equal to
+  `Config.h`'s.
+- **The hub caps brake duration at 1.5 s** whatever the host asks. Overcurrent must last 3
+  consecutive ticks (30 ms) before it latches, so inrush does not trip it.
+- **The kill-switch sense line is wired NORMALLY CLOSED to ground,** read with the pull-up: pressed
+  or a broken wire both read "engaged" (fail-safe). The table in 4.2 did not fix the polarity.
+- **The frame parser resynchronises after corruption:** it re-scans swallowed bytes, and delivers
+  a valid frame ending at the newest byte at once. A corrupted length no longer holds back good
+  heartbeats long enough to trip the 200 ms timeout.
+- **Bench build** (`pio run -e bench`) sends `BENCH_TELEMETRY` (0x05, appended to both protocol
+  copies): current, applied duty, magnet, load cell, and the hub-measured timing of the last
+  link-loss release (Part 13.3 item 5).
+- **Pins in `Config.h`** were proposals for the Black Pill F411 (superseded 2026-09-30 by the
+  F405 pod board, 4.8; kept here as the record):
+  - USART1 PA9/PA10 for the ELM327;
+  - USART2 PA2/PA3 for the GPS;
+  - I2C1 PB6/PB7;
+  - TIM1 PA8 for the brake PWM.
+- **Brake actuator code assumes the design in `docs/bill-of-materials.md` note B** (pull-only
+  cable, holding electromagnet, fast low-force actuator), which is pending approval.
+
+*Amended 2026-09-30 (the two-box hub, 4.8):*
+- **SafetyCore knows whether the power box is there.** `HardwareInputs::powerBoxPresent` (unknown
+  = absent). Absent: not armed, everything released, re-arming needs a fresh heartbeat, fault 5
+  (outranking the kill switch, since an unplugged cable also opens the kill-sense line: report the
+  cause). `mustRelease()` takes it too, so WatchdogTask releases on it without the mutex.
+- **The current reading is ignored while the box is absent.** An unplugged sense line reads
+  ~0 V, which the ACS712 conversion turns into ~25 A; trusted, it would latch a false overcurrent
+  that needs a power cycle. Tested, and in the fuzz.
+
 ### 4.7 Build, flash, and bring-up verification
 
 ```bash
@@ -677,6 +747,228 @@ pio device monitor            # serial console for debug prints
 ```
 
 Exit criteria for this part: with the hub powered and connected to a PC (any PC, host app not required yet), `SensorReport` frames arrive at 50 Hz and decode correctly in a throwaway Python script using `pyserial` + the same framing as `Protocol.h`; sending a hand-crafted `ActuationCommand` from that script toggles a bench-wired relay; physically unplugging the USB cable causes the bench-wired relay to turn off within 200 ms without any command being sent to do so. Do this on the bench, with no vehicle and no brake actuator connected, before touching Part 15.
+
+*Amended 2026-09-30 (the two-box hub, 4.8): bring-up also checks, before anything else is
+connected:*
+- *the 8 MHz crystal starts (the hub enumerates over USB as a ST virtual COM port, 0483:xxxx;
+  on the internal-oscillator fallback it may not);*
+- *continuity of all 25 conductors of the inter-box cable, pin to pin;*
+- *with the power box unplugged or unpowered, SensorReport shows `ignitionOn = 0` and
+  `killSwitchEngaged = 1`, AckStatus shows fault 5, and every power-board output measures 0 V;*
+- *OBD over CAN: with the car's ignition on, the poller locks (bit rate and addressing in a debug
+  print) and `obdSpeedKph` follows the dashboard; with the ignition off, it backs off and reports
+  invalid.*
+
+### 4.8 The two-box hub: windscreen pod, power box, cable, PCBs and enclosures
+
+*Added 2026-09-30, at Ian's design (docs/decisions.md, "Two-box hub"). It supersedes the single
+under-dash hub of 4.1–4.2 and Part 15.2's mounting positions for the hub, IMU, GNSS, camera and
+LiDAR. Nothing in Part 0's safety properties changes; 4.8.7 shows each one still holds across the
+split.*
+
+#### 4.8.1 What goes where, and why
+
+| Unit | Location | Contents | Why there |
+|---|---|---|---|
+| **Windscreen pod** | Behind the rear-view mirror, bonded to the glass | Camera (with hood), **pod board**: STM32F405, BNO085 IMU, NEO-M8N GNSS, status LEDs | The camera's standard position: wiper-cleaned, near the driver's eye line, out of the way. The IMU rides **on the same rigid carrier as the camera**, so it measures the camera's own vibration and the camera–IMU geometry is fixed. |
+| **Power box** | Under the dash, driver's side | **Power board**: 12 V input protection, 5 V supply, 74HCT244 buffer, BTS7960, ACS712, magnet MOSFET, signal relays, 40 A kill relay, CAN transceiver, brake-light optocoupler, LiDAR power feed | Next to everything it switches: the pedal, the fuse box, the OBD port, the E-stop. High current stays short and far from the IMU and GNSS. |
+| **Roof** | Front edge, above the pod | Livox Mid-360 on a 15° forward-tilted aluminium plate; roof GNSS antenna if the windscreen blocks GNSS | The LiDAR must see out unobstructed (4.8.6). |
+| **Driver's reach** | Beside the steering column | E-stop (wired to the power box); gesture puck (APDS-9960, own cable to the pod) | The E-stop must be reachable without looking; the gesture sensor must face the driver's hand. |
+
+**Why the LiDAR is not in the pod** (Ian asked, 2026-09-30). The Livox manual says nothing,
+glass included, may block the field of view; a windscreen reflects and bends the 905 nm beams
+at its shallow angle (coated "athermic" glass can block much of them); the cabin would hide most
+of the 360°; the Mid-360 is rated to 55 °C and the glass zone gets hotter in the sun; and at
+265 g it is too heavy for a glass-bonded mount.
+
+**Why the microcontroller is in the pod** (Option A of the 2026-09-29 discussion). One MCU, one
+firmware, the sensors it reads next to it. The price is a 25-way cable to the power box, made
+safe by 4.8.4's rule: every line that reaches the power box defaults to "off" in hardware.
+
+#### 4.8.2 The pod board (4-layer, about 70 × 50 mm)
+
+- **MCU: STM32F405RGT6** (LQFP64, 168 MHz, 1 MB flash, 192 KB RAM, two bxCAN controllers, USB
+  OTG FS). Chosen over the F411 for CAN (OBD straight from the car) and over BGA/QFN parts because
+  an LQFP64 can be hand-soldered and reworked. Pins: `Config.h` (it is the netlist).
+- **8 MHz crystal (HSE).** USB full speed needs 48 MHz within ±0.25 %; the internal RC oscillator
+  is only ~1 %, and the F405 has no crystal-less USB clock recovery. `src/SystemClock.cpp` sets
+  8 MHz → 168 MHz core, 48 MHz USB, 42 MHz APB1, and falls back to the internal oscillator (hub
+  alive, USB unreliable, never armed) if the crystal fails to start.
+- **Power, two sources, diode-OR'd:** +5 V from the power box through the cable, and USB VBUS from
+  the laptop, each through a Schottky diode → 3.3 V LDO (e.g. AP2112K-3.3). Two sources on
+  purpose: with the USB cable pulled, the pod stays up on cable power, so the firmware watchdog
+  (not a power loss) is what releases, and the hub measures it (13.3 item 5); with the inter-box
+  cable pulled, the pod stays up on USB, keeps talking to the host, and reports fault 5
+  (13.3 item 6). The USB-C socket needs 5.1 kΩ CC pull-downs to receive 5 V.
+- **IMU:** the BNO085 on I2C1. Version 1 mounts the Adafruit breakout with four screws and
+  standoffs (its LGA package needs machine assembly); rigidity matters more than elegance.
+- **GNSS:** NEO-M8N on USART2, active patch antenna on the pod's top face against the glass,
+  inside the uncoated area near the mirror (athermic windscreens leave a dotted "window" there for
+  toll tags and GPS). A u.FL → SMA bulkhead lets a roof antenna replace it.
+- **Gesture connector** (JST-GH 5-pin: 3V3, GND, SCL, SDA, INT) on I2C2, 2.2 kΩ pull-ups, ESD
+  diodes; a separate bus so a damaged puck cable cannot hang the IMU's bus.
+- **DB-25 connector** to the power box (4.8.3), with 100 Ω series resistors on outputs and 1 kΩ /
+  1 nF filters plus 10 kΩ pull-ups on inputs (the MCU's own ~40 kΩ pull-ups are too weak for 2 m
+  of cable beside a 20 kHz PWM line).
+- **Also:** SWD header, BOOT0 and reset buttons, USB ESD (USBLC6-2SC6), status LEDs (link,
+  armed, fault) on the edge facing the driver, a spare USART3 header for the ELM327 fallback.
+- **Four layers** (signal / ground / power / signal): an unbroken ground plane under the GNSS and
+  the IMU is what keeps a switching MCU from deafening a receiver listening for −160 dBW
+  satellite signals.
+
+#### 4.8.3 The inter-box cable
+
+A **DB-25** (male on the cable, female on both boards): widely sold in Nairobi, latching, 25 pins,
+solder-cup or IDC. **Shielded, all 25 conductors wired** (cheap "printer" cables often wire only
+some pins: check continuity of every pin before use, Part 4.7). About 2 m, along the A-pillar
+trim, clear of the curtain airbag. Shield bonded to ground **at the power box end only**.
+
+| Pin | Signal | Direction | Notes |
+|---|---|---|---|
+| 1, 2 | +5V_POD | box → pod | the pod's primary supply, ≤ 300 mA, polyfuse at the box |
+| 3, 4, 6, 11, 25 | GND | — | returns interleaved with the fast and analogue lines |
+| 5 | BRAKE_RPWM | pod → box | 20 kHz PWM, next to a ground |
+| 7 | BRAKE_LPWM | pod → box | only ever LOW |
+| 8 | BRAKE_EN | pod → box | R_EN and L_EN, tied on the power board |
+| 9 | MAGNET_EN | pod → box | cable-magnet MOSFET |
+| 10 | BRAKE_CURRENT | box → pod | ACS712 output after the ×2/3 divider (≤ 3.3 V on the wire) |
+| 12 | KILL_SENSE | box → pod | E-stop second contact, NC to ground |
+| 13 | BOX_PRESENT | box → pod | pulled low only while the box is powered |
+| 14–18 | RELAY_LEFT, _RIGHT, _HAZARD, _HORN, _BEAM | pod → box | active-high |
+| 19 | BRAKE_LIGHT | box → pod | PC817 output, LOW = pedal pressed |
+| 20 | CAN_TX | pod → box | 3.3 V logic to the transceiver's D |
+| 21 | CAN_RX | box → pod | 3.3 V logic from the transceiver's R |
+| 22 | CAN_STBY | pod → box | transceiver Rs; HIGH (default) = standby |
+| 23, 24 | HX711_DOUT, HX711_SCK | — | bench rig load cell only; unused in the car |
+
+#### 4.8.4 The power board (2-layer, 2 oz copper, about 100 × 80 mm)
+
+**The rule that makes the split safe: every signal from the pod enters the power board through a
+10 kΩ pull-down.** MCU in reset, MCU unpowered, cable unplugged or cut: the brake drive, enable and
+magnet lines read LOW (released, cable dropped free) and every relay is off, in hardware, with no
+firmware involved.
+
+- **Two 12 V feeds.**
+  - *Logic:* switched ACC (ignition) → 3 A fuse → reverse-polarity protection (P-MOSFET "ideal
+    diode") → TVS (e.g. SMCJ24A) → a 60 V-rated buck to 5 V / 1 A (e.g. LMR16030). The TVS clamps
+    load-dump and jump-start transients; a buck rated only to 28 V (MP1584 modules) or 40 V
+    (LM2596) could be destroyed by what the TVS lets through, hence the 60 V part.
+  - *Actuator:* battery → 10 A fuse → contacts of the **40 A kill relay** → BTS7960 VIN and the
+    magnet. The kill relay's **coil** is fed from the logic feed **through the E-stop's NC
+    contact**: pressing the E-stop, a broken wire or no ignition all open the relay (Part 0
+    property 2, unchanged).
+- **74HCT244 buffer** for RPWM, LPWM and EN (with the 10 kΩ input pull-downs, output enable tied
+  on). HCT inputs switch at TTL levels (V_IH = 2.0 V), so 3.3 V logic drives the BTS7960 module's
+  5 V inputs reliably. This replaces the level-shifter boards (BOM note A).
+- **BTS7960 module** on the board, on its own heatsink; **ACS712-20A module** in series with the
+  actuator, its output divided ×2/3 before it leaves the box.
+- **Cable magnet:** logic-level MOSFET (e.g. AO3400A, 100 kΩ gate pull-down) from the
+  kill-relay-switched rail, flyback diode.
+- **Signal relays:** five 12 V automotive relays (indicators, hazards, horn, high beam), each
+  switched by a logic-level MOSFET with gate pull-down and flyback diode. Their contacts are tapped
+  into the car's switch wiring as before (Part 15.2).
+- **CAN transceiver: SN65HVD230** (3.3 V, from a small LDO on this board), **beside the OBD
+  lead**. ISO 11898 wants unterminated branches ("stubs") off a CAN bus kept short; at
+  500 kbit/s a stub of several metres reflects. Here the stub is only the ~0.5 m OBD lead; 3.3 V
+  logic travels up the cable instead. Rs pulled high (standby) and D pulled high (recessive) on
+  this board: with the pod silent or disconnected, the transceiver cannot drive the car's bus. ESD
+  protection on CAN_H/CAN_L (e.g. PESD2CAN). **No termination resistor**: the car's bus already has
+  its two, and a third would load it.
+- **BOX_PRESENT:** a 2N7002 whose gate is fed from this board's 5 V rail, pulling pin 13 low. The
+  pod therefore sees "present" only when the box is connected **and** powered, and reports
+  `ignitionOn` from it.
+- **Brake light:** PC817, LED side from the brake-light switch (2.2 kΩ, reverse diode),
+  open-collector output to the pod.
+- **LiDAR feed:** 12 V from the protected logic feed through its own 3 A fuse and an M12 socket.
+- **Bench header:** the HX711 load-cell amplifier's two lines (pins 23, 24) and 5 V.
+
+#### 4.8.5 OBD-II over CAN, and the ELM327 fallback
+
+The ELM327 is itself a small microcontroller that turns AT commands into the same CAN frames,
+reached here over a Bluetooth link that has to pair and drops out. Talking CAN directly removes two
+devices and a radio link. The protocol (ISO 15765-4, SAE J1979 service 01): a functional request
+`0x7DF [02 01 PID 00 00 00 00 00]` (29-bit: `0x18DB33F1`), answered by an ECU on `0x7E8–0x7EF`
+(`0x18DAF1xx`) as `[len 41 PID A B …]`. Speed (PID 0x0D) is A km/h; rpm (0x0C) is (256A + B)/4.
+
+**Rule one: the hub must never disturb the car's own bus**, which carries its engine, ABS and
+airbag traffic. `include/hub/ObdCan.h` holds every decision, tested natively (`test/test_obd`):
+- at each candidate bit rate (ISO 15765-4's order: 500 kbit/s 11-bit, 500 29-bit, 250 11-bit,
+  250 29-bit) the controller first **listens in silent mode** (it cannot transmit or even
+  acknowledge); bus errors mean the wrong rate, and the poller moves on **without transmitting**;
+- a request is sent **once** (automatic retransmission off), one at a time, only service 01
+  (read-only), at most ~20 per second: the load of a handheld scan tool;
+- bit timing at 42 MHz: 14 time quanta per bit (1 + 11 + 2), sample point 85.7 %;
+- no answers anywhere (ignition off): back off 2 s and start again; 10 unanswered requests in a
+  row after locking: drop the lock and search again.
+
+**Coverage.** Used imports now entering Kenya must have been first registered in 2019 or later
+(KEBS, from January 2026), and CAN has been the OBD-II norm since about 2008. An older test car
+may use K-line: build `pio run -e hub_elm327` and plug a Bluetooth ELM327 plus an HC-05 into the
+pod's USART3 header (the pre-2026-09-30 arrangement).
+
+#### 4.8.6 Mechanical design
+
+- **Pod enclosure** (printed in **ASA or PETG**; PLA softens at about 55 °C and the glass zone
+  passes 70 °C in the sun), about 110 × 70 × 45 mm, kept within the mirror's shadow and outside the
+  driver's swept view.
+  - *Mounting:* an aluminium or steel bracket bonded to the glass with 3M VHB tape inside the
+    uncoated area; the pod slides onto it against a locating pin and locks with a thumbscrew, so
+    it can be removed and returns to the same place. Never suction cups: they creep in the heat and
+    ruin the calibration.
+  - *The carrier plate:* the camera and the pod board bolt to **one rigid internal plate**, which
+    pivots in pitch on the bracket and locks with a screw. Pitch the camera to look along the road
+    (horizon about a third from the top of the image), lock it, mark it with paint. After any
+    change: recalibrate camera extrinsics and the IMU mount (Part 12.2.2).
+  - *Camera hood:* a matte black cone from the lens to the glass with a foam seal, so the dashboard
+    does not reflect into the image.
+  - *Heat:* light-coloured outer shell, vent slots top and bottom (a chimney), reflective sunshade
+    when parked. The camera module should be rated to at least 60 °C operating; many consumer
+    webcams are rated only to 40 °C.
+  - *Camera:* a UVC board camera with an **M12 lens and locking ring** fits the pod and gives a
+    fixed focus by construction (BOM 2.6b). The existing USB webcam remains usable on the bench.
+- **Power box enclosure:** an ABS project box (about 150 × 100 × 60 mm) or printed ASA, cable
+  glands for every lead, vents over the BTS7960 heatsink, screwed to a solid bracket under the dash
+  (never to the steering column), clear of the pedals' travel and of the driver's knees.
+- **LiDAR roof bracket:** a 3 mm aluminium plate of at least 100 × 100 mm (the Livox manual asks for
+  ≥ 3 mm and ≥ 10,000 mm² of metal as a heatsink, and ≥ 10 mm of free space around the sensor),
+  on a **15° forward wedge**, clamped to roof bars or a magnetic base with a safety tether.
+  - *Why tilt:* the Mid-360 sees from −7° to +52° vertically. Level at about 1.55 m, its lowest
+    beam reaches the road only 1.55 / tan 7° = 12.6 m ahead. Tilted 15° forward, the forward view
+    becomes −22° to +37°, and the road is visible from 1.55 / tan 22° ≈ 3.8 m, or wherever the
+    bonnet stops blocking it (typically 4–5 m). That is where the 10 km/h brake decision is made
+    (a 5.0 m gap, Part 9.3). The price is the rear view (lower edge +8°), which nothing uses.
+  - Set the final angle at installation with the bonnet measured: the lower forward edge must
+    reach the bonnet-grazing ray, θ ≥ atan((h_lidar − h_bonnet)/d_bonnet) − 7°.
+- **Gesture puck:** a small printed housing on the column shroud, sensor facing the driver's
+  hand, its cable along the A-pillar to the pod.
+
+#### 4.8.7 Failure analysis of the split
+
+| Failure | What happens | Why it is safe |
+|---|---|---|
+| Inter-box cable unplugged or cut | Power board pull-downs: drive off, magnet off (cable drops free), relays off. Pod: BOX_PRESENT and KILL_SENSE read HIGH → fault 5, disarmed. Current reading ignored. | Hardware first; firmware agrees within 10 ms; no false overcurrent latch (tested) |
+| Pod loses all power | MCU off; lines float; pull-downs release | Hardware |
+| MCU hangs | IWDG resets within 500 ms; lines float during reset; pull-downs | Hardware backstop |
+| Laptop stops or USB pulled | Pod stays up on cable power; firmware watchdog releases in ≤ 200 ms | 13.3 item 5, hub-measured |
+| Power box loses 12 V / ignition off | Kill relay opens (no actuator power); BOX_PRESENT HIGH → fault 5 | Hardware |
+| Current-sense wire alone breaks | Reads ~25 A → overcurrent latch → released until power cycle | Fails towards release |
+| CAN wires cut or pod silent | Transceiver held in standby, D recessive | Cannot disturb the car's bus |
+| Gesture cable damaged | Its own I2C bus; IMU unaffected | Isolation by design |
+| Pod knocked | IMU tilt error at rest (`ImuMount::tiltErrorDeg`) and the camera–LiDAR extrinsic score both drop | Detected; recalibrate before driving |
+
+#### 4.8.8 Build sequence
+
+1. **Bench bring-up with modules (Phase 2, then Phase 12's gate).** An F405 development board
+   with an 8 MHz crystal, the sensor breakouts, and a "power box v0" on perfboard (the BTS7960
+   and ACS712 modules, a 74HCT244 with its pull-downs, relays with MOSFETs), connected **through a
+   DB-25 cable with the 4.8.3 pinout** — the same wiring and firmware as the final build.
+2. **PCBs (Phase 12B).** Schematics and layout in KiCad, reviewed against `Config.h` and 4.8.3
+   (ERC and DRC clean, a printed 1:1 check of every footprint), fabricated (JLCPCB or PCBWay,
+   about 1–2 weeks plus shipping and customs; bundle with the §7 import if timing allows),
+   assembled, brought up with Part 4.7, and then **Part 13.3's full checklist re-run three times on
+   the PCB hardware**: new hardware is new evidence.
+3. **Enclosures**, printed and test-fitted in the car with the power off; the pod's heat checked
+   by leaving it in the sun on a parked day and reading the hub's reports.
 
 ---
 
@@ -800,6 +1092,11 @@ private:
 
 ---
 
+*Amended 2026-09-30 (4.8.6): the camera lives in the windscreen pod on the same rigid carrier as
+the IMU, behind a matte hood against the glass. A UVC board camera with an M12 lens and locking
+ring is recommended there (fixed focus by construction); the current webcam serves on the bench.
+Nothing in this Part's software changes.*
+
 ## Part 7 — ML Inference Engine and Model Pipeline
 
 ### 7.1 Models
@@ -911,6 +1208,11 @@ private:
 };
 ```
 A standard 5-state EKF (position x/y, heading, speed, yaw rate) fed by IMU prediction and GPS/OBD-speed correction is sufficient — do not add LiDAR-odometry-based correction unless GPS accuracy proves inadequate in Part 13 testing; it's a real accuracy improvement but a nontrivial addition, and the project's actuation logic (Part 9) mainly needs relative distance/closing-speed to objects in the camera/LiDAR frame, not centimeter-accurate global position.
+
+*Amended 2026-09-30: the IMU is now tilted in the windscreen pod. Its readings reach the EKF only
+through `fusion/ImuMount` (vehicle-frame yaw rate, longitudinal acceleration, vehicle heading),
+calibrated per Part 12.2.2. Fed raw, a 12° pitch alone makes the yaw rate 2 % low and adds a fifth
+of the body's roll rate to it in every corner.*
 
 ### 8.3 3D scene reconstruction: mask-based camera–LiDAR fusion
 
@@ -1377,6 +1679,12 @@ millisecond; on the CPU it would compete with the rest of the pipeline for the f
   tuned in Part 13: route width, far-field opacity 0.45, ease-off 0.15 g, comfortable 0.25 g,
   hard 0.4 g.
 
+*Amended 2026-09-30 (Part 4.8), planned for Phase 14: with the IMU on the camera's carrier, the
+latency compensation can also rotate road-anchored overlays by the camera's own pitch and roll
+over the display latency (gyro integrated over ~40–60 ms), so bumps do not shake the route band
+off the road. `docs/architecture/ar-overlay-design.md` §3.8. Not built yet; to be measured on real
+footage before it is claimed.*
+
 ### 10.4 Benchmark checkpoint (do this before Part 14 marks this part complete)
 
 Measure the actual end-to-end presented frame rate through `WindowedSink` running under WSLg, at
@@ -1766,6 +2074,30 @@ perturbation of the extrinsics. It checks that:
 - a large one ends `DEGRADED` rather than "fixed" at the bound;
 - a featureless scene never produces `REFINED`.
 
+### 12.2.2 IMU mounting, camera pitch and LiDAR tilt (added 2026-09-30, the two-box hub)
+
+The IMU rides in the windscreen pod on the camera's carrier plate, pitched with it; the LiDAR is
+pitched 15° forward on the roof. Neither is level, and neither needs to be, if its orientation is
+measured.
+
+1. **Camera pitch first.** Set the carrier plate so the horizon sits about a third from the top of
+   the image, lock it, paint-mark the screw. Everything below depends on it; any later change
+   means repeating this whole section.
+2. **IMU level (roll, pitch).** Car parked on level ground (check with a spirit level on the door
+   sill, or average two runs facing opposite ways). Record 5 s of SensorReports; average the
+   accelerometer; `ImuMount::levelFromRest()`.
+3. **IMU yaw.** On a straight, empty road: pull away briskly, then brake firmly, a few times.
+   Record accelerometer readings together with OBD speed (its rate of change gives the sign of the
+   longitudinal acceleration); `ImuMount::withYawFromStraightLine()`. It refuses to answer
+   without enough excitation.
+4. Write `[roll, pitch, yaw]` to `config/vehicle_params.yaml: imu_mount_rpy_deg`.
+5. **LiDAR tilt** is part of the LiDAR's extrinsics (12.2), solved with the camera from the
+   checkerboard; measure the wedge angle with an inclinometer app as a cross-check.
+6. **Knock check, every start.** At the first stop, `ImuMount::tiltErrorDeg()` on the resting
+   accelerometer: above ~1°, the pod has moved. Because the IMU and camera share the carrier, the
+   camera has moved too: recalibrate before driving. The camera–LiDAR extrinsic score (12.2.1)
+   sees the same event from the other side.
+
 ### 12.3 What is explicitly *not* calibrated this phase
 
 The projector-combiner angular mapping from the original optical-HUD design is not performed — there is no projector or combiner in this build (Part 0). This step returns in the future optical phase (see the original report's Section 8) and depends on nothing calibrated here changing.
@@ -1831,17 +2163,20 @@ Using `tools/bench_rig/log_actuator_bench.py` against the hub's `AckStatus.appli
 3. With the actuator engaged at its maximum configured intensity, have a person push back on the pedal by foot and confirm they can move it — this is the single most important pass/fail check in the entire project; do not proceed past it on a "should be fine" basis.
 4. Confirm the kill switch cuts power with the actuator mid-actuation.
 5. Confirm the watchdog releases the actuator within 200 ms of the USB cable being physically unplugged, with no software command telling it to release.
-6. Only once all five pass repeatably does `brake_actuator_max_intensity` get treated as final and Part 15 begins.
+6. *(Added 2026-09-30, the two-box hub.)* With the actuator applied, pull the **inter-box cable** at the power box. The actuator must go limp at once (the power board's pull-downs, no firmware), the hub (still on USB power) must report fault 5 and applied 0, must **not** latch an overcurrent from the floating sense line, and must re-arm only after the cable is back and a heartbeat arrives.
+7. Only once all six pass repeatably does `brake_actuator_max_intensity` get treated as final and Part 15 begins.
 
 ### 13.4 Staged real-world validation (matches the report's testing plan, expanded to concrete checklists)
 
-**Stage A — Bench rig.** Covered by 13.3. Exit criteria: all five checks pass on three consecutive attempts.
+**Stage A — Bench rig.** Covered by 13.3. Exit criteria: all six checks pass on three consecutive attempts (amended 2026-09-30: six, with the inter-box cable check).
 
 **Stage B — Stationary in-vehicle.** Full system installed (Part 15), vehicle stationary (handbrake engaged, ideally wheels chocked or on a jack stand). Checklist:
 - [ ] `SensorReport`s reflect real vehicle OBD-II/GPS/IMU data.
 - [ ] A manually triggered detection event (walk a person/object into frame at close range) produces the correct `ActuationRequest` in the `EventLog`.
 - [ ] The brake actuator visibly engages and the driver can push through it, exactly as on the bench.
 - [ ] Kill switch and watchdog checks repeated in-vehicle, not just assumed from Stage A.
+- [ ] Inter-box cable unplugged in the vehicle with the actuator applied: releases, fault 5 (added 2026-09-30).
+- [ ] IMU mount and camera pitch calibrated (12.2.2); the knock check reads under 1°.
 
 **Stage C — Field test.** Empty field, no other people present, spotter present. Checklist:
 - [ ] Actuation mechanism and override/watchdog behaviour hold at real (if low) vehicle speed.
@@ -1940,6 +2275,7 @@ Exit criteria: `test_crc16.cpp` passes on the host side; a matching firmware-sid
 **Phase 2 — Firmware hub, bench bring-up (no actuator, no vehicle)**
 Deliverables: all drivers (Part 4.4) except `BrakeActuatorDriver`'s real hardware (stub it returning zero current, no motor connected yet), `SensorTask`, `CommsTask`, `WatchdogTask` fully implemented, `ActuationTask` implemented against relays only.
 Exit criteria: Part 4.7's bench verification checklist passes in full (50 Hz sensor reports, relay toggles on command, watchdog releases relays within 200 ms of USB unplug); CI's `firmware-build` job is green.
+*Amended 2026-09-30:* on an STM32F405 development board with the sensor breakouts and a perfboard "power box v0", joined by a DB-25 cable wired to Part 4.8.3's pinout, so the wiring and firmware are those of the final two-box build.
 
 **Phase 3 — Host skeleton and hub link**
 Deliverables: `SystemManager`, `EventLog`, message bus (`RingBuffer`), `VehicleInterface` fully implemented against the real firmware from Phase 2.
@@ -1994,7 +2330,16 @@ Exit criteria: Part 10.4's benchmark checkpoint completed and the resulting disp
 
 **Phase 12 — Brake actuator hardware and mandatory bench gate**
 Deliverables: real `BrakeActuatorDriver` against actual actuator hardware (Part 4.4–4.5, completing what Phase 2 stubbed).
-Exit criteria: **Part 13.3's full bench checklist, all five items, on three consecutive attempts.** This phase cannot be marked complete on partial results. If the mechanical coupling fails the "driver can push through it" check, redesign the coupling before touching software again — do not compensate for a mechanically unsafe coupling by lowering `kMaxSafeIntensity` and calling it done; the coupling itself must be safe independent of the software ceiling.
+Exit criteria: **Part 13.3's full bench checklist, all six items (the sixth added 2026-09-30), on three consecutive attempts.** This phase cannot be marked complete on partial results. If the mechanical coupling fails the "driver can push through it" check, redesign the coupling before touching software again — do not compensate for a mechanically unsafe coupling by lowering `kMaxSafeIntensity` and calling it done; the coupling itself must be safe independent of the software ceiling.
+
+**Phase 12B — Custom hub PCBs and enclosures** *(added 2026-09-30, Part 4.8)*
+Deliverables: the pod board and the power board (KiCad schematics, layouts, fabrication files, in
+`hardware/`), assembled; the pod and power-box enclosures and the LiDAR roof bracket.
+Exit criteria: ERC/DRC clean and every net checked against `Config.h` and Part 4.8.3 before
+ordering; Part 4.7's bring-up checks pass on the PCBs; **Part 13.3's full checklist, all six items,
+on three consecutive attempts on the PCB hardware** (new hardware is new evidence; the module
+build's passes do not carry over); the enclosures fit the car with the power off. Physical work
+(soldering, assembly, fitting) is Ian's; stop before and after this phase.
 
 **Phase 13 — Full bench-top end-to-end integration (no vehicle yet)**
 Deliverables: everything from Phases 1–12 running together against the bench-mounted actuator and a live camera/LiDAR feed on a desk/bench rig, including the navigation overlay rendering live alongside hazard detection.
@@ -2034,6 +2379,19 @@ Perform only after Phase 13 (Part 14) is complete — nothing here should be the
 6. **Brake actuator and kill switch** — installed per the bench-validated mechanical design (Part 13.3); kill switch mounted within easy driver reach; **the driver's own pedal linkage is left completely intact and undisturbed** — confirm by pressing the pedal normally with the actuator powered off before doing anything else.
 7. **Laptop** — adjustable cabin mount positioned in the driver's forward-ish field of view; this is the actual AR display now, so mounting position and screen angle/glare matter more than they would for a low-dash-mounted compute unit.
 8. **Power** — switched 12V accessory circuit (active only with ignition ON/ACC) feeds: the peripheral 12V→5V converter (hub, sensors, relay coils) through an inline fuse, and the laptop's 12V→USB-C PD car charger, separately.
+
+*Amended 2026-09-30 (the two-box hub, Part 4.8), superseding items 1–4 above and item 8's hub converter (the 5 V supply is now inside the power box, fed from the switched ACC circuit):*
+1. **Windscreen pod** — bracket bonded with VHB inside the uncoated area behind the mirror (clean
+   with isopropyl alcohol, press, 24 h cure before loading); pod clipped on; camera pitch set and
+   locked (12.2.2); USB to the laptop along the headliner.
+2. **Power box** — under the dash, driver's side, on a solid bracket; ACC logic feed and fused
+   battery actuator feed; OBD lead to the port; E-stop within reach, wired to it.
+3. **Inter-box cable** — along the A-pillar trim, clear of the curtain airbag's deployment path.
+4. **LiDAR** — roof front edge on the 15° wedge plate with a tether; its M12 power/Ethernet lead
+   through a door seal (power from the power box's LiDAR feed, Ethernet to the laptop's adapter).
+5. **GNSS antenna** — on the pod; move to the roof only if the windscreen blocks it (fix-quality
+   check in 15.3).
+6. **Gesture puck** — on the column shroud, cable to the pod.
 
 ### 15.3 Post-installation, pre-drive checklist (repeat Stage B of Part 13.4 here explicitly)
 
@@ -2124,6 +2482,7 @@ reprojection_error_px: 0.0   # fill in from the calibration script's output; kee
 | 2 | Kill switch engaged | All actuation disarmed, host informed via `AckStatus` |
 | 3 | Host link timeout (>200ms) | Watchdog release triggered |
 | 4 | CRC/frame error rate exceeded threshold | Actuation disarmed pending clean frames |
+| 5 | Power box absent (inter-box cable unplugged, or box unpowered) *(added 2026-09-30)* | Disarmed and released (also in hardware, by the power board's pull-downs); current reading ignored; re-arms on a fresh heartbeat once present |
 
 ### Appendix C — WSL2 LiDAR Networking Reference (expanded from earlier discussion)
 
@@ -2158,7 +2517,10 @@ If mirrored mode isn't available (pre-22H2 Windows), fall back to binding the US
 - **Arbiter** — `DecisionArbiter`, the single subsystem permitted to produce an `ActuationRequest`.
 - **Map-matching** — snapping a noisy GPS/EKF fix onto the correct edge of the road network graph, rather than trusting the raw coordinate (Part 11.3).
 - **`GroundPlaneModel`** — the LiDAR-fitted road surface, published rather than discarded, that lets the navigation overlay track real ground geometry at close range (Part 8.1).
+- **Windscreen pod / power box / inter-box cable** — the two halves of the hub since 2026-09-30 (Part 4.8): the pod behind the mirror holds the MCU, camera, IMU and GNSS; the power box under the dash holds everything that switches current; a 25-way DB-25 cable joins them, and every line it carries defaults to "off" in hardware.
+- **bxCAN / ISO 15765-4** — the STM32's CAN controller, and the standard for OBD-II diagnostics over a car's CAN bus, which the hub now speaks directly instead of through an ELM327 (Part 4.8.5).
+- **Stub** — an unterminated branch off a CAN bus. Kept short (the OBD lead only) so it does not reflect on the car's bus; hence the transceiver sits in the power box (Part 4.8.4).
 
 ### References
 
-Carry forward from the original project report: WayRay technical background and automotive HUD market context (now background/motivation only, not the display architecture actually built), YOLOv8/MiDaS/Ultra-Fast-Lane-Detection-v2 papers, Livox SDK2 and OSRM documentation, TensorRT documentation. Add for this build: STM32 FreeRTOS documentation, PlatformIO documentation, `usbipd-win` project documentation and README, WSL2 networking-mode documentation (Microsoft Learn), NVIDIA CUDA-on-WSL documentation.
+Carry forward from the original project report: WayRay technical background and automotive HUD market context (now background/motivation only, not the display architecture actually built), YOLOv8/MiDaS/Ultra-Fast-Lane-Detection-v2 papers, Livox SDK2 and OSRM documentation, TensorRT documentation. Add for this build: the Livox Mid-360 user manual (mounting, heat, field of view), ISO 15765-4 and SAE J1979 (OBD-II over CAN), ST's STM32F405 datasheet and reference manual (bxCAN, clocks), STM32 FreeRTOS documentation, PlatformIO documentation, `usbipd-win` project documentation and README, WSL2 networking-mode documentation (Microsoft Learn), NVIDIA CUDA-on-WSL documentation.

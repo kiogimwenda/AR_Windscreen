@@ -781,3 +781,105 @@ behaviours** (no-turn barriers, roundabout exits) are banners until the map supp
 geometry.
 
 **Renderer tuning values are code defaults** until Part 13 tunes them. Then they move to config.
+
+## Phase 12 preparation — hub firmware and bench tooling (no hardware yet)
+
+**Ian has no hub hardware yet; the brake actuator design (BOM note B) is pending supervisor
+approval.** Phase 12's gate is physical. The code is prepared so bring-up can start the day parts
+arrive; nothing here counts toward the gate.
+
+**Every hub safety rule is in one hardware-free class (SafetyCore), tested natively.** Tasks are
+thin wrappers. WatchdogTask releases directly, without the core mutex.
+
+**Re-arm only on a heartbeat received while all other conditions hold; disarm forgets the
+command.** Zeroed commands always release. Commands that request something must have a strictly
+newer `hostTimestampMs`.
+
+**Kill-switch sense line: NC to ground, pull-up, HIGH = engaged,** so a broken wire reads engaged.
+
+**Parser resynchronisation.** Re-scanning after a failure, plus early delivery of a frame embedded
+behind a corrupted length. Without it, a bit error in a length field could hold back ~300 ms of
+heartbeats and trip the 200 ms link timeout (safe, but spurious).
+
+**`BENCH_TELEMETRY` (0x05) appended to both protocol copies; sent by the bench build only.**
+Item 5 (USB unplug) is measured BY THE HUB, because nothing is observable from the laptop while
+the cable is out. An oscilloscope on the BTS7960 enable line is the recommended independent
+cross-check.
+
+**The firmware ceiling is now a literal (90) in `BrakeActuatorDriver.h`,** so the host's
+`RealConfigMatchesTheFirmwareCeiling` test switched from "documented value" to an exact
+cross-check.
+
+**Bench tool: `tools/bench_rig/log_actuator_bench.py`** (`selftest`, `checklist --attempt N`,
+`status`). It records all five items per attempt under `bench_runs/`. Those records are the
+actuation evidence for the report and are meant to be committed. Items 1, 3 and 4 need the
+operator's confirmation; the tool cannot pass the push-back check by itself.
+
+## Two-box hub: windscreen pod, power box, roof LiDAR (2026-09-30, Ian's design)
+
+**Ian's design, agreed after discussion (2026-09-29/30): a custom-PCB hub split into a windscreen
+pod behind the mirror (MCU, camera, IMU, GNSS) and an under-dash power box, with the LiDAR on the
+roof.** BUILD_GUIDE Part 4.8 is the full design; this is the index of the choices inside it.
+
+**The LiDAR is not in the pod.** The Livox manual forbids anything, glass included, in its field
+of view; a windscreen reflects and refracts 905 nm at its shallow angle (and athermic coatings block
+much of it); the cabin would hide most of the 360°; the Mid-360 is rated to 55 °C; 265 g is too
+much for a glass-bonded mount. It goes on the roof **tilted 15° forward**: level, its −7° lower edge
+reaches the road only 12.6 m ahead, tilted about 4–5 m (bonnet-limited), where the 10 km/h brake
+decision is made.
+
+**The MCU is in the pod (Option A), not in the power box with a CAN link to a pod sensor node
+(Option B).** One MCU and one firmware; Ian agreed. The cost is a 25-way cable (DB-25, sold
+locally). It is made safe by one rule: **every line into the power board has a 10 kΩ pull-down**, so
+reset, power loss or an unplugged cable leaves the brake released, the magnet off and the relays
+off, in hardware. Relays therefore became active-high (MOSFET drivers with gate pull-downs); the old
+relay module was active-low and would not have been off by default.
+
+**STM32F405RGT6 instead of the F411 placeholder:** two bxCAN controllers, LQFP64 (hand-solderable),
+sold locally as a development board (BOM 1.1). **An 8 MHz crystal is mandatory:** USB needs 48 MHz
+within ±0.25 %, the internal oscillator is ~1 %, and the F405 has no crystal-less USB recovery. The
+firmware sets its own clock (`src/SystemClock.cpp`), falling back to the internal oscillator rather
+than halting if the crystal fails (hub alive and released; the unreliable link never arms it).
+
+**OBD-II straight from the car's CAN bus replaces the ELM327 + HC-05**, which stay as a build-time
+fallback (`env:hub_elm327`) for a pre-CAN car. Imports now entering Kenya must be first registered in
+2019 or later (KEBS, from January 2026), and CAN has been the OBD norm since about 2008. The code
+follows one rule: never disturb the car's bus. Listen silently at each candidate rate before ever
+transmitting; send each request once (no retransmission); only service 01; ~20 requests/s at most.
+All of it is in `include/hub/ObdCan.h`, tested natively.
+
+**The CAN transceiver sits in the power box, beside the OBD lead, not in the pod.** Running CAN_H/L
+2.5 m up to the pod would hang a long unterminated stub on the car's bus, which reflects at
+500 kbit/s. 3.3 V logic (TX, RX, standby) goes up the cable instead; the transceiver's standby and
+TX lines are pulled to "silent" on the power board.
+
+**The pod has two power sources, diode-OR'd:** +5 V from the power box and USB VBUS. With the USB
+cable out, the pod stays up and its firmware watchdog is what releases (bench item 5 stays a test of
+the watchdog, measured by the hub); with the inter-box cable out, the pod stays up on USB and reports
+the power box's absence.
+
+**Power-box absence is fault 5**, above the kill switch in priority (an unplugged cable also opens
+the kill-sense line: report the cause). **The current reading is ignored while the box is absent**:
+the floating line reads ~0 V, which the ACS712 conversion turns into ~25 A, and trusted it would latch
+a false overcurrent needing a power cycle. The presence line is pulled low by a MOSFET fed from the
+box's own 5 V, so "present" means connected **and** powered; it also gives `ignitionOn`, which was a
+hard-coded 1.
+
+**A sixth bench item:** pull the inter-box cable with the actuator applied. Phase 12's gate is now
+six items, three consecutive passes, and a new **Phase 12B** (PCBs and enclosures) must pass it again
+on the PCB hardware.
+
+**The IMU is tilted with the camera, so its readings are rotated into the vehicle frame
+(`fusion/ImuMount`) and calibrated** in two steps from data the hub already sends: roll and pitch
+from gravity at rest, yaw from straight-line acceleration and braking (sign from OBD speed). At a
+12° pitch, raw readings would make the yaw rate 2 % low and add 21 % of the body's roll rate in
+corners. `tiltErrorDeg()` detects a knocked pod at every stop.
+
+**Version 1 PCBs keep the risky parts as modules:** BNO085 and NEO-M8N breakouts on standoffs, the
+BTS7960 and ACS712 modules on the power board. What goes onto the boards is what was never the risk
+(MCU, power, buffering, connectors).
+
+**Found while doing this: the existing firmware had no USB stack.** `-DUSB_CDC_ON_BOOT=1` is an
+ESP32 flag; STM32duino needs `-D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC`, without which `Serial` was a
+hardware UART and the host link could never have worked. It would have surfaced on the first day of
+Phase 2 bring-up. Fixed; confirmed by the USB device symbols now in the linked firmware.

@@ -4,6 +4,12 @@ Hardware needed to take the build past Phase 1. Every line traces to a section o
 Sourcing is **Kenya-first**: a local supplier is listed wherever one was found online, and an import
 route is given only where nothing suitable is sold locally.
 
+> **Amended 2026-09-30: the two-box hub** (`BUILD_GUIDE.md` Part 4.8, `decisions.md`). The hub is
+> now a windscreen pod (MCU, camera, IMU, GNSS) and an under-dash power box, joined by a 25-way
+> cable, later built on two custom PCBs (§9). OBD-II is read straight from the car's CAN bus. Items
+> marked **Superseded** stay listed for the record; do not buy them unless their note says so.
+> New prices below are **estimates** made on 2026-09-30, not shop quotes: confirm before buying.
+
 Prices were researched on **2026-09-24**. Kenyan maker shops go out of stock often, and several items
 below showed as sold out that day. **Before you travel to a shop, confirm stock by phone or WhatsApp.**
 "Est." means no price was published and the figure is a market estimate.
@@ -25,16 +31,20 @@ below showed as sold out that day. **Before you travel to a shop, confirm stock 
 
 | # | Item | Spec that matters | Source | Price (KES) | Status |
 |---|---|---|---|---|---|
-| 1.1 | **STM32F401CCU6 "Black Pill" v3.0** | Cortex-M4F, 3× USART, 3× I2C, USB-C. Meets Part 4.1's minimum. | K-Technics | 900 | In stock |
-| 1.1b | *Alternative:* STM32F405RGT6 dev board | Adds a hardware CAN controller, for reading OBD over CAN directly later. | K-Technics | 3,200 | In stock |
+| 1.1 | **STM32F405RGT6 development board** (bring-up, until the pod board exists) | The pod board's MCU (two bxCAN controllers for OBD over CAN, LQFP64). **Check it has an 8 MHz crystal** (USB needs it; the firmware assumes 8 MHz, `HSE_VALUE`). | K-Technics | 3,200 | In stock |
+| 1.1b | ~~STM32F401CCU6 "Black Pill" v3.0~~ | **Superseded 2026-09-30:** no CAN controller. | K-Technics | 900 | — |
 | 1.2 | ST-Link V2 (mini clone) | SWD flashing and real breakpoint debugging. USB DFU can also flash, but it cannot debug a stuck FreeRTOS task. | K-Technics | 750 | In stock |
-| 1.3 | Logic-level converter, 4-ch (buy ×2) | The BTS7960 module's input buffer and 5 V relay boards do not switch reliably from 3.3 V logic. See note A. | K-Technics | 150 each | In stock |
-| 1.4 | Perfboard, header pins, JST/Dupont leads, screw terminals | Hub carrier board | K-Technics / Pixel | ~1,000 est. | Common |
+| 1.3 | ~~Logic-level converter, 4-ch (×2)~~ | **Superseded 2026-09-30:** a 74HCT244 on the power board (item 1.6) does the level shifting and adds the fail-safe pull-downs. Note A still explains why. | K-Technics | 150 each | — |
+| 1.4 | Perfboard, header pins, JST/Dupont leads, screw terminals | Bring-up: the pod side and "power box v0" | K-Technics / Pixel | ~1,000 est. | Common |
+| 1.5 | **DB-25 male + female connectors (×2 pairs) and a shielded 25-core cable, ~2 m, ALL 25 wired** | The inter-box cable (Part 4.8.3). Cheap printer cables often skip pins: buy loose shielded multicore, or check every pin. | Electronics shops, Luthuli Ave / Jumia | est. 1,000–1,500 | Common |
+| 1.6 | 74HCT244, logic-level MOSFETs (AO3400A ×8, 2N7002 ×2), 10 k/100 k resistors, 1N4007/SS14 diodes | Power box v0: buffered, pulled-down outputs (fail-safe with the cable out), relay and magnet drivers | Pixel / Nerokas / K-Technics | est. 500–1,000 | Common |
+| 1.7 | **SN65HVD230 CAN transceiver breakout** (3.3 V) | OBD-II over the car's CAN bus, at the power box beside the OBD lead | Pixel / K-Technics / Jumia | est. 400–700 | Listed |
+| 1.8 | **OBD-II (J1962) male plug with a ~0.5 m pigtail** | Pins 4/5 ground, 6 CAN_H, 14 CAN_L, 16 battery. Keep it short: it is the stub on the car's CAN bus. | Jumia / auto-electrical shops | est. 800–1,500 | Listed |
 
-**Buying 1.1 changes the firmware target.** `platformio.ini` has to move from the guide's placeholder
-`blackpill_f411ce` to `blackpill_f401cc`. The F411 is not sold locally right now (Nerokas lists it at
-KES 2,000, out of stock). The F401 runs at 84 MHz instead of 100 MHz and has 256 KB of flash instead of
-512 KB. Both are ample for this hub.
+**1.1 is the firmware target** (`platformio.ini`: `genericSTM32F405RG`, since 2026-09-30). The F405
+runs at 168 MHz with 1 MB of flash and two CAN controllers. Before buying, confirm the board's
+crystal is 8 MHz (printed on the metal can): USB depends on it, and the firmware assumes it. A board
+with a different crystal needs `HSE_VALUE` and `Config.h`'s `kHseHz` changed to match.
 
 ## 2. Sensors (Part 4.2, Part 6, Part 8)
 
@@ -43,12 +53,14 @@ KES 2,000, out of stock). The F401 runs at 84 MHz instead of 100 MHz and has 256
 | 2.1 | **BNO085 IMU breakout** (Adafruit 4754 or equivalent) | On-chip sensor fusion. Part 4.1 already pins the `Adafruit BNO08x` library. | **Import.** No Kenyan listing found. | ~US$25 | See §7 |
 | 2.1b | *Local fallback:* BNO055 breakout | Similar fusion IMU, but needs a different driver library (decision needed). | Jumia | est. 2,500–4,000 | Listed |
 | 2.2 | **u-blox NEO-M8N GPS** with antenna | 72-ch multi-GNSS, UART. Get a board with a u.FL/SMA connector if the antenna will go on the roof (Part 15.2 step 1). | Pixel Electric (GY-GPSV3) / Nerokas (with EEPROM + antenna) | 1,800 | **Both sold out.** Ring them. NEO-6M (~1,100) is a fallback at lower accuracy. |
-| 2.3 | **ELM327 OBD-II adapter, Bluetooth** | Get one with a genuine PIC18F25K80 ("v1.5"). Cheap "v2.1" clones drop commands and often lack protocol support. | Jumia / Kilimall | est. 1,000–2,000 | Listed |
-| 2.4 | HC-05 Bluetooth module | Master mode, pairs with the ELM327 and bridges it to UART3. This is the Bluetooth-SPP option Part 4.2 permits. | K-Technics 650 / Pixel 600 | 600–650 | Listed |
+| 2.3 | ELM327 OBD-II adapter, Bluetooth | **Fallback only (2026-09-30):** buy only if the test car turns out to be pre-CAN (K-line). Then get a genuine PIC18F25K80 ("v1.5"). | Jumia / Kilimall | est. 1,000–2,000 | Only if needed |
+| 2.4 | HC-05 Bluetooth module | **Fallback only**, with 2.3, on the pod's USART3 header. | K-Technics 650 / Pixel 600 | 600–650 | Only if needed |
 | 2.5 | APDS-9960 gesture sensor | I2C, shares the bus with the IMU | Pixel Electric | 800 | **Sold out.** Ring them, or check Jiji. PAJ7620 (Pixel) is a fallback but needs a different library. |
-| 2.6 | **USB camera, 1440p ("2K")** | Must allow **manual focus lock** over UVC/V4L2. Autofocus invalidates the Part 12.1 intrinsics every time it moves. Check this before buying. | Jumia (e.g. UGREEN CM778, other 2K models) | 6,000–13,000 | Listed |
+| 2.6 | **USB camera, 1440p ("2K")** | Must allow **manual focus lock** over UVC/V4L2. Autofocus invalidates the Part 12.1 intrinsics every time it moves. Check this before buying. Serves the bench (Phases 4–13). | Jumia (e.g. UGREEN CM778, other 2K models) | 6,000–13,000 | Listed |
+| 2.6b | *Recommended for the pod:* **UVC board camera, 2K, M12 lens with locking ring** (e.g. ELP modules) | Fits the pod on the carrier plate; focus fixed by construction; glass lens; operating range to **≥ 60 °C** (behind the windscreen). Choose a lens giving ~90° horizontal field of view. | **Import**, add to §7 | ~US$40–70 | See §7 |
 | 2.7 | **Livox Mid-360 LiDAR** | 360°×59° FoV, 9–27 V DC, 100 Mbit Ethernet, the Livox-SDK2 device Part 2.8 installs | **Import.** No Kenyan stockist found. | ~US$749 list | See §7 |
 | 2.8 | Livox three-wire aviation cable (M12 → RJ45 + power + function) | **Not included** with the Mid-360. Without it you cannot power or talk to the LiDAR. | Import with 2.7 (DJI or third-party) | ~US$20 | See §7 |
+| 2.10 | Active GNSS antenna, roof (magnetic, SMA) | **Only if** the windscreen's coating blocks GNSS at the pod (Part 4.8.2). | Jumia | est. 800–1,500 | If needed |
 | 2.9 | USB 3.0 → Gigabit Ethernet adapter | **Only if your laptop has no RJ45 port.** Part 2.2/Appendix C also use it as the `usbipd` fallback. | Jumia (UGREEN, generic) | est. 1,000–2,500 | Listed |
 
 ## 3. Actuation and safety (Part 4.2, Part 13.3, Part 15.2)
@@ -63,14 +75,15 @@ KES 2,000, out of stock). The F401 runs at 84 MHz instead of 100 MHz and has 256
 | 3.3 | **Brake actuator** | *Pending note B.* Pull-only coupling, bounded force, fast enough to matter. | — | — | **Blocked on design** |
 | 3.4 | **Emergency-stop switch**, 22 mm mushroom, twist-release, **NC contact + a second contact block** | Driver-reach kill switch (Part 0 property 2). The second contact drives the hub's sense line. | Industrial electrical suppliers (Luthuli Ave / Industrial Area). Not found online. | est. 800–1,500 | Walk-in |
 | 3.5 | 12 V automotive relay, 40 A, SPST-NO, with socket (×2) | The E-stop switches this relay's **coil**, and the relay carries the actuator current. Contacts are closed only while the E-stop is released, so the kill path fails safe. | Auto-spares strip | est. 300–500 each | Common |
-| 3.6 | 4-ch 5 V relay module, opto-isolated | Indicators, hazards, horn, high beam (Part 4.2) | K-Technics / Pixel (550) / Nerokas | 550 | Listed |
+| 3.6 | **12 V automotive relays with sockets (×5)** | Indicators, hazards, horn, high beam, driven by MOSFETs on the power board (active-high, off by default). **Replaces** the 4-ch 5 V relay module (superseded 2026-09-30: its active-low inputs are not off by default when the cable is out). | Auto-spares strip | est. 1,500–2,500 | Common |
 | 3.7 | PC817 optocoupler module (2-ch) | *Recommended addition, not in the guide.* Reads the car's brake-light switch so the hub knows the driver is braking. See note C. | Pixel / K-Technics | est. 150–300 | Common |
 
 ## 4. Power (Part 15.2 step 8)
 
 | # | Item | Spec that matters | Source | Price (KES) | Status |
 |---|---|---|---|---|---|
-| 4.1 | 12 V → 5 V buck converter, 5 A, automotive input range (6–32 V) | Powers the hub, sensors and relay coils | Jumia / Nerokas / Pixel | est. 500–1,000 | Listed |
+| 4.1 | 12 V → 5 V buck converter, **rated to 60 V input**, ≥ 1 A | The power box's 5 V (pod, buffer, ACS712, transceiver). 60 V because the TVS (4.1b) lets ~39 V through a load dump; MP1584 (28 V) and LM2596 (40 V) modules are not enough. Relay coils are 12 V now. | Jumia / Nerokas (or on the power board, §9) | est. 800–1,500 | Check listing |
+| 4.1b | SMCJ24A TVS diode, P-channel MOSFET (reverse-polarity), 3 A and 10 A fuses | Input protection of the logic feed (Part 4.8.4) | Pixel / auto-spares | est. 500 | Common |
 | 4.2 | Inline blade-fuse holders plus assorted ATO fuses | Separate fuses for the peripheral rail, the actuator rail and the LiDAR | Auto-spares strip | est. 500 | Common |
 | 4.3 | Wire: 1.5 mm² and 2.5 mm² automotive, red and black; heat-shrink; crimp ring terminals | Actuator and LiDAR runs | Auto-spares / electrical shops | est. 1,500 | Common |
 | 4.4 | **Laptop in-car power**. See note D. | The guide's USB-C PD car charger will not run this laptop under GPU load. | — | — | **Decision needed** |
@@ -90,8 +103,10 @@ KES 2,000, out of stock). The F401 runs at 84 MHz instead of 100 MHz and has 256
 | # | Item | Source | Price (KES) |
 |---|---|---|---|
 | 6.1 | Adjustable laptop mount (seat-bolt or passenger-side floor pole) | Jumia | est. 3,000–6,000 |
-| 6.2 | Camera mount behind the mirror (suction or adhesive GoPro-style) | Jumia | est. 500–1,000 |
-| 6.3 | LiDAR mount (roof bar clamp or magnetic base plus plate) | Hardware/fabricator | est. 1,500–3,000 |
+| 6.2 | Windscreen pod glass bracket (small aluminium/steel plate) and **3M VHB tape**; isopropyl alcohol | Fabricator / hardware store | est. 500–1,000 |
+| 6.3 | LiDAR roof mount: **3 mm aluminium plate ≥ 100 × 100 mm on a 15° wedge** (Livox: ≥ 3 mm, ≥ 10,000 mm² as heatsink), roof-bar clamps or magnetic base, safety tether | Fabricator (Kariokor / Industrial Area) | est. 2,000–4,000 |
+| 6.3b | **3D-printing filament, ASA or PETG, 1 kg** (never PLA: softens at ~55 °C) and printing time | Pod, power box, gesture puck | Nairobi 3D-printing shops / Jumia | est. 2,500–4,500 |
+| 6.3c | Power-box enclosure (ABS, ~150 × 100 × 60 mm) and cable glands | If not printed | Pixel / electrical shops | est. 1,000–2,000 |
 | 6.4 | Add-a-fuse tap for the switched ACC circuit | Auto-spares strip | est. 300 |
 | 6.5 | Cable ties, split loom, trim tools | Auto-spares strip | est. 800 |
 
@@ -100,7 +115,9 @@ KES 2,000, out of stock). The F401 runs at 84 MHz instead of 100 MHz and has 256
 ## 7. Import order: bundle it into one shipment
 
 Four items were not found in any Kenyan shop: the **Mid-360 (2.7)**, its **cable (2.8)**, the
-**BNO085 (2.1)**, and, depending on note B, the **actuator (3.3)**. Put them in **one** order. Duty and
+**BNO085 (2.1)**, and, depending on note B, the **actuator (3.3)**. Put them in **one** order.
+*(2026-09-30: add the M12 board camera (2.6b) to it. The PCBs of §9 come from the board house as a
+separate parcel; order them early enough to clear customs with the rest if possible.)* Duty and
 clearing costs are per consignment, so four separate parcels cost roughly four times as much to clear.
 
 Rough landed cost for the Mid-360 bundle, assuming ≈ US$810 CIF and an exchange rate of about
@@ -126,15 +143,20 @@ genuine unit with a serial number. The Mid-360's default IP is derived from that
 
 | Block | Approx. KES |
 |---|---|
-| Hub + sensors bought locally (§1, §2 excl. 2.1/2.7/2.8) | 12,000 – 22,000 |
-| Actuation + safety, excluding the actuator (§3) | 4,500 – 7,500 |
-| Power, excluding the laptop solution (§4) | 2,500 – 3,000 |
+| Hub + sensors bought locally (§1, §2 excl. 2.1/2.7/2.8; ELM327/HC-05 now fallback only) | 15,000 – 26,000 |
+| Actuation + safety, excluding the actuator (§3) | 5,500 – 9,500 |
+| Power, excluding the laptop solution (§4) | 3,000 – 4,000 |
 | Bench rig (§5) | 8,000 – 13,000 |
-| Installation (§6) | 6,000 – 11,000 |
-| **Local subtotal** | **≈ 33,000 – 56,000** |
-| Import bundle (§7), dominated by the LiDAR | ≈ 135,000 – 160,000 |
+| Installation, including the pod bracket, LiDAR wedge plate and enclosures (§6) | 10,000 – 18,000 |
+| **Local subtotal** | **≈ 41,000 – 71,000** |
+| Import bundle (§7), dominated by the LiDAR (+ the M12 camera) | ≈ 140,000 – 170,000 |
+| Custom PCBs, components and their shipping (§9) | ≈ 15,000 – 28,000 |
 | Actuator + laptop power | open, see notes B and D |
-| **Total** | **≈ 170,000 – 220,000**, plus the notes B/D items |
+| **Total** | **≈ 195,000 – 270,000**, plus the notes B/D items |
+
+*Amended 2026-09-30:* the two-box hub adds about KES 25,000–50,000 over the single-box estimate
+(≈ 170,000–220,000): the F405 board, cable and connectors, automotive relays, protection parts,
+enclosures and the two custom PCBs. It removes the ELM327, HC-05, level shifters and relay module.
 
 The LiDAR is about three-quarters of the budget. If that is a problem, raise it with your supervisor
 **before** buying. Dropping it breaks Part 8, the near-field ground model in Part 11.4, and the
@@ -142,9 +164,30 @@ guide's headline navigation-precision objective. It is not a cheap substitution.
 
 ---
 
+## 9. Custom PCBs (Phase 12B, `BUILD_GUIDE.md` Part 4.8)
+
+Estimates for version 1, made 2026-09-30; get a quote from the board house's online calculator
+before ordering.
+
+| # | Item | Notes | Est. |
+|---|---|---|---|
+| 9.1 | Pod board, 4-layer, ~70 × 50 mm, ×5 | Four layers for a solid ground under the GNSS and IMU | US$15–35 |
+| 9.2 | Power board, 2-layer, 2 oz copper, ~100 × 80 mm, ×5 | 2 oz for the actuator and relay currents | US$10–25 |
+| 9.3 | Components: STM32F405RGT6 ×2 (one spare), 8 MHz crystals, AP2112K-3.3, USB-C sockets, USBLC6-2SC6, 60 V buck IC + inductor, SMCJ24A, 74HCT244, MOSFETs, SN65HVD230, PESD2CAN, PC817, DB-25 PCB connectors, passives | From the board house's assembly service or LCSC/Mouser; hand-solderable packages chosen (LQFP64, SOIC, SOT-23, 0805) | US$40–70 |
+| 9.4 | Optional machine assembly of the fine-pitch parts | If hand-soldering the LQFP64 is not wanted | US$15–40 |
+| 9.5 | Courier to Kenya and duty/VAT | Express courier; duty and VAT on the declared value | US$30–60 |
+| | **Total** | at ~129 KES/US$ | **≈ KES 15,000 – 28,000** |
+
+The BNO085 and NEO-M8N stay as breakouts on standoffs in version 1 (2.1, 2.2); the BTS7960 and
+ACS712 stay as modules on the power board (3.1, 3.2). Only the parts that were never the risk go
+onto the boards themselves.
+
+---
+
 ## Notes
 
-**A. 3.3 V logic against 5 V modules.** The STM32 drives 3.3 V. Most BTS7960 boards put a 74HC-family
+**A. 3.3 V logic against 5 V modules.** *(2026-09-30: now solved by the power board's 74HCT244,
+whose TTL input threshold of 2.0 V reads 3.3 V logic correctly; the reasoning below still applies.)* The STM32 drives 3.3 V. Most BTS7960 boards put a 74HC-family
 buffer in front of the IC, powered at 5 V, and that buffer needs about 3.5 V to see a logic "high".
 3.3 V sits just below that line, so the output works on some boards and fails on others. Opto-isolated
 relay boards have the reverse problem: with the input driven to 3.3 V, the opto LED can stay partly
