@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 560" font-family="Liberation Serif, Times New Roman, serif" fill="#000"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/></marker><marker id="ahs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/></marker><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#000" stroke-width="1"/></pattern></defs>
+<rect x="10.0" y="8.0" width="700.0" height="132.0" rx="7" fill="none" stroke="#000" stroke-width="2"/>
+<text x="24.0" y="30.0" font-size="13" font-weight="bold" text-anchor="start">Windscreen pod (behind the mirror): pod board, 4-layer</text>
+<rect x="24.0" y="40.0" width="160.0" height="84.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="104.0" y="72.0" font-size="12" font-weight="bold" text-anchor="middle">STM32F405</text>
+<text x="104.0" y="88.0" font-size="10" text-anchor="middle">FreeRTOS, 8 MHz</text>
+<text x="104.0" y="101.0" font-size="10" text-anchor="middle">crystal, USB to laptop</text>
+<rect x="194.0" y="40.0" width="160.0" height="84.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="274.0" y="72.0" font-size="12" font-weight="bold" text-anchor="middle">Camera</text>
+<text x="274.0" y="88.0" font-size="10" text-anchor="middle">on the carrier plate,</text>
+<text x="274.0" y="101.0" font-size="10" text-anchor="middle">USB to laptop</text>
+<rect x="364.0" y="40.0" width="160.0" height="84.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="444.0" y="72.0" font-size="12" font-weight="bold" text-anchor="middle">BNO085 IMU</text>
+<text x="444.0" y="88.0" font-size="10" text-anchor="middle">on the same carrier</text>
+<text x="444.0" y="101.0" font-size="10" text-anchor="middle">as the camera</text>
+<rect x="534.0" y="40.0" width="160.0" height="84.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="614.0" y="72.0" font-size="12" font-weight="bold" text-anchor="middle">NEO-M8N GNSS</text>
+<text x="614.0" y="88.0" font-size="10" text-anchor="middle">antenna at the glass;</text>
+<text x="614.0" y="101.0" font-size="10" text-anchor="middle">status LEDs</text>
+<path d="M 360.0 140.0 L 360.0 200.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)" marker-start="url(#ahs)"/>
+<text x="370.0" y="158.0" font-size="11" font-style="italic" text-anchor="start">DB-25 cable, 2 m. Down: brake PWM and enable,</text>
+<text x="370.0" y="172.0" font-size="11" font-style="italic" text-anchor="start">magnet, relays, CAN logic, +5 V. Up: current,</text>
+<text x="370.0" y="186.0" font-size="11" font-style="italic" text-anchor="start">kill sense, box present, brake light.</text>
+<text x="350.0" y="165.0" font-size="11" font-style="italic" text-anchor="end">5 V from the box OR USB</text>
+<text x="350.0" y="179.0" font-size="11" font-style="italic" text-anchor="end">powers the pod</text>
+<rect x="10.0" y="200.0" width="700.0" height="250.0" rx="7" fill="none" stroke="#000" stroke-width="2"/>
+<text x="24.0" y="222.0" font-size="13" font-weight="bold" text-anchor="start">Power box (under the dash): power board, 2-layer, 2 oz copper</text>
+<rect x="24.0" y="230.0" width="216.0" height="62.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="132.0" y="251.0" font-size="12" font-weight="bold" text-anchor="middle">Input pull-downs</text>
+<text x="132.0" y="267.0" font-size="10" text-anchor="middle">every line OFF when</text>
+<text x="132.0" y="280.0" font-size="10" text-anchor="middle">the pod is not driving it</text>
+<rect x="250.0" y="230.0" width="216.0" height="62.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="358.0" y="251.0" font-size="12" font-weight="bold" text-anchor="middle">74HCT244 buffer</text>
+<text x="358.0" y="267.0" font-size="10" text-anchor="middle">3.3 V logic to</text>
+<text x="358.0" y="280.0" font-size="10" text-anchor="middle">5 V module inputs</text>
+<rect x="476.0" y="230.0" width="216.0" height="62.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="584.0" y="251.0" font-size="12" font-weight="bold" text-anchor="middle">12 V input</text>
+<text x="584.0" y="267.0" font-size="10" text-anchor="middle">fuses, TVS, reverse</text>
+<text x="584.0" y="280.0" font-size="10" text-anchor="middle">protection, 60 V buck</text>
+<rect x="24.0" y="302.0" width="216.0" height="62.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="132.0" y="323.0" font-size="12" font-weight="bold" text-anchor="middle">BTS7960 + ACS712</text>
+<text x="132.0" y="339.0" font-size="10" text-anchor="middle">H-bridge 20 kHz;</text>
+<text x="132.0" y="352.0" font-size="10" text-anchor="middle">current sense</text>
+<rect x="250.0" y="302.0" width="216.0" height="62.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="358.0" y="323.0" font-size="12" font-weight="bold" text-anchor="middle">Magnet MOSFET</text>
+<text x="358.0" y="339.0" font-size="10" text-anchor="middle">cable held only</text>
+<text x="358.0" y="352.0" font-size="10" text-anchor="middle">while braking</text>
+<rect x="476.0" y="302.0" width="216.0" height="62.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="584.0" y="323.0" font-size="12" font-weight="bold" text-anchor="middle">40 A kill relay</text>
+<text x="584.0" y="339.0" font-size="10" text-anchor="middle">coil through the</text>
+<text x="584.0" y="352.0" font-size="10" text-anchor="middle">E-stop's NC contact</text>
+<rect x="24.0" y="374.0" width="216.0" height="62.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="132.0" y="395.0" font-size="12" font-weight="bold" text-anchor="middle">5 signal relays</text>
+<text x="132.0" y="411.0" font-size="10" text-anchor="middle">MOSFET-driven,</text>
+<text x="132.0" y="424.0" font-size="10" text-anchor="middle">active-high</text>
+<rect x="250.0" y="374.0" width="216.0" height="62.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="358.0" y="395.0" font-size="12" font-weight="bold" text-anchor="middle">SN65HVD230</text>
+<text x="358.0" y="411.0" font-size="10" text-anchor="middle">CAN transceiver,</text>
+<text x="358.0" y="424.0" font-size="10" text-anchor="middle">standby by default</text>
+<rect x="476.0" y="374.0" width="216.0" height="62.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="584.0" y="395.0" font-size="12" font-weight="bold" text-anchor="middle">Presence MOSFET</text>
+<text x="584.0" y="411.0" font-size="10" text-anchor="middle">box connected AND</text>
+<text x="584.0" y="424.0" font-size="10" text-anchor="middle">powered = present</text>
+<rect x="24.0" y="488.0" width="128.0" height="56.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="88.0" y="512.0" font-size="12" font-weight="bold" text-anchor="middle">Actuator</text>
+<text x="88.0" y="528.0" font-size="10" text-anchor="middle">pull-only cable</text>
+<rect x="162.0" y="488.0" width="128.0" height="56.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="226.0" y="512.0" font-size="12" font-weight="bold" text-anchor="middle">Cable magnet</text>
+<text x="226.0" y="528.0" font-size="10" text-anchor="middle">holds the cable</text>
+<rect x="300.0" y="488.0" width="128.0" height="56.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="364.0" y="512.0" font-size="12" font-weight="bold" text-anchor="middle">E-stop</text>
+<text x="364.0" y="528.0" font-size="10" text-anchor="middle">driver's reach</text>
+<rect x="438.0" y="488.0" width="128.0" height="56.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="502.0" y="512.0" font-size="12" font-weight="bold" text-anchor="middle">Car lights, horn</text>
+<text x="502.0" y="528.0" font-size="10" text-anchor="middle">existing wiring</text>
+<rect x="576.0" y="488.0" width="128.0" height="56.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="640.0" y="512.0" font-size="12" font-weight="bold" text-anchor="middle">OBD-II port</text>
+<text x="640.0" y="528.0" font-size="10" text-anchor="middle">~0.5 m lead</text>
+<path d="M 88.0 450.0 L 88.0 488.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<path d="M 226.0 450.0 L 226.0 488.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<path d="M 364.0 488.0 L 364.0 450.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<path d="M 502.0 450.0 L 502.0 488.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<path d="M 640.0 450.0 L 640.0 488.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)" marker-start="url(#ahs)"/>
+</svg>

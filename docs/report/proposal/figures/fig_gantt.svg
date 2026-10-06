@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 726 596" font-family="Liberation Serif, Times New Roman, serif" fill="#000"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/></marker><marker id="ahs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/></marker><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#000" stroke-width="1"/></pattern></defs>
+<rect x="300" y="24" width="44" height="482" fill="none" stroke="#999" stroke-width="0.6"/>
+<text x="322.0" y="41.0" font-size="12" font-weight="bold" text-anchor="middle">Aug</text>
+<rect x="344" y="24" width="44" height="482" fill="none" stroke="#999" stroke-width="0.6"/>
+<text x="366.0" y="41.0" font-size="12" font-weight="bold" text-anchor="middle">Sep</text>
+<rect x="388" y="24" width="44" height="482" fill="none" stroke="#999" stroke-width="0.6"/>
+<text x="410.0" y="41.0" font-size="12" font-weight="bold" text-anchor="middle">Oct</text>
+<rect x="432" y="24" width="44" height="482" fill="none" stroke="#999" stroke-width="0.6"/>
+<text x="454.0" y="41.0" font-size="12" font-weight="bold" text-anchor="middle">Nov</text>
+<rect x="476" y="24" width="44" height="482" fill="none" stroke="#999" stroke-width="0.6"/>
+<text x="498.0" y="41.0" font-size="12" font-weight="bold" text-anchor="middle">Dec</text>
+<rect x="520" y="24" width="44" height="482" fill="none" stroke="#999" stroke-width="0.6"/>
+<text x="542.0" y="41.0" font-size="12" font-weight="bold" text-anchor="middle">Jan</text>
+<rect x="564" y="24" width="44" height="482" fill="none" stroke="#999" stroke-width="0.6"/>
+<text x="586.0" y="41.0" font-size="12" font-weight="bold" text-anchor="middle">Feb</text>
+<rect x="608" y="24" width="44" height="482" fill="none" stroke="#999" stroke-width="0.6"/>
+<text x="630.0" y="41.0" font-size="12" font-weight="bold" text-anchor="middle">Mar</text>
+<rect x="652" y="24" width="44" height="482" fill="none" stroke="#999" stroke-width="0.6"/>
+<text x="674.0" y="41.0" font-size="12" font-weight="bold" text-anchor="middle">Apr</text>
+<text x="410.0" y="16.0" font-size="12" font-weight="bold" text-anchor="middle">2026</text>
+<text x="608.0" y="16.0" font-size="12" font-weight="bold" text-anchor="middle">2027</text>
+<text x="292.0" y="66.0" font-size="11.5" text-anchor="end">Concept paper and presentation</text>
+<rect x="326.4" y="55" width="17.6" height="14" fill="#333" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="90.0" font-size="11.5" text-anchor="end">Architecture, protocol, host foundations</text>
+<rect x="344.0" y="79" width="26.4" height="14" fill="#333" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="114.0" font-size="11.5" text-anchor="end">ML perception and sign detector</text>
+<rect x="361.6" y="103" width="26.4" height="14" fill="#333" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="138.0" font-size="11.5" text-anchor="end">Fusion, tracking, motion prediction (software)</text>
+<rect x="374.8" y="127" width="13.2" height="14" fill="#333" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="162.0" font-size="11.5" text-anchor="end">Navigation and road projector (software)</text>
+<rect x="379.2" y="151" width="8.8" height="14" fill="#333" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="186.0" font-size="11.5" text-anchor="end">Decision logic and AR renderer (software)</text>
+<rect x="383.6" y="175" width="4.4" height="14" fill="#333" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="210.0" font-size="11.5" text-anchor="end">Hub firmware (code) and bench tooling</text>
+<rect x="385.8" y="199" width="4.4" height="14" fill="#333" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="234.0" font-size="11.5" text-anchor="end">Two-box hub design (pod, power box)</text>
+<rect x="386.7" y="223" width="3.5" height="14" fill="#333" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="258.0" font-size="11.5" text-anchor="end">Project proposal and proposal defence</text>
+<rect x="383.6" y="247" width="74.8" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="282.0" font-size="11.5" text-anchor="end">Procurement and import of hardware</text>
+<rect x="388.0" y="271" width="88.0" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="306.0" font-size="11.5" text-anchor="end">Actuator design approval and fabrication</text>
+<rect x="396.8" y="295" width="92.4" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="330.0" font-size="11.5" text-anchor="end">Hub bring-up and camera pipeline (Ph. 2, 4)</text>
+<rect x="445.2" y="319" width="57.2" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="354.0" font-size="11.5" text-anchor="end">LiDAR and calibration (Ph. 6)</text>
+<rect x="476.0" y="343" width="57.2" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="378.0" font-size="11.5" text-anchor="end">Actuator bench gate (Ph. 12)</text>
+<rect x="489.2" y="367" width="57.2" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="402.0" font-size="11.5" text-anchor="end">Custom PCBs and enclosures (Ph. 12B)</text>
+<rect x="493.6" y="391" width="70.4" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="426.0" font-size="11.5" text-anchor="end">Bench-top end-to-end integration (Ph. 13)</text>
+<rect x="528.8" y="415" width="44.0" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="450.0" font-size="11.5" text-anchor="end">Vehicle installation and calibration (Ph. 14)</text>
+<rect x="564.0" y="439" width="35.2" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="474.0" font-size="11.5" text-anchor="end">Staged validation A-D (Ph. 15)</text>
+<rect x="586.0" y="463" width="48.4" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="498.0" font-size="11.5" text-anchor="end">Final report, demonstration, defence (Ph. 16)</text>
+<rect x="621.2" y="487" width="70.4" height="14" fill="url(#hatch)" stroke="#000" stroke-width="1"/>
+<text x="292.0" y="528.0" font-size="11.5" text-anchor="end">Progress reports / reviews</text>
+<polygon points="445.2,518 451.2,524 445.2,530 439.2,524" fill="#000"/>
+<polygon points="502.4,518 508.4,524 502.4,530 496.4,524" fill="#000"/>
+<polygon points="555.2,518 561.2,524 555.2,530 549.2,524" fill="#000"/>
+<polygon points="599.2,518 605.2,524 599.2,530 593.2,524" fill="#000"/>
+<polygon points="643.2,518 649.2,524 643.2,530 637.2,524" fill="#000"/>
+<rect x="300" y="546" width="22" height="12" fill="#333" stroke="#000"/>
+<text x="328.0" y="556.0" font-size="11.5" text-anchor="start">done (as of 29/09/2026)</text>
+<rect x="490" y="546" width="22" height="12" fill="url(#hatch)" stroke="#000"/>
+<text x="518.0" y="556.0" font-size="11.5" text-anchor="start">planned</text>
+</svg>

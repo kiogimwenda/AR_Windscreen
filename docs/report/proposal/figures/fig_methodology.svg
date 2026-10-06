@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 560" font-family="Liberation Serif, Times New Roman, serif" fill="#000"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/></marker><marker id="ahs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/></marker><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#000" stroke-width="1"/></pattern></defs>
+<rect x="55.0" y="14.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="200.0" y="36.0" font-size="13" font-weight="bold" text-anchor="middle">Requirements and safety rules</text>
+<text x="200.0" y="52.0" font-size="11" text-anchor="middle">hard actuation rule, scope, metrics</text>
+<rect x="55.0" y="90.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="200.0" y="112.0" font-size="13" font-weight="bold" text-anchor="middle">Architecture and interfaces</text>
+<text x="200.0" y="128.0" font-size="11" text-anchor="middle">protocol, message bus, DisplaySink</text>
+<rect x="55.0" y="166.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="200.0" y="188.0" font-size="13" font-weight="bold" text-anchor="middle">Phase n: design</text>
+<text x="200.0" y="204.0" font-size="11" text-anchor="middle">concept first, then interface</text>
+<rect x="55.0" y="242.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="200.0" y="264.0" font-size="13" font-weight="bold" text-anchor="middle">Implement</text>
+<text x="200.0" y="280.0" font-size="11" text-anchor="middle">C++17 host / FreeRTOS firmware</text>
+<rect x="55.0" y="318.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="200.0" y="340.0" font-size="13" font-weight="bold" text-anchor="middle">Test</text>
+<text x="200.0" y="356.0" font-size="11" text-anchor="middle">unit tests, sanitizers, fuzzing</text>
+<path d="M 200.0 66.0 L 200.0 90.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<path d="M 200.0 142.0 L 200.0 166.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<path d="M 200.0 218.0 L 200.0 242.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<path d="M 200.0 294.0 L 200.0 318.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<polygon points="200,382.0 325.0,432 200,482.0 75.0,432" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="200.0" y="428.7" font-size="12" text-anchor="middle">Exit criteria</text>
+<text x="200.0" y="443.7" font-size="12" text-anchor="middle">demonstrably met?</text>
+<path d="M 200.0 370.0 L 200.0 382.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<path d="M 75.0 432.0 L 50.0 432.0 L 50.0 192.0 L 55.0 192.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="68.0" y="424.0" font-size="11" font-style="italic" text-anchor="end">No</text>
+<text x="45.0" y="319.0" font-size="11" font-style="italic" text-anchor="end">revise</text>
+<rect x="395.0" y="14.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="540.0" y="36.0" font-size="13" font-weight="bold" text-anchor="middle">Bench-top integration</text>
+<text x="540.0" y="52.0" font-size="11" text-anchor="middle">hub + host, no vehicle</text>
+<rect x="395.0" y="90.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="540.0" y="112.0" font-size="13" font-weight="bold" text-anchor="middle">Actuator bench gate</text>
+<text x="540.0" y="128.0" font-size="11" text-anchor="middle">5 checks, 3 consecutive passes</text>
+<path d="M 540.0 66.0 L 540.0 90.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="395.0" y="166.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="540.0" y="188.0" font-size="13" font-weight="bold" text-anchor="middle">Vehicle installation</text>
+<text x="540.0" y="204.0" font-size="11" text-anchor="middle">calibration: camera, LiDAR, ground</text>
+<path d="M 540.0 142.0 L 540.0 166.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="395.0" y="242.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="540.0" y="264.0" font-size="13" font-weight="bold" text-anchor="middle">Staged validation</text>
+<text x="540.0" y="280.0" font-size="11" text-anchor="middle">bench, stationary, field, campus road</text>
+<path d="M 540.0 218.0 L 540.0 242.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="395.0" y="318.0" width="290.0" height="52.0" rx="6" fill="none" stroke="#000" stroke-width="1.4"/>
+<text x="540.0" y="340.0" font-size="13" font-weight="bold" text-anchor="middle">Demonstration and report</text>
+<text x="540.0" y="356.0" font-size="11" text-anchor="middle">evidence from the event log</text>
+<path d="M 540.0 294.0 L 540.0 318.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<path d="M 325.0 432.0 L 355.0 432.0 L 355.0 40.0 L 395.0 40.0" fill="none" stroke="#000" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="349.0" y="398.0" font-size="11" font-style="italic" text-anchor="end">Yes: all software</text>
+<text x="349.0" y="412.0" font-size="11" font-style="italic" text-anchor="end">phases complete</text>
+<rect x="405.0" y="425.0" width="280.0" height="120.0" rx="6" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="5 3"/>
+<text x="417.0" y="451.0" font-size="12" text-anchor="start">Every task is logged: a progress log (what,</text>
+<text x="417.0" y="471.0" font-size="12" text-anchor="start">why, how verified) and a decision record for</text>
+<text x="417.0" y="491.0" font-size="12" text-anchor="start">any choice made under ambiguity. Hardware</text>
+<text x="417.0" y="511.0" font-size="12" text-anchor="start">steps follow a stop list; physical work is</text>
+<text x="417.0" y="531.0" font-size="12" text-anchor="start">done by the student.</text>
+</svg>

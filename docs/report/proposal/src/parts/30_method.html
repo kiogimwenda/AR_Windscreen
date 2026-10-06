@@ -1,0 +1,384 @@
+
+<!-- ============================== 3.0 METHODOLOGY ============================== -->
+<section class="sheet" id="s3">
+<h1>3.0 Methodology</h1>
+<p>This chapter describes how the system will be built and verified: the development approach
+(3.1), the overall architecture (3.2), the hardware and firmware of the hub (3.3&ndash;3.4), each
+software subsystem on the laptop (3.5&ndash;3.9), calibration (3.10), testing and staged validation
+(3.11), and how the work will be demonstrated (3.12). Design calculations are given where a
+component or threshold is chosen.</p>
+
+<h2 id="s3-1">3.1 Development Approach</h2>
+<p>The project is developed in seventeen phases (0&ndash;16), each with written exit criteria that
+must be demonstrably met before the next phase begins ({{ref:fig_methodology.svg}}). Each phase
+starts with the concept and the interface, then the implementation, then tests, including tests
+designed to fail if the code is wrong (for example, a projection test that fails if lens distortion
+is left out). Software that does not need hardware is developed and verified first against recorded
+road video, a recorded GNSS drive and synthetic scenes, so that when the hardware arrives, only
+integration remains. Every task is recorded in a progress log (what was done, why, and how it was
+verified), and every choice made under ambiguity is recorded in a decision log, which together form
+the evidence base for the final report.</p>
+<p>Hardware work follows a strict order with a mandatory gate: <b>no part of the system may act on
+a real vehicle until the brake actuator has passed its bench test</b> (Section 3.11). All physical
+work (wiring, mounting, testing in the car) is carried out by the student.</p>
+{{fig:fig_methodology.svg|Development methodology: phased design with exit gates, followed by the hardware integration and staged validation sequence|4.4}}
+
+<h2 id="s3-2">3.2 System Architecture</h2>
+<p>The system has four layers ({{ref:fig_architecture.svg}}). <b>Sensors</b> observe the road and
+the car. A <b>sensor and actuator hub</b>, an STM32F405 microcontroller running FreeRTOS, reads the
+low-rate sensors (GNSS, IMU, OBD-II over the car&rsquo;s CAN bus, gesture), owns every actuator,
+and enforces the safety rules.
+The <b>host</b>, a laptop with an NVIDIA RTX 5060 GPU running Debian Linux under WSL2, reads the
+high-rate sensors (camera over USB, LiDAR over Ethernet) and runs perception, fusion, navigation,
+decision-making and rendering. The <b>outputs</b> are the AR display, the signal relays, the brake
+actuator, and an evidence log.</p>
+<p>The split follows one principle: <i>the laptop decides, the hub disposes</i>. The laptop has the
+computing power for vision and mapping but runs a general-purpose operating system that can crash
+or stall. The hub is simple, deterministic and always running. The laptop may only send a bounded
+<i>request</i>; the hub decides whether to act on it, clamps it to its own limits, and releases the
+brake by itself if the laptop falls silent for 200 ms.</p>
+{{fig:fig_architecture.svg|System architecture, from sensors to outputs|5.0}}
+<p><b>Physical layout</b> ({{ref:fig_installation.svg}}). The hub is built as two units on custom
+printed circuit boards. A <b>windscreen pod</b> behind the rear-view mirror holds the camera, the
+microcontroller, the IMU and the GNSS receiver. An <b>under-dash power box</b> holds everything that
+switches current: the actuator driver, the relays, the kill relay and the connection to the
+car&rsquo;s OBD-II port. A 25-way cable joins them. The LiDAR sits on the roof, tilted forward, and
+the emergency stop and gesture sensor are within the driver&rsquo;s reach.</p>
+{{fig:fig_installation.svg|Installation layout, and the geometry of the tilted LiDAR mount|3.4}}
+<p>Inside the host, each subsystem runs in its own thread and communicates through lock-free
+single-producer, single-consumer ring buffers carrying FlatBuffers messages
+({{ref:fig_software_dataflow.svg}}, Appendix D). A consumer always takes the newest message, so a slow stage
+(for example, the renderer during a heavy frame) never makes another stage fall behind. The
+<b>decision arbiter</b> is the only component permitted to produce an actuation request, which
+makes the safety-relevant path short and auditable.</p>
+
+</section>
+
+<section class="sheet">
+<h2 id="s3-3">3.3 Hardware Design: the Two-Box Hub</h2>
+<p><b>Why two boxes.</b> The camera belongs behind the mirror, where the wipers keep its view clean
+and it sees roughly what the driver sees. Placing the IMU on the <i>same rigid carrier plate</i> as
+the camera fixes the camera&ndash;IMU geometry and lets the IMU measure the camera&rsquo;s own
+vibration, which the renderer can use to hold overlays steady over bumps. The actuator driver,
+relays and OBD connection, by contrast, belong under the dash beside the pedal, fuse box and OBD
+port, where heavy currents stay short and away from the sensitive receivers
+({{ref:fig_hub_hardware.svg}}).</p>
+<p><b>Pod board</b> (4-layer). An <b>STM32F405RGT6</b> (Cortex-M4F, 168 MHz) was chosen for its CAN
+controllers and hand-solderable LQFP64 package. An 8 MHz crystal is mandatory: USB needs a
+48 MHz clock within &plusmn;0.25 %, while the internal RC oscillator is only about 1 % accurate.
+The IMU (BNO085) and GNSS receiver (u-blox NEO-M8N) are mounted as breakout boards on standoffs in
+the first version. The pod takes 5 V from the power box <i>or</i> from the laptop&rsquo;s USB port
+through a diode-OR, so it stays running if either cable is pulled, and can report what happened.</p>
+<p><b>Power board</b> (2-layer, 2 oz copper). The rule that makes the split safe is that
+<b>every line from the pod enters the power board through a pull-down resistor</b>. If the
+microcontroller is in reset, unpowered, or the cable is unplugged, the brake drive, the cable
+magnet and every relay read &ldquo;off&rdquo; in hardware, with no firmware involved. A 74HCT244
+buffer converts the 3.3 V signals for the 5 V module inputs (its TTL input threshold of 2.0 V reads
+3.3 V reliably). The 12 V input is protected by fuses, reverse-polarity protection and a TVS diode
+against load-dump transients, feeding a 60 V-rated buck converter.</p>
+<p><b>Actuation power path.</b> The actuator is fed through a fuse and the contacts of a 40 A
+automotive relay whose <i>coil</i> is powered through the normally-closed contact of a
+mushroom-head emergency stop. Pressing it, a broken wire or a lost supply all remove actuator
+power in hardware. A BTS7960 H-bridge drives the actuator with 20 kHz PWM, above the audible range,
+and an ACS712-20A Hall-effect sensor measures its current independently.</p>
+<p><b>OBD-II over CAN.</b> The hub reads vehicle speed and engine rpm directly from the car&rsquo;s
+CAN bus using the ISO 15765-4 diagnostic protocol {{cite:iso15765}}, replacing a Bluetooth ELM327
+adapter. Used vehicles now imported into Kenya must have been first registered in 2019 or later,
+and CAN has been the norm for OBD-II since about 2008. The transceiver sits in the power box beside
+the OBD port, so the hub adds only a short unterminated branch to the car&rsquo;s bus; a 2.5 m
+branch would cause reflections at 500 kbit/s. The firmware never disturbs the bus. It listens
+silently before transmitting at each candidate bit rate, sends each read-only request only once,
+and polls at most about 20 times a second.</p>
+<p><b>Fail-safe actuator design.</b> A lead-screw linear actuator is rejected because it cannot be
+back-driven: it would hold the brake on after a power cut, and typical units are also too strong
+(up to 900 N) and too slow (5&ndash;15 mm/s). The design uses (i) a <b>pull-only cable</b> to the
+pedal, which goes slack if the driver presses further, so the driver&rsquo;s foot always overrides
+it; (ii) a <b>holding electromagnet</b> in the cable, powered through the kill relay, which drops the
+cable free whenever power is lost, and whose holding force is a <b>mechanical force ceiling</b>;
+and (iii) a <b>fast, low-force actuator</b> of about 50&ndash;100 mm/s and 100&ndash;200 N. It is
+subject to supervisor approval before purchase.</p>
+{{fig:fig_hub_hardware.svg|The two-box hub: windscreen pod, inter-box cable and under-dash power box|4.6}}
+<p><b>LiDAR mounting.</b> The manufacturer forbids anything, glass included, in the sensor&rsquo;s
+field of view {{cite:livox2024}}. The unit is also rated only to 55 &deg;C, so it cannot sit behind
+the windscreen. Its vertical field of view runs from &minus;7&deg; to +52&deg;, so mounted level at
+h = 1.55 m its lowest beam meets the road only at</p>
+<p class="eq">d = h / tan 7&deg; = 1.55 / 0.123 = 12.6 m<span class="n">(3.1)</span></p>
+<p>Tilted 15&deg; forward on a 3 mm aluminium wedge plate, which also serves as the heatsink the
+manual asks for, the forward lower edge becomes &minus;22&deg;. The road is then visible from
+1.55/tan 22&deg; &asymp; 3.8 m, or from wherever the bonnet stops blocking the view (typically
+4&ndash;5 m). That covers the 5.0 m gap at which the 10 km/h brake decision is made (Section 3.8).
+Only the rearward view is lost, and nothing uses it.</p>
+<p><b>Current sensing.</b> The ACS712 outputs 2.5 V at 0 A and 100 mV/A on a 5 V supply. It is
+divided by 2/3 inside the power box, so that nothing above 3.3 V travels up the cable:</p>
+<p class="eq">V<sub>ADC</sub> = (2.5 + 0.1&thinsp;I) &times; 2/3 &nbsp;&rArr;&nbsp; at the 8 A
+limit, V<sub>ADC</sub> = 2.20 V &rArr; 2,730 of 4,095 counts<span class="n">(3.2)</span></p>
+<p>One count is 12 mA of actuator current. An unplugged sense line reads about 0 V, which this
+formula would turn into 25 A, so the firmware ignores the reading whenever the power box is absent.
+Otherwise, every cable unplug would latch a false overcurrent fault.</p>
+<p><b>Enclosures and power.</b> The pod is printed in ASA or PETG, since PLA softens at about
+55 &deg;C and the glass zone gets hotter in the sun. It clips onto a bracket bonded to the glass in
+the uncoated area near the mirror, and it has a matte hood to stop dashboard reflections reaching
+the lens. The laptop draws 200&ndash;280 W under GPU load, more than a USB-C car charger supplies,
+so it runs from a 300 W inverter or on its own battery during the short test windows.</p>
+
+<h2 id="s3-4">3.4 Host&ndash;Hub Protocol and the Safety Core</h2>
+<p><b>Framing.</b> Every message is framed as <span class="mono">0xAA | type | length (2 bytes,
+little-endian) | payload | CRC-16/CCITT-FALSE (2 bytes)</span>. Four message types are used: a
+63-byte <i>SensorReport</i> from hub to host at 50 Hz; a 9-byte <i>ActuationCommand</i> (indicator
+and light bits, brake intensity 0&ndash;255, duration, host timestamp); an 8-byte <i>AckStatus</i>
+reporting what the hub actually applied and any fault; and an empty <i>Heartbeat</i> the host must
+send at least 10 times a second. The payload structures are compiled on both sides with static
+size checks, so a layout mismatch becomes a build error rather than silently wrong data. The
+SensorReport stream needs (63 + 6) &times; 50 = 3.45 kB/s, a negligible load for full-speed USB.
+The parser re-synchronises on the start byte after any corrupt frame; if more than 10 of the last
+50 frames are corrupt, actuation is disarmed until 20 clean frames arrive.</p>
+<p><b>Tasks.</b> The firmware has four FreeRTOS tasks: a sensor task that assembles the 50 Hz
+report; a comms task that parses and sends frames; an actuation task that applies commands every
+10 ms; and a watchdog task that checks the link every 20 ms. All safety decisions are made by a
+single, hardware-independent <i>SafetyCore</i> module, which is unit-tested on the laptop.</p>
+<p><b>Safety state machine</b> ({{ref:fig_hub_states.svg}}, Appendix C). The hub boots <i>disarmed</i> with the
+actuator released before any task runs. It arms only while it receives fresh heartbeats, its own
+report loop is alive, the emergency stop is released, the power box is connected and powered, and
+the frame-error rate is acceptable. Any
+failure of these returns it to disarmed, releasing the brake and forgetting the last command. A
+brake command is clamped to an intensity of 90 (of 255) and a duration of 1.5 s regardless of what
+the host asks for. An actuator current above 8 A for 30 ms latches a fault that only a power cycle
+clears. The watchdog task releases the actuator directly, without waiting on any shared lock, and
+the IWDG hardware timer resets the whole microcontroller if the firmware itself hangs for 500 ms.</p>
+
+<p>The brake force is therefore limited in four independent places: the host arbiter&rsquo;s
+configured intensity (60 of a maximum 90), the hub&rsquo;s compiled ceiling of 90, the
+driver&rsquo;s own clamp in the actuator driver, and the electromagnet&rsquo;s holding force.</p>
+</section>
+
+<section class="sheet">
+<h2 id="s3-5">3.5 Perception</h2>
+<p><b>Camera pipeline.</b> A 2K (2560&times;1440) USB camera with manually locked focus supplies
+30 frames per second. Autofocus is disabled because every focus change would invalidate the
+camera calibration. Each frame is timestamped at capture and shared, not copied, with all
+consumers.</p>
+<p><b>Neural networks.</b> Four networks are exported to ONNX and compiled into TensorRT FP16
+engines for the RTX 5060 ({{ref:models}}). Pre-processing (letterboxing, normalisation) runs on the
+GPU in CUDA, and each network&rsquo;s output is decoded on the host into boxes, masks, lane points
+or a depth map ({{ref:fig_frame_pipeline.svg}}, Appendix D).</p>
+{{tab:models|Neural networks used by the perception subsystem}}
+<div class="tablewrap">
+<table class="booktabs wide">
+<tr><th>Task</th><th>Model</th><th>Input</th><th>Output</th></tr>
+<tr><td>Objects and masks</td><td>YOLOv8m-seg (COCO)</td><td>1280&times;736</td><td>Boxes, classes and a mask per object (vehicle, pedestrian, cyclist, obstacle)</td></tr>
+<tr><td>Road signs</td><td>YOLOv8, fine-tuned on MTSD</td><td>1280&times;736</td><td>29 sign classes, including speed-limit values</td></tr>
+<tr><td>Lanes</td><td>UFLDv2, ResNet-18 (CULane)</td><td>1600&times;320 band</td><td>Up to four lane lines</td></tr>
+<tr><td>Depth</td><td>MiDaS v2.1 Small</td><td>448&times;256</td><td>Dense relative inverse depth</td></tr>
+</table>
+</div>
+<p><b>Frame budget.</b> At 30 frames per second each frame has 1000/30 = 33.3 ms. The four networks
+were measured running together on recorded 2K road video at a median of 17.8 ms per frame (95th
+percentile 19.9 ms, maximum 26.2 ms), leaving margin for decoding, fusion and rendering, which run
+concurrently on other threads.</p>
+
+<p><b>Road-sign detector for Kenya.</b> No public Kenyan sign dataset exists, so the sign detector
+is trained on the global MTSD {{cite:ertler2020}}, restricted to 29 classes that occur on Kenyan
+roads, and then audited on openly licensed Kenyan street images. The adopted model reaches mAP50 of
+0.716 (mAP50-95 0.581) on a held-out validation set and classified 24 of 25 Kenyan audit signs
+correctly at a confidence of 0.5 or more ({{ref:sign_stop_kenya.jpg}}, Appendix F). A later variant trained
+for longer was evaluated and rejected because it did not improve on these figures. A sign tracker
+confirms a sign over several frames before it is displayed, to avoid flicker.</p>
+{{img:perception_krakow_seg.jpg|Output of the perception pipeline on recorded city footage: instance masks for pedestrians, a cyclist and vehicles, with the relative depth map inset (footage: &ldquo;City Driving 4K &ndash; Krakow Poland 2024&rdquo;, Relaxing Roads 4K, CC BY 3.0)|92}}
+
+
+<h2 id="s3-6">3.6 Sensor Fusion, Tracking and Motion Prediction</h2>
+<p><b>Ego-motion (EKF).</b> The car&rsquo;s own state x = [p<sub>x</sub>, p<sub>y</sub>, &psi;,
+v, &omega;] (position in a local metric frame, heading, speed, yaw rate) is estimated by a 5-state
+extended Kalman filter {{cite:thrun2005}}. It predicts at the IMU rate with the constant turn rate
+and velocity (CTRV) model</p>
+<p class="eq">p<sub>x</sub>&prime; = p<sub>x</sub> + (v/&omega;)[sin(&psi; + &omega;&Delta;t) &minus; sin&psi;],
+&nbsp; p<sub>y</sub>&prime; = p<sub>y</sub> + (v/&omega;)[cos&psi; &minus; cos(&psi; + &omega;&Delta;t)],
+&nbsp; &psi;&prime; = &psi; + &omega;&Delta;t<span class="n">(3.3)</span></p>
+<p>(with the straight-line limit when &omega; &rarr; 0) and corrects with GNSS positions and
+OBD-II wheel speed using the standard update K = PH<sup>T</sup>(HPH<sup>T</sup> + R)<sup>&minus;1</sup>,
+x &larr; x + K(z &minus; h(x)). GNSS latitude and longitude are converted to the local frame with
+the WGS-84 meridian and prime-vertical radii of curvature.</p>
+<p><b>Mask-based camera&ndash;LiDAR fusion.</b> The Livox Mid-360 produces about 200,000 points per
+second over 360&deg;&times;59&deg;. For each camera frame the fusion step (i) moves every LiDAR point
+to where it would have been seen at the camera&rsquo;s timestamp, using the ego speed and yaw rate
+(without this, a 100 ms scan at 10 m/s smears objects by 1 m); (ii) removes points within 0.15 m of
+the fitted road plane; (iii) projects the rest into the image with the calibrated lens model;
+(iv) keeps only the nearest point per small image cell, since the LiDAR can see points the camera
+cannot; (v) assigns points to an object only if they fall inside its <i>eroded</i> mask; and
+(vi) takes the object&rsquo;s range from the nearest depth cluster holding at least 20% of its
+points, never the mean, so a few background points cannot move a pedestrian several metres. Objects
+with fewer than three points receive a MiDaS-based estimate scaled against LiDAR-ranged objects in
+the same frame, marked <i>estimated</i> and never used for braking. LiDAR clusters in the car&rsquo;s
+path that no detection explains become <i>unknown obstacles</i>: the camera can add information
+but can never veto what the LiDAR physically measures.</p>
+<p><b>Tracking.</b> Each object is tracked by an IMM filter {{cite:blom1988}} mixing constant
+velocity, CTRV and stopping models. Detections are associated with tracks by the Hungarian algorithm
+{{cite:kuhn1955}} within gates derived from each track&rsquo;s innovation covariance
+{{cite:barshalom2001}}. A track is confirmed after repeated detections and new tracks must pass a
+per-class maximum-speed check, which prevents false associations from creating implausible tracks.</p>
+<p><b>Motion prediction.</b> For every track the predictor produces a position distribution up to
+2 s ahead (drawn in the AR view as a ribbon whose width shows uncertainty), the closest point of
+approach to the ego car, and a Monte-Carlo collision probability. With relative position
+<b>r</b> and relative velocity <b>v</b>:</p>
+<p class="eq">t* = &minus;(<b>r</b>&middot;<b>v</b>)/|<b>v</b>|<sup>2</sup>, &nbsp; d* = |<b>r</b> + <b>v</b>t*|<span class="n">(3.4)</span></p>
+<p>Unlike time to collision, the closest point of approach also captures crossing pedestrians and
+vehicles cutting in. Predictions feed warnings only; they never trigger the brake (Section 3.8).</p>
+</section>
+
+<section class="sheet">
+<h2 id="s3-7">3.7 Precision Navigation</h2>
+<p>The navigation pipeline answers three questions: which road to take, where the car is on it,
+and where that road is in the camera image ({{ref:fig_navigation.svg}}, Appendix D).</p>
+<p><b>Routing.</b> OSRM {{cite:luxen2011}} runs locally with the multi-level Dijkstra algorithm on an
+OpenStreetMap extract covering everything within 100 km of Nairobi&rsquo;s CBD (as far as Thika,
+Machakos, Naivasha and beyond). A script downloads the daily Kenya extract, verifies its checksum,
+clips it, builds the routing data, and only switches to the new map after a smoke-test route from
+the CBD to Thika succeeds; any failure leaves the previous map in service. The Nairobi CBD to Thika
+route is 43.7 km. MLD was chosen because it allows road weights to be changed in seconds
+{{cite:delling2011}}: when a closure is detected, the route is recomputed in about 1.2 s.</p>
+<p><b>Road status in three layers.</b> The map is treated as an expectation, and the sensors as the
+truth. Layer 1 is the regularly refreshed OpenStreetMap base. Layer 2, a live traffic and incident
+feed from a commercial provider, is designed but deferred until its licence terms permit this use.
+Layer 3 is the car&rsquo;s own observations (a closed road, a blocked lane), which always override
+the map.</p>
+<p><b>Map matching.</b> The fused pose, not raw GNSS, is matched to the road network with the HMM
+method of Newson and Krumm {{cite:newson2009}}, using a sliding trace of recent positions. The
+matcher reports which road the car is on and its distance along the route. It is throttled to about
+10 Hz and resets its trace after a gap of more than 10 s. On a recorded 2,773-fix drive in Nairobi,
+the median distance from fix to matched road was 3.1 m and 98.7% of fixes were within 20 m; the
+remaining fixes were a genuine deviation from the planned route, which the matcher correctly
+reported as off-route.</p>
+<p><b>Road-surface projector.</b> This is the step that makes the route appear painted on the road.
+From the matched position it samples the route every 1.5 m out to 60 m ahead and gives each point a
+height: the mean of measured LiDAR ground points within 1 m where available; the fitted road plane
+where the road is hidden (for example by a car ahead); and flat ground beyond LiDAR range. Two
+corrections come from the detected lane lines. A <i>heading</i> correction fixes compass error, which
+matters because a 3&deg; heading error displaces a point 60 m ahead by 60 &times; tan 3&deg; = 3.1 m,
+a whole lane. A <i>lateral</i> correction moves the line from the road&rsquo;s centre line (which is
+what OpenStreetMap records) into the car&rsquo;s lane. Both are persistent estimates that a single
+frame can change only by a bounded step, so one bad lane detection cannot throw the line across the
+road; frames are used only when both lane lines are found and the lane is 2.3&ndash;5 m wide.</p>
+
+
+<h2 id="s3-8">3.8 Hazard Assessment and the Decision Arbiter</h2>
+<p><b>Hazard assessment.</b> A rule-based classifier flags, for each confirmed track: tailgating
+(the ego car&rsquo;s time gap to the vehicle ahead below 1.0 s); erratic speed (speed variation left
+after removing a steady trend); swerving (lateral wander after removing a steady turn); sudden
+braking (a high IMM stopping-model probability); crossing (a closest-approach conflict with high
+collision probability); forward collision risk; and a vulnerable road user in the path. These combine
+into a risk value r &isin; [0, 1] that sets the colour and motion of the hazard overlay. Rules were
+chosen over a learned classifier because each flag can be explained and tested.</p>
+<p><b>Decision arbiter</b> ({{ref:fig_arbiter.svg}}). Four rules are evaluated in priority order
+every cycle, and the first that matches wins:</p>
+<ol>
+<li><b>Brake</b> when the time to collision with a confirmed object in the ego path, whose range was
+measured by the LiDAR within the last 200 ms, is below 1.8 s, the driver is not already braking,
+and the system is armed (fresh hub report, emergency stop released, no actuator fault, and the
+evidence log able to record);</li>
+<li><b>Hazard lights</b> when the car itself decelerates harder than 0.4 g;</li>
+<li><b>Warning</b> (overlay and tone only) for a high or critical hazard in the path;</li>
+<li>otherwise, a zeroed request that releases everything.</li>
+</ol>
+<p>Only rule 1 can brake, and it uses only the <i>current measured</i> gap and closing speed:</p>
+<p class="eq">TTC = gap / closing speed, &nbsp; closing speed &gt; 0.5 m/s<span class="n">(3.5)</span></p>
+<p>Braking on predictions or probabilities would risk phantom braking, which is itself a hazard.
+Every request, and the release that follows it, is written to the evidence log with its full
+context before it is sent.</p>
+{{fig:fig_arbiter.svg|Decision arbiter rules, in priority order|4.3}}
+<p><b>Is 1.8 s enough at test speeds?</b> At the 10 km/h upper limit of the campus tests
+(v = 2.78 m/s), braking starts when the gap is 2.78 &times; 1.8 = 5.0 m. The expected latency from
+capture to pedal movement is about 0.6 s (one frame of 33 ms, about 20 ms of inference, fusion and
+arbitration, under 20 ms of USB and hub cycle time, and up to 0.4 s for a 50&ndash;100 mm/s actuator to
+take up about 40 mm of pedal travel), during which the car covers 2.78 &times; 0.6 = 1.7 m. At a
+moderate deceleration of 0.3 g (2.94 m/s&sup2;) the stopping distance is</p>
+<p class="eq">s = v<sup>2</sup>/2a = 2.78<sup>2</sup>/(2 &times; 2.94) = 1.3 m<span class="n">(3.6)</span></p>
+<p>so the car stops within about 3.0 m of the trigger point, leaving about 2 m of margin. The
+threshold is a conservative starting value to be tuned during testing, not a final figure; its
+behaviour was verified in simulation, where an approaching object first triggered braking at a true
+TTC of 1.70 s, inside the 1.2&ndash;1.9 s acceptance window.</p>
+</section>
+
+<section class="sheet">
+<h2 id="s3-9">3.9 AR Rendering and Display</h2>
+<p>The renderer composes the camera image and all overlays on the GPU with OpenGL 4.6. Under WSL2
+this runs through Mesa&rsquo;s Direct3D 12 translation on the NVIDIA GPU; the renderer checks at
+start-up which GPU it received and refuses a software fallback. Each frame, the video is uploaded
+as a texture and the overlays are drawn in one pass from a compact <i>overlay scene</i> produced by
+the other subsystems. The main overlay types are:</p>
+<ul>
+<li>the <b>route band</b>, drawn in 3D on the projected road surface with perspective-correct
+interpolation, solid where the surface is measured and fainter in the far field;</li>
+<li><b>hazard glows</b> following each object&rsquo;s mask, coloured and animated by risk level,
+with predicted-path ribbons, a following-distance zone for tailgating, and a
+&ldquo;barrier&rdquo; for a stop sign;</li>
+<li><b>sign badges</b> (for example, speed-limit grading) and turn instructions.</li>
+</ul>
+<p>Overlays never hide a hazard: route graphics are occluded by objects in front of them using
+each object&rsquo;s measured depth. The 3D overlays are moved by the car&rsquo;s own motion between
+the moment their pose was computed and the moment the frame is shown, which compensates for
+processing latency. The display is behind a <i>DisplaySink</i> interface; the only sink built now
+is a window on the laptop screen, and an optical projector sink can be added later without
+changing the rest of the system.</p>
+<p>Measured at 2560&times;1440 on real road video with a realistic overlay load, the renderer ran at
+54&ndash;82 frames per second (target 24 or more), with the overlay pass taking about 2 ms and the
+video upload 7&ndash;10 ms; the shader&rsquo;s projection agreed with the calibrated camera model to
+within 2 pixels ({{ref:ar_render_krakow.jpg}}).</p>
+{{img:ar_render_krakow.jpg|AR renderer output: route band, hazard glows and overlays composited on road video at 2560&times;1440 (synthetic overlay scene, estimated camera model; footage: Relaxing Roads 4K, CC BY 3.0)|92}}
+
+<h2 id="s3-10">3.10 Calibration</h2>
+<p><b>Camera intrinsics</b> (focal lengths, principal point and the five distortion coefficients
+k<sub>1</sub>, k<sub>2</sub>, p<sub>1</sub>, p<sub>2</sub>, k<sub>3</sub>) are estimated with
+Zhang&rsquo;s checkerboard method {{cite:zhang2000}}, with focus locked. <b>Extrinsics</b> relate the
+camera, the LiDAR and the vehicle frame (x forward, y left, z up, origin on the ground below the rear
+axle). The LiDAR&ndash;camera transform is estimated from a calibration target and then
+<i>checked at every start-up</i> by measuring how well LiDAR points fall inside detected object
+masks; a falling score over time signals that a mount has moved. A repeatable
+<b>road-projection check</b>, driving slowly along a marked road and confirming the route stays in
+the lane without floating or sinking, follows every recalibration.</p>
+<p><b>IMU mounting.</b> The IMU is tilted with the camera, so its readings are rotated into the
+vehicle frame before fusion. Read raw at a 12&deg; pitch, the measured yaw rate would be 2 % low and
+would pick up a fifth of the body&rsquo;s roll rate in corners. The rotation is calibrated from data
+the hub already reports. Roll and pitch come from gravity, averaged while the car is at rest on
+level ground (roll = atan2(a<sub>y</sub>, a<sub>z</sub>), pitch = atan2(&minus;a<sub>x</sub>,
+&radic;(a<sub>y</sub>&sup2; + a<sub>z</sub>&sup2;))). Yaw comes from straight-line acceleration and
+braking, with the sign taken from OBD speed. At every stop, the angle between measured and expected
+gravity reveals a knocked pod.</p>
+
+<h2 id="s3-11">3.11 Testing and Staged Validation</h2>
+<p><b>Software tests.</b> Every module has unit tests (GoogleTest on the host; Unity for the hub&rsquo;s
+protocol and safety logic, which is compiled to run natively on the laptop), run with address and undefined-behaviour
+sanitizers. Safety-critical code is also tested by <i>fuzzing</i>: 200,000 random inputs to the
+decision arbiter must never produce a brake above the ceiling, and 600,000 random events, including
+cable unplugs, must never leave the hub&rsquo;s actuator applied in an unsafe state. Tests are
+themselves checked by <i>mutation</i>: deliberately breaking a safety rule must make a test fail. Integration
+tests replay recorded video and drives.</p>
+<p><b>Actuator bench gate.</b> Before any in-vehicle work, the actuator is mounted with a real
+used brake pedal on a bench rig with a load cell, and must pass six checks on three consecutive
+attempts: (1) the rig check, confirming the actuator and pedal are on the bench and not in a
+vehicle; (2) a sweep across brake intensities, logging the intensity the hub actually applied
+(evidence that its ceiling holds whatever is asked), peak current, peak force and response time;
+(3) <b>a person pushes the pedal back by foot while the actuator holds its maximum intensity</b>,
+the most important check in the project; (4) the emergency stop is pressed mid-actuation and the
+drive and current must fall to zero; and (5) the USB cable is physically unplugged mid-actuation
+and the actuator must release, and its current fall to zero, within 200 ms with no software
+command. The hub measures (5) itself and reports it once the cable is reconnected. In check
+(6), the inter-box cable is pulled mid-actuation: the actuator must go limp at once, and the hub
+must report the fault without latching a false overcurrent. Only after three consecutive passes
+is the maximum brake intensity treated as final. The whole checklist is then repeated on the
+custom PCB hardware, since new hardware needs its own evidence.</p>
+<p><b>Staged validation</b> then proceeds in four stages, each with a written checklist (Appendix E):
+<b>A</b>, the bench gate above; <b>B</b>, stationary in the vehicle, with the handbrake on and wheels
+chocked; <b>C</b>, an empty field with a spotter, at low speed; and <b>D</b>, a formally closed
+campus road section at 5&ndash;10 km/h, with spotters, an agreed abort signal, and a manual
+confirm-to-brake step on the first runs before automatic braking is allowed.</p>
+
+<h2 id="s3-12">3.12 Demonstration and Presentation Plan</h2>
+<p>The presentation will follow the same staged-risk order as the testing: it opens with video
+of the bench test, showing a foot overriding the actuator and the watchdog release, so the safety
+story is established before anything else. It then shows the AR display live on the stationary car,
+with a person walking into view to trigger detection, highlighting and (where the venue allows) a
+visible, overridable actuation. Moving tests are shown as recorded video rather than attempted
+live. Results are presented as measured figures (frame rate, inference time, TTC accuracy,
+actuator response time, navigation lateral error) drawn directly from the evidence log, and the
+talk closes with the future optical display, which the DisplaySink interface is designed to accept.</p>
+</section>

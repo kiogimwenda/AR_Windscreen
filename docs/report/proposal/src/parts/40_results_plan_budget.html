@@ -1,0 +1,121 @@
+
+<!-- ============================== 4.0 EXPECTED RESULTS ============================== -->
+<section class="sheet" id="s4">
+<h1>4.0 Expected Results</h1>
+<p>The expected results are set out per specific objective. Because the software was developed
+ahead of the hardware, several results have already been measured on recorded data and in
+simulation; these are reported as <i>achieved to date</i>, and the remaining results will be
+measured on the hardware and in the vehicle.</p>
+
+<h2>4.1 Objective 1: Perception and Sensor Fusion</h2>
+<p>A perception pipeline that processes every frame of 2K video in real time on the laptop GPU,
+producing for each frame: instance masks and classes for vehicles, pedestrians, cyclists and
+obstacles; Kenyan road signs; lane lines; and a relative depth map ({{ref:perception_krakow_lanes.jpg}} and {{ref:sign_speed_hump_kenya.jpg}}, Appendix F).
+With the LiDAR installed, each detected object will carry a measured range, and tracks will carry
+velocity, predicted path and collision probability.</p>
+
+
+
+<h2>4.2 Objective 2: Road-Locked AR Navigation</h2>
+<p>An AR display in which the route appears painted on the road in the car&rsquo;s lane, following
+slopes and dips within LiDAR range and fading honestly to a flat-road estimate beyond it; offline
+turn-by-turn routing anywhere within 100 km of Nairobi, with fast rerouting around closures; and
+sign, hazard and turn overlays that never hide a real hazard. The road-projection check (Section
+3.10) is expected to show the route line inside the correct lane within LiDAR range.</p>
+
+<h2>4.3 Objective 3: Hazard Assessment and Fail-Safe Actuation</h2>
+<p>Hazard and reckless-driving warnings shown as colour-graded glows and zones; automatic hazard
+lights under hard braking; and a brake actuation that engages only at a measured TTC below 1.8 s,
+is always overridable by the driver&rsquo;s foot, is cut instantly by the emergency stop, and
+releases within 200 ms of losing the laptop, with every event recorded in the evidence log. The
+bench rig will produce force, current and response-time curves across intensities, and video of the
+override, kill-switch and unplug tests.</p>
+
+<h2>4.4 Summary of Targets and Results to Date</h2>
+{{tab:targets|Measurable targets per objective, with results achieved to date}}
+<div class="tablewrap">
+<table class="booktabs lined wide">
+<tr><th>Obj.</th><th>Metric</th><th>Target</th><th>Achieved to date</th><th>Method</th></tr>
+<tr><td>1</td><td>Four networks together, per 2K frame</td><td>&le; 33 ms</td><td>Median 17.8 ms; p95 19.9 ms; max 26.2 ms</td><td>Recorded road video, RTX 5060</td></tr>
+<tr><td>1</td><td>Road-sign detection accuracy</td><td>mAP50 &ge; 0.70</td><td>0.716 (mAP50-95 0.581); Kenyan audit 24/25</td><td>Held-out MTSD set; Kenyan images</td></tr>
+<tr><td>1</td><td>LiDAR range per detected object; mask-point purity</td><td>Range for every object with &ge; 3 points</td><td>Verified on synthetic scenes</td><td>In-vehicle, Stage B (pending hardware)</td></tr>
+<tr><td>2</td><td>AR render rate at 2560&times;1440</td><td>&ge; 24 fps</td><td>54&ndash;82 fps; overlay pass &asymp; 2 ms</td><td>Render benchmark</td></tr>
+<tr><td>2</td><td>Overlay projection agreement with camera model</td><td>&le; 2 px</td><td>Within 2 px</td><td>Automated projection test</td></tr>
+<tr><td>2</td><td>Map-matching accuracy</td><td>Correct road; median &lt; 5 m</td><td>Median 3.1 m; 98.7% &lt; 20 m (2,773 fixes)</td><td>Recorded Nairobi drive</td></tr>
+<tr><td>2</td><td>Reroute after a closure</td><td>&lt; 2 s</td><td>1.2 s</td><td>OSRM MLD re-weighting</td></tr>
+<tr><td>2</td><td>Route line in the correct lane, near field</td><td>Inside the lane within LiDAR range</td><td>Pending hardware</td><td>Road-projection check</td></tr>
+<tr><td>3</td><td>Brake trigger time</td><td>TTC 1.2&ndash;1.9 s (threshold 1.8 s)</td><td>First brake at true TTC 1.70 s</td><td>End-to-end simulation</td></tr>
+<tr><td>3</td><td>Brake never above the ceiling</td><td>0 violations</td><td>0 in 200,000 random inputs (host); 0 in 600,000 events (hub)</td><td>Fuzz tests</td></tr>
+<tr><td>3</td><td>Watchdog release after link loss</td><td>&le; 200 ms</td><td>Logic verified in unit tests</td><td>Bench, USB unplugged (pending)</td></tr>
+<tr><td>3</td><td>Driver override at maximum intensity</td><td>Pedal moves by foot, 3/3 attempts</td><td>Pending hardware</td><td>Bench rig, load cell, video</td></tr>
+<tr><td>3</td><td>Power box disconnected mid-brake</td><td>Released at once; fault reported; no false latch</td><td>Logic verified in unit tests and fuzz</td><td>Bench, check 6 (pending)</td></tr>
+<tr><td>3</td><td>OBD-II over the car&rsquo;s CAN bus</td><td>Never transmits at a wrong bit rate</td><td>Verified against a simulated car</td><td>Stationary car, Stage B</td></tr>
+<tr><td>All</td><td>Automated tests passing</td><td>100%</td><td>Host 232/232; routing and GPU 29/29; firmware 38/38</td><td>Test suites with sanitizers</td></tr>
+</table>
+</div>
+</section>
+
+<!-- ============================== 5.0 TIME PLAN ============================== -->
+<section class="sheet flow" id="s5">
+<h1>5.0 Project Time Plan</h1>
+<p>{{ref:fig_gantt.svg}} shows the project schedule. The software-only phases are complete. The
+critical path now runs through procurement: the LiDAR, the BNO085 IMU and the actuator are not
+stocked locally and will be imported in a single consignment, so their lead time (including
+customs clearance) governs when LiDAR integration and the bench gate can start. Work that does not
+depend on the imports (hub bring-up with local parts, camera calibration, the bench rig itself)
+proceeds in parallel. The custom PCBs (Phase 12B) are designed while the bench gate runs on
+module hardware, and must then pass the same gate again.</p>
+{{fig:fig_gantt.svg|Project time plan (Gantt chart), August 2026 to April 2027}}
+{{tab:phases|Development phases, their exit criteria and status}}
+<div class="tablewrap">
+<table class="booktabs lined wide">
+<tr><th>Phase</th><th>Work</th><th>Exit criterion (summary)</th><th>Status</th></tr>
+<tr><td>0&ndash;1</td><td>Scaffold and environment; shared protocol</td><td>Toolchain verified; protocol round-trips on both sides</td><td>Done</td></tr>
+<tr><td>2</td><td>Hub bring-up</td><td>Sensors read; relays switch; watchdog releases on the bench</td><td>Firmware written; needs hardware</td></tr>
+<tr><td>3</td><td>Host skeleton and hub link: message bus, event log, vehicle interface</td><td>Host talks to the real hub firmware</td><td>Done (software)</td></tr>
+<tr><td>4</td><td>Camera pipeline</td><td>2K capture at 30 fps with locked focus</td><td>Needs camera</td></tr>
+<tr><td>5</td><td>ML inference (four networks)</td><td>All four within the frame budget</td><td>Done</td></tr>
+<tr><td>6</td><td>LiDAR and calibration</td><td>Point cloud aligns with camera detections; ground model published</td><td>Needs LiDAR</td></tr>
+<tr><td>7</td><td>Fusion, tracking, prediction</td><td>Tests on synthetic and recorded data</td><td>Done (software)</td></tr>
+<tr><td>8</td><td>Navigation: routing, map matching, road status</td><td>Offline routing; recorded-drive matching</td><td>Done</td></tr>
+<tr><td>9</td><td>Road-surface projector; sign detector evaluation</td><td>Projection tests; sign model adopted</td><td>Done (software)</td></tr>
+<tr><td>10</td><td>Hazard classifier and decision arbiter</td><td>Rule tests; end-to-end TTC; fuzz</td><td>Done</td></tr>
+<tr><td>11</td><td>GPU AR renderer and display</td><td>&ge; 24 fps; projection &le; 2 px</td><td>Done</td></tr>
+<tr><td>12</td><td>Actuator bench gate</td><td>Six checks, three consecutive passes</td><td>Firmware and tools ready; needs actuator</td></tr>
+<tr><td>12B</td><td>Custom hub PCBs (pod, power box) and enclosures</td><td>Six checks passed again on the PCB hardware</td><td>Designed; needs fabrication</td></tr>
+<tr><td>13</td><td>Bench-top end-to-end integration</td><td>Full system on the bench, no vehicle</td><td>Planned</td></tr>
+<tr><td>14</td><td>Vehicle installation and calibration</td><td>Mounted, calibrated, Stage B checklist</td><td>Planned</td></tr>
+<tr><td>15</td><td>Staged real-world validation</td><td>Checklists complete; evidence logged</td><td>Planned</td></tr>
+<tr><td>16</td><td>Final report, demonstration, defence</td><td>Report submitted; demonstration given</td><td>Planned</td></tr>
+</table>
+</div>
+</section>
+
+<!-- ============================== 6.0 BUDGET ============================== -->
+<section class="sheet flow" id="s6">
+<h1>6.0 Budget Estimates</h1>
+<p>Prices were researched from Nairobi suppliers in September 2026. Items not sold in Kenya are
+grouped into one import consignment, since duty and clearing are charged per consignment. The
+laptop is already owned.
+{{ref:budget}} summarises the budget; the itemised list is in Appendix A.</p>
+{{tab:budget|Budget summary (Kenya shillings)}}
+<div class="tablewrap">
+<table class="booktabs lined wide">
+<tr><th>Block</th><th>Main items</th><th class="num">Estimate (KES)</th></tr>
+<tr><td>Hub and locally bought sensors</td><td>STM32F405 board, ST-Link, DB-25 cable, CAN transceiver, OBD lead, GNSS, gesture sensor, camera</td><td class="num">15,000 &ndash; 26,000</td></tr>
+<tr><td>Actuation and safety (excluding the actuator)</td><td>BTS7960, ACS712, E-stop, kill relay, five automotive relays, optocoupler</td><td class="num">5,500 &ndash; 9,500</td></tr>
+<tr><td>Power (excluding laptop power)</td><td>60 V-rated buck converter, TVS and reverse protection, fuses, automotive wire</td><td class="num">3,000 &ndash; 4,000</td></tr>
+<tr><td>Bench rig</td><td>12 V supply, load cell and HX711, used brake pedal, base</td><td class="num">8,000 &ndash; 13,000</td></tr>
+<tr><td>Installation</td><td>Pod bracket, LiDAR wedge plate, filament, power-box enclosure, laptop mount</td><td class="num">10,000 &ndash; 18,000</td></tr>
+<tr><td><b>Local subtotal</b></td><td></td><td class="num"><b>41,000 &ndash; 71,000</b></td></tr>
+<tr><td>Import consignment</td><td>Mid-360 LiDAR and cable, BNO085, M12 camera; landed cost with duty and VAT</td><td class="num">140,000 &ndash; 170,000</td></tr>
+<tr><td>Custom PCBs</td><td>Pod board (4-layer) and power board (2-layer), components, courier and duty</td><td class="num">15,000 &ndash; 28,000</td></tr>
+<tr><td>Actuator and laptop in-car power</td><td>Actuator and holding magnet (pending approval); inverter if needed</td><td class="num">To be confirmed</td></tr>
+<tr><td><b>Total</b></td><td></td><td class="num"><b>&asymp; 195,000 &ndash; 270,000</b></td></tr>
+</table>
+</div>
+<p>The LiDAR is about two-thirds of the total and cannot be dropped without losing the measured
+road surface and the metric range used for braking. A clearing agent&rsquo;s quote will be
+obtained before ordering.</p>
+</section>
+

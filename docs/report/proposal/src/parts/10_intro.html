@@ -1,0 +1,131 @@
+
+<!-- ============================== 1.0 INTRODUCTION ============================== -->
+<section class="sheet" id="s1">
+<h1>1.0 Introduction and Background</h1>
+<p>Driving is mostly a visual task. A driver continuously reads the road ahead, the vehicles and
+people around them, the signs, and, increasingly, a navigation screen mounted on the dashboard or
+held in the hand. Every glance away from the road is a period in which the driver is effectively
+blind to what happens in front of the car, and naturalistic driving studies have repeatedly found
+that such glances are among the strongest predictors of a crash {{cite:klauer2006,dingus2016}}.</p>
+<p>Two families of technology have grown up to address this. The first is the <b>head-up display
+(HUD)</b>, which places information in the driver&rsquo;s line of sight so that the eyes do not
+leave the road. Its most advanced form, the <b>augmented-reality (AR) HUD</b>, goes further: it
+draws graphics that appear attached to the real world, such as a navigation path lying on the
+correct lane or a highlight around a pedestrian, so that the driver does not need to translate a
+map or an abstract symbol into the scene in front of them {{cite:gabbard2014,bark2014}}. The second
+family is <b>advanced driver-assistance systems (ADAS)</b>: forward collision warning, lane keeping,
+and autonomous emergency braking (AEB), which use cameras and radar to detect danger and, in the
+case of AEB, brake the car when the driver does not. Large studies of AEB have found it reduces
+rear-end crashes substantially {{cite:cicchino2017}}.</p>
+<p>Both families share a limitation that matters in Kenya: they are factory-fitted to new,
+mid-range and premium vehicles and cannot be added afterwards. Commercial AR windscreen products,
+such as those demonstrated by WayRay and by vehicle manufacturers, are proprietary, costly and tied
+to specific car models. Most cars on Kenyan roads are older imports that will never receive them.
+At the same time, the components from which such a system is built (cameras, compact LiDAR
+sensors, satellite receivers, inertial sensors, consumer GPUs that can run neural networks in real
+time, and inexpensive microcontrollers) have become affordable and widely available.</p>
+<p>This project proposes to combine those components into a <b>retrofit</b> platform: a
+<b>Virtualized AR Windscreen Display with Semi-Autonomous Driving Support System</b>. It is
+&ldquo;virtualized&rdquo; because, instead of an optical combiner projected on the glass, the first
+version shows the AR view on a screen as a live camera image with the graphics composited into it
+(video see-through AR), while the software is structured so that an optical display can replace the
+screen later without changing anything else. It is &ldquo;semi-autonomous&rdquo; because the car
+never drives itself: the system informs the driver, operates the indicators, hazard lights and horn,
+and, only when a collision is imminent and the driver has not reacted, applies a limited brake that
+the driver can always overpower.</p>
+<p>The central idea is that a single, precise, real-time model of the road ahead serves both
+purposes. The same sensor fusion that tells the navigation display exactly where the road surface
+and the lane are also tells the safety layer where every vehicle, cyclist and pedestrian is, how
+fast they are moving and where they are likely to go next.</p>
+
+<h2 id="s1-1">1.1 Problem Statement</h2>
+<p>Kenya&rsquo;s National Transport and Safety Authority recorded 4,690 road deaths in 2022, of whom
+1,682 were pedestrians and 1,254 were motorcyclists {{cite:ntsa2023}}. Globally the World Health
+Organization estimates 1.19 million deaths in 2021, with more than nine in ten occurring in low- and
+middle-income countries {{cite:who2023}}. Three driver-side problems contribute to this toll and are
+the focus of this project:</p>
+<ol>
+<li><b>Delayed recognition of hazards.</b> Pedestrians crossing between vehicles, motorcycles
+filtering through traffic, vehicles braking suddenly and vehicles driven recklessly are recognised
+late, especially at night, in rain and in dense urban traffic. The time the driver has left to react
+is often shorter than their reaction time.</li>
+<li><b>Distraction caused by navigation.</b> Drivers who do not know the route glance repeatedly at
+a phone or a dashboard screen and must mentally map a two-dimensional arrow onto a complex junction.
+Each glance removes their eyes from the road; the 100-car naturalistic study found that glances away
+from the forward roadway of more than two seconds roughly doubled near-crash and crash risk
+{{cite:klauer2006}}. Kenyan roads add a further difficulty: road works, closures and new roads
+change the network faster than a static map can follow.</li>
+<li><b>No automatic protective response.</b> In the vehicles most Kenyans drive, nothing reacts on
+the driver&rsquo;s behalf when a collision becomes imminent: no warning, no hazard lights to alert
+following traffic, no emergency braking.</li>
+</ol>
+<p>Solutions to each problem exist, but only as factory-fitted, model-specific and expensive
+equipment. There is therefore no affordable, retrofittable system that gives the driver of an
+ordinary car precise, eyes-on-the-road navigation and hazard awareness, together with a safe,
+bounded automatic response when the driver does not react in time.</p>
+
+<h2 id="s1-2">1.2 Problem Justification</h2>
+<p>Solving this problem is worthwhile for four reasons.</p>
+<p><b>The need is large and local.</b> The groups most at risk on Kenyan roads, pedestrians and
+motorcyclists, are exactly those a camera&ndash;LiDAR perception system can detect and highlight.
+Even a modest reduction in late recognition of such road users would have real value.</p>
+<p><b>The evidence supports the approach.</b> AR navigation that places guidance on the road reduces
+the need to look away, and drivers using it have reported clear benefits over a conventional
+display {{cite:bark2014}}, provided the graphics are designed not to become a distraction
+themselves {{cite:kim2022}}. Forward collision warning combined with automatic braking has been
+associated with a large reduction in front-to-rear crashes with injuries {{cite:cicchino2017}}.</p>
+<p><b>A retrofit is now technically and economically feasible.</b> A consumer laptop GPU can run
+several neural networks on high-resolution video in real time, a compact LiDAR costs a fraction of
+earlier automotive units, and open data and software (OpenStreetMap, OSRM, TensorRT, FreeRTOS)
+remove licensing costs. The whole system is estimated at KES 195,000&ndash;270,000, far below the
+cost of a vehicle equipped with comparable factory features.</p>
+<p><b>It is a substantial engineering project in the department&rsquo;s core areas.</b> It spans
+embedded systems and real-time firmware, power and actuator electronics, communication protocols,
+digital signal processing and estimation, computer vision and machine learning, computer graphics,
+and safety engineering, which is the breadth expected of a final year project in Electronic and
+Computer Engineering.</p>
+
+<h2 id="s1-3">1.3 Objectives</h2>
+<h3>1.3.1 Main Objective</h3>
+<p>To design, implement and test a precision, sensor-fused augmented-reality navigation and driver
+support system, whose real-time model of the road also drives hazard detection and fail-safe,
+driver-overridable vehicle actuation, as a retrofit for an ordinary car.</p>
+<h3>1.3.2 Specific Objectives</h3>
+<ol>
+<li>To design and implement a real-time perception and sensor-fusion pipeline that detects,
+segments and ranges vehicles, pedestrians, cyclists, lanes and Kenyan road signs from camera and
+LiDAR data, and estimates the car&rsquo;s own motion from GNSS, IMU and OBD-II, processing 2K video
+at 30 frames per second (all neural networks within a 33 ms frame budget) with a road-sign
+detection accuracy of at least 0.70 mAP50.</li>
+<li>To design and implement a road-locked AR navigation display that routes offline across a
+100 km region around Nairobi, matches the car&rsquo;s position to the road, and draws the route in
+the correct lane on the measured road surface at 24 frames per second or more, with the drawn
+path within 2 pixels of the calibrated camera model and visibly inside the correct lane within
+LiDAR range.</li>
+<li>To design, implement and validate a hazard-assessment and fail-safe actuation subsystem that
+warns of hazards and reckless driving, operates indicators, hazard lights and horn, and brakes
+through a force-limited actuator only when time-to-collision falls below 1.8 s and the driver has
+not braked, verified by passing all six actuator bench checks on three consecutive attempts
+(including driver override, release within 200 ms of link loss, and release when the power box is
+disconnected) before staged in-vehicle
+testing at 5&ndash;10 km/h.</li>
+</ol>
+
+<h2 id="s1-4">1.4 Scope and Limitations</h2>
+<p><b>In scope.</b> The full sensing, perception, fusion, tracking, navigation, decision and
+rendering software on the laptop; the sensor and actuator hub (firmware, and two custom PCBs with
+their enclosures: a windscreen pod and an under-dash power box); a roof mount for the LiDAR; a
+force-limited brake actuator with a fail-safe release; a physical emergency-stop switch; a bench
+rig for the actuator; installation in one test vehicle; and staged validation up to a closed
+campus road section at 5&ndash;10 km/h.</p>
+<p><b>Out of scope</b> for this project, and presented as future work: an optical combiner or
+projector on the windscreen (the software&rsquo;s display interface is designed so this can be added
+without other changes); steering intervention of any kind; fully autonomous driving; thermal
+cameras; and cloud connectivity or mobile applications.</p>
+<p><b>Limitations.</b> Navigation precision is highest within LiDAR range, where the road surface
+is measured, and falls back to a flat-road assumption beyond it; this will be reported as it is.
+Testing is limited to low speeds on closed or empty ground, so stopping-distance calibration at
+road speeds is not claimed. A live road-status layer (traffic and incidents) depends on a commercial
+data provider&rsquo;s licence terms and is deferred; the system routes on an offline OpenStreetMap
+graph that is refreshed regularly and corrected by the car&rsquo;s own sensors.</p>
+</section>

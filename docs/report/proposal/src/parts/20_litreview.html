@@ -1,0 +1,199 @@
+
+<!-- ============================== 2.0 LITERATURE REVIEW ============================== -->
+<section class="sheet" id="s2">
+<h1>2.0 Literature Review</h1>
+<p>This chapter reviews the work on which each part of the proposed system builds: why driver
+attention and navigation matter (2.1); augmented-reality head-up displays (2.2); deep-learning
+perception from a camera (2.3); fusing the camera with LiDAR and estimating motion (2.4); routing and
+map matching (2.5); and collision avoidance and functional safety (2.6). Each section ends by
+stating what this project takes from the literature and where it differs. Section 2.7 draws the
+gaps together.</p>
+
+<h2 id="s2-1">2.1 Road Safety, Driver Attention and Navigation Displays</h2>
+<p>The WHO&rsquo;s 2023 global status report estimates 1.19 million road deaths in 2021, a slight
+fall from 2010 but still the leading cause of death for people aged 5&ndash;29, with more than 90%
+of deaths in low- and middle-income countries and more than half among pedestrians, cyclists and
+motorcyclists {{cite:who2023}}. Kenyan figures follow the same pattern: pedestrians and
+motorcyclists together made up more than 60% of the 4,690 deaths recorded in 2022
+{{cite:ntsa2023}}. Any system meant for Kenyan roads must therefore detect vulnerable road users
+reliably, not only other cars.</p>
+<p>The link between inattention and crashes is well established by <i>naturalistic driving
+studies</i>, in which ordinary drivers&rsquo; cars are instrumented with cameras and sensors for months.
+Klauer <i>et al.</i> analysed the 100-car study and found that any glance away from the forward
+roadway lasting more than two seconds at least doubled the risk of a crash or near-crash, and that
+secondary tasks were a factor in a large share of events {{cite:klauer2006}}. Dingus <i>et al.</i>,
+using the much larger SHRP 2 dataset of over 900 crashes, found that drivers were engaged in some
+observable distracting activity during more than half of their driving time, and that handling a
+hand-held phone raised crash risk several-fold {{cite:dingus2016}}.</p>
+<p>These studies show why a conventional navigation display is itself part of the problem: to use
+it, the driver must look down, read an abstract map, and translate it back to the scene. Placing
+guidance in the driver&rsquo;s line of sight and attaching it to the road is the obvious response, and
+leads to head-up and AR displays.</p>
+
+<h2 id="s2-2">2.2 Augmented-Reality Head-Up Displays</h2>
+<p>Gabbard, Fitch and Kim reviewed the prospects for automotive AR and set out both its promise and
+its difficulties {{cite:gabbard2014}}. The promise is that graphics <i>registered</i> to the world
+(appearing to lie at the correct place in the scene) remove the mental translation step: a turn
+arrow painted on the correct lane needs no interpretation. The difficulties are technical and
+human. Registration must be accurate and stable, or the graphics drift, jitter or appear to float,
+which is worse than no graphics at all. The graphics must not hide real hazards. And the
+system&rsquo;s latency must be low enough that the overlay keeps up with the car&rsquo;s motion.</p>
+<p>Bark <i>et al.</i> built &ldquo;Personal Navi&rdquo;, a navigation aid on a see-through 3D
+volumetric HUD, and compared AR guidance that appeared at the depth of the road with conventional
+guidance in a driving study {{cite:bark2014}}. The study reported advantages for guidance
+presented at the depth of the road, supporting the idea that guidance attached to the road reduces
+the effort of following a route. Their system, however, relied on a specialised optical display and
+on a pre-defined route geometry, not on sensing the road itself.</p>
+<p>The risk of AR adding distraction rather than removing it is addressed by Kim and Gabbard, who
+measured how different AR HUD designs affect drivers&rsquo; visual attention {{cite:kim2022}}. They
+found that the distraction potential depends strongly on how the graphics are designed and placed,
+and that it can and should be measured rather than assumed. This project turns that finding into
+design rules: one consistent visual language, graphics that stay on the road surface, graphics
+shown only when relevant, and no overlay covering a hazard.</p>
+<p>Commercial systems follow the optical route. Production AR HUDs from vehicle manufacturers, and
+holographic windscreen displays shown by companies such as WayRay, project graphics through the
+windscreen with an optical combiner. They are engineered for a specific car&rsquo;s windscreen and
+dashboard, are proprietary, and are not available as retrofits.</p>
+<p><b>Relevance to this project.</b> The proposal adopts the AR principle and the design rules from
+{{cite:gabbard2014,kim2022}}, but makes two different choices. First, it uses <i>video see-through</i>
+AR on a screen for the first version, which removes the optical engineering while keeping the
+registration problem, the hard part. Second, the registration is driven by <i>measurement</i>:
+the route is placed using the LiDAR-measured road surface and the detected lane lines, rather than
+a flat-road assumption or pre-defined geometry.</p>
+
+<h2 id="s2-3">2.3 Camera-Based Perception with Deep Learning</h2>
+<p><b>Object detection and segmentation.</b> Redmon <i>et al.</i> introduced YOLO, which treats
+detection as a single regression from the image to boxes and class probabilities and so runs in
+real time, unlike earlier two-stage detectors {{cite:redmon2016}}. The family has since gone
+through many versions; Terven, C&oacute;rdova-Esparza and Romero-Gonz&aacute;lez review them up to
+YOLOv8, whose anchor-free head and improved training give a good balance of speed and accuracy
+{{cite:terven2023}}. Bolya <i>et al.</i> showed with YOLACT that <i>instance segmentation</i>, a
+pixel-accurate mask for each object, can also run in real time, by predicting a small set of
+prototype masks per image and a set of coefficients per object {{cite:bolya2019}}. YOLOv8&rsquo;s
+segmentation variant uses the same idea. Masks matter for this project for two reasons: the AR
+highlight can follow a pedestrian&rsquo;s outline, and, more importantly, the mask selects exactly
+which LiDAR points belong to the object (Section 2.4).</p>
+<p><b>Lane detection.</b> Qin, Wang and Li reformulated lane detection as selecting, for each of a
+set of predefined image rows, which column the lane passes through, rather than classifying every
+pixel {{cite:qin2020}}. This &ldquo;row anchor&rdquo; approach is far faster than segmentation and
+copes with lanes hidden by vehicles because it reasons about the whole image. Their follow-up,
+UFLDv2, adds column anchors and an ordinal classification loss, improving accuracy on curved and
+side lanes while keeping the speed {{cite:qin2024}}.</p>
+<p><b>Monocular depth.</b> Ranftl <i>et al.</i> trained MiDaS on a mixture of datasets with a
+scale- and shift-invariant loss, producing a network that predicts <i>relative</i> depth for
+almost any image {{cite:ranftl2022}}. Its output has no metric scale, so it cannot on its own give
+a distance in metres, but it is useful for ordering objects and, when scaled against a few
+measured points, for estimating the range of objects the LiDAR does not see.</p>
+<p><b>Traffic signs.</b> Ertler <i>et al.</i> released the Mapillary Traffic Sign Dataset (MTSD),
+with over 100,000 street-level images from around the world and more than 300 sign classes
+{{cite:ertler2020}}. Its global coverage makes it a better starting point for Kenyan roads than
+datasets collected in one European country, since Kenyan signs follow the Vienna-convention style
+with local variations.</p>
+<p><b>Relevance to this project.</b> Detection alone gives <i>what</i> and <i>where in the
+image</i>, not <i>how far</i>. Most published systems evaluate one network at a time on a desktop GPU.
+This project runs four networks together (YOLOv8m-seg, a YOLOv8 sign detector trained on MTSD
+and audited on Kenyan images, UFLDv2 and MiDaS) within one frame period on a laptop GPU, and
+uses each network&rsquo;s output as an input to geometry and fusion rather than as an end result.</p>
+
+<h2 id="s2-4">2.4 Camera&ndash;LiDAR Fusion, State Estimation and Tracking</h2>
+<p><b>Geometry and calibration.</b> Fusing a camera with any 3D sensor starts from the pinhole
+camera model and its lens distortion, which map a 3D point to a pixel {{cite:hartley2004}}.
+Zhang&rsquo;s method estimates these parameters from several views of a flat checkerboard and is
+the standard procedure for camera calibration {{cite:zhang2000}}. The rigid transform between
+LiDAR and camera (the <i>extrinsics</i>) must also be known; small errors in it move projected points
+off the objects they belong to.</p>
+<p><b>Fusion.</b> Qi <i>et al.</i>&rsquo;s Frustum PointNets use a 2D detection to cut out the
+frustum of 3D points behind each box and then find the object inside it with a learned network
+{{cite:qi2018}}. Vora <i>et al.</i>&rsquo;s PointPainting goes the other way: it projects every
+LiDAR point into a semantic segmentation of the image and &ldquo;paints&rdquo; it with the class
+scores before 3D detection {{cite:vora2020}}. Both show that the camera is best at deciding
+<i>what</i> something is and the LiDAR at measuring <i>where</i> it is. Both, however, rely on
+trained 3D networks and on large labelled LiDAR datasets. Box-based selection also has a known
+weakness: a pedestrian&rsquo;s bounding box is mostly background, so points from the wall behind
+them contaminate the range.</p>
+<p><b>State estimation.</b> The Kalman filter {{cite:kalman1960}} is the optimal estimator for
+linear systems with Gaussian noise; the extended Kalman filter (EKF) linearises a nonlinear model
+around the current estimate, and the unscented filter of Julier and Uhlmann propagates sample
+points instead, which handles stronger nonlinearity {{cite:julier2004}}. Thrun, Burgard and Fox
+give the probabilistic framework, including motion models for vehicles and the fusion of
+satellite, inertial and odometry measurements {{cite:thrun2005}}.</p>
+<p><b>Tracking manoeuvring targets.</b> A single motion model cannot describe a car that cruises,
+turns and brakes. Blom and Bar-Shalom&rsquo;s <i>interacting multiple model</i> (IMM) filter runs
+several models in parallel (for example constant velocity, constant turn rate, and stopping) and
+mixes them according to how well each explains recent measurements {{cite:blom1988}}. Tracking many
+objects adds the <i>data association</i> problem, deciding which detection belongs to which track,
+which is commonly solved as an assignment problem with the Hungarian algorithm {{cite:kuhn1955}}
+inside validation gates {{cite:barshalom2001}}.</p>
+<p><b>Relevance to this project.</b> The proposal fuses with <i>instance masks</i> rather than
+boxes: only points inside an eroded mask are assigned to an object, and the range is taken from
+the nearest dominant cluster of those points, never their mean. This needs no trained 3D network
+and removes background contamination at its source. Tracking uses an IMM filter with constant
+velocity, constant turn rate and velocity (CTRV) and stopping models, which also provides a
+per-object probability that a vehicle ahead is braking.</p>
+
+<h2 id="s2-5">2.5 Routing and Map Matching</h2>
+<p>Luxen and Vetter presented OSRM, an open-source routing engine for OpenStreetMap data that
+answers continental-scale route queries in milliseconds by preprocessing the road graph
+{{cite:luxen2011}}. Delling <i>et al.</i>&rsquo;s <i>customizable route planning</i> separates that
+preprocessing into a metric-independent partition of the graph and a fast customisation step that
+applies road weights {{cite:delling2011}}. OSRM&rsquo;s multi-level Dijkstra (MLD) mode implements
+this idea, which means that closures or traffic can re-weight the graph in seconds without
+rebuilding it.</p>
+<p>Raw GNSS positions are typically in error by several metres and cannot say which road, let
+alone which lane, the car is on. Newson and Krumm formulated <i>map matching</i> as a hidden Markov
+model: candidate road positions near each fix are hidden states, emission probabilities fall with
+distance from the fix, and transition probabilities favour routes whose driven length matches the
+straight-line distance between fixes; the Viterbi algorithm then finds the most likely path
+{{cite:newson2009}}. This is robust to noise and to sparse fixes and is the basis of OSRM&rsquo;s own
+matching service.</p>
+<p><b>Relevance to this project.</b> Routing and map matching establish <i>which road</i> and
+<i>how far along it</i> the car is, but not where the road is in the camera image with lane-level
+precision. The proposal therefore adds a step not found in these works: a projector that places
+the matched route on the LiDAR-measured road surface and corrects its heading and lateral position
+from the detected lane lines.</p>
+
+<h2 id="s2-6">2.6 Collision Avoidance and Functional Safety</h2>
+<p>Lee showed that drivers regulate braking using <i>time to collision</i> (TTC), the current gap
+divided by the closing speed, which can be perceived directly from how fast an object&rsquo;s image
+grows {{cite:lee1976}}. TTC has since become the standard trigger quantity in forward collision
+warning and AEB. Cicchino&rsquo;s analysis of police-reported crashes in the United States found that
+vehicles with forward collision warning plus low-speed AEB had about half the rate of front-to-rear
+crashes of the same models without them {{cite:cicchino2017}}.</p>
+<p>A system that can apply the brakes is safety-critical. ISO 26262 sets out the functional-safety
+lifecycle for road-vehicle electronics: hazard analysis, safety goals, a safe state for every
+fault, independence between the function and its monitor, and verification evidence at each stage
+{{cite:iso26262}}. Two concerns stand out for a retrofit. The first is that a false activation,
+<i>phantom braking</i>, is itself a hazard. The second is that software on a general-purpose
+computer cannot be trusted to guarantee a safe state.</p>
+<p><b>Relevance to this project.</b> The proposal does not claim ISO 26262 compliance, which is
+beyond a student project, but adopts its principles: a defined safe state (brake released), an
+independent monitor (the hub, which enforces limits and releases on its own watchdog), a hardware
+kill path (the emergency stop), and an evidence log of every decision. To limit phantom braking,
+braking is triggered only by the measured TTC of a confirmed, LiDAR-ranged object, never by a
+prediction or a learned model, as recommended by the TTC literature {{cite:lee1976}}.</p>
+</section>
+
+<section class="sheet">
+<h2 id="s2-7">2.7 Summary of Gaps and the Proposed Improvements</h2>
+<p>{{ref:gaps}} compares the reviewed work with the proposed system. The works reviewed each solve
+one part of the problem well; none combines precise, measured AR registration with perception,
+tracking and a fail-safe actuation path in a system that can be retrofitted to an ordinary car.</p>
+{{tab:gaps|Comparison of existing approaches with the proposed system}}
+<div class="tablewrap">
+<table class="booktabs lined wide">
+<tr><th>Approach</th><th>What it does well</th><th>Gap for this problem</th><th>How this project differs</th></tr>
+<tr><td>Commercial AR HUDs (factory, optical)</td><td>High-quality optical AR in the driver&rsquo;s line of sight</td><td>Proprietary, expensive, model-specific; not retrofittable</td><td>Retrofit hardware; video see-through first, optical display interface designed in</td></tr>
+<tr><td>AR navigation studies {{cite:bark2014,kim2022}}</td><td>Show the benefit and the design rules of conformal graphics</td><td>Route geometry assumed or pre-defined; no sensing of the road</td><td>Route placed on the LiDAR-measured surface, corrected by detected lanes</td></tr>
+<tr><td>Real-time detectors {{cite:redmon2016,bolya2019,qin2024}}</td><td>Fast, accurate image-space detection</td><td>No metric range; evaluated in isolation</td><td>Four networks together within one frame; outputs feed geometry and fusion</td></tr>
+<tr><td>Learned camera&ndash;LiDAR fusion {{cite:qi2018,vora2020}}</td><td>Accurate 3D detection</td><td>Needs trained 3D networks and labelled LiDAR data; box-based selection mixes in background</td><td>Mask-based point assignment with nearest-cluster range; no 3D training needed</td></tr>
+<tr><td>Routing and HMM map matching {{cite:luxen2011,newson2009}}</td><td>Which road, how far along it</td><td>Metre-level error; no lane or surface information</td><td>Adds the road-surface projector; three road-status layers where sensors override the map</td></tr>
+<tr><td>Factory FCW/AEB {{cite:cicchino2017}}</td><td>Proven crash reduction</td><td>Factory-only; closed design</td><td>Retrofit, force-limited, driver-overridable, with an open, auditable trigger rule and an evidence log</td></tr>
+</table>
+</div>
+<p>In summary, the improvements this project makes over existing work are: (i) <b>measured
+registration</b> of the AR route, from the combination of LiDAR ground model, lane detection and
+map matching; (ii) <b>mask-based fusion</b> that gives a reliable range to each detected object
+without training a 3D network; (iii) <b>one road model serving both navigation and safety</b>;
+and (iv) a <b>retrofit, fail-safe actuation path</b> in which an independent microcontroller, a
+hardware kill switch and a mechanical force limit each keep the brake safe even if the laptop fails.</p>
+</section>

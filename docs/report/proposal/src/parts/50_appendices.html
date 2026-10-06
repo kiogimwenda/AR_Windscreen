@@ -1,0 +1,231 @@
+
+<!-- ============================== APPENDICES ============================== -->
+<section class="sheet" id="appA">
+<h1>Appendix A: Component Specifications</h1>
+{{tab:bom|Itemised components, key specifications and sources}}
+<div class="tablewrap">
+<table class="booktabs lined wide">
+<tr><th>Item</th><th>Specification that matters</th><th>Source</th><th class="num">KES</th></tr>
+<tr><td colspan="4"><b>Sensor and actuator hub</b></td></tr>
+<tr><td>STM32F405RGT6 development board</td><td>Bring-up before the pod board; two CAN controllers; 8 MHz crystal</td><td>K-Technics</td><td class="num">3,200</td></tr>
+<tr><td>ST-Link V2</td><td>SWD flashing and debugging</td><td>K-Technics</td><td class="num">750</td></tr>
+<tr><td>DB-25 connectors, shielded 25-core cable (2 m)</td><td>The inter-box cable; every conductor wired</td><td>Luthuli Ave / Jumia</td><td class="num">1,000&ndash;1,500</td></tr>
+<tr><td>74HCT244, MOSFETs, resistors, diodes</td><td>Buffered outputs with fail-safe pull-downs</td><td>Pixel / Nerokas</td><td class="num">500&ndash;1,000</td></tr>
+<tr><td>SN65HVD230 CAN transceiver; OBD-II lead</td><td>OBD over the car&rsquo;s CAN bus, short stub</td><td>Pixel / Jumia</td><td class="num">1,200&ndash;2,200</td></tr>
+<tr><td>Perfboard, headers, terminals</td><td>Bring-up versions of both boxes</td><td>K-Technics / Pixel</td><td class="num">&asymp; 1,000</td></tr>
+<tr><td colspan="4"><b>Sensors</b></td></tr>
+<tr><td>2K USB camera</td><td>2560&times;1440, 30 fps, manual focus lock over UVC (bench)</td><td>Jumia</td><td class="num">6,000&ndash;13,000</td></tr>
+<tr><td>2K UVC board camera, M12 lens</td><td>For the pod: locked focus, glass lens, &ge; 60 &deg;C rating</td><td>Import</td><td class="num">see &sect;6</td></tr>
+<tr><td>Livox Mid-360 LiDAR + cable</td><td>360&deg;&times;59&deg;, &asymp; 200,000 pts/s, Ethernet, 9&ndash;27 V</td><td>Import</td><td class="num">see &sect;6</td></tr>
+<tr><td>u-blox NEO-M8N GNSS</td><td>Multi-constellation, UART, external antenna</td><td>Pixel / Nerokas</td><td class="num">1,800</td></tr>
+<tr><td>BNO085 IMU</td><td>On-chip sensor fusion, I2C</td><td>Import</td><td class="num">see &sect;6</td></tr>
+<tr><td>ELM327 + HC-05 (fallback only)</td><td>Only if the test car predates CAN-based OBD-II</td><td>Jumia / K-Technics</td><td class="num">(1,600&ndash;2,650)</td></tr>
+<tr><td>APDS-9960 gesture sensor</td><td>I2C; driver-hands-free menu control</td><td>Pixel</td><td class="num">800</td></tr>
+<tr><td colspan="4"><b>Actuation and safety</b></td></tr>
+<tr><td>BTS7960 H-bridge</td><td>43 A, PWM, enable inputs</td><td>Jumia</td><td class="num">1,200&ndash;1,800</td></tr>
+<tr><td>ACS712-20A</td><td>Hall-effect, 100 mV/A, independent current reading</td><td>Nerokas / K-Technics</td><td class="num">400&ndash;600</td></tr>
+<tr><td>Emergency-stop switch</td><td>22 mm mushroom, twist release, NC + second contact block</td><td>Luthuli Ave / Industrial Area</td><td class="num">800&ndash;1,500</td></tr>
+<tr><td>40 A automotive relays (&times;2)</td><td>E-stop switches the coil; contacts carry actuator current</td><td>Auto-spares</td><td class="num">600&ndash;1,000</td></tr>
+<tr><td>12 V automotive relays (&times;5)</td><td>Indicators, hazards, horn, beam; MOSFET-driven, off by default</td><td>Auto-spares</td><td class="num">1,500&ndash;2,500</td></tr>
+<tr><td>PC817 optocoupler</td><td>Reads the brake-light switch (driver braking)</td><td>Pixel / K-Technics</td><td class="num">150&ndash;300</td></tr>
+<tr><td>Brake actuator + holding magnet</td><td>50&ndash;100 mm/s, 100&ndash;200 N, pull-only cable</td><td>Import (pending approval)</td><td class="num">TBC</td></tr>
+<tr><td colspan="4"><b>Power, bench rig and installation</b></td></tr>
+<tr><td>Buck converter 12 V&rarr;5 V; TVS; reverse protection</td><td>60 V-rated input survives load-dump transients</td><td>Jumia / Nerokas / Pixel</td><td class="num">1,300&ndash;2,000</td></tr>
+<tr><td>Fuses, holders, automotive wire</td><td>Separate fused rails: peripherals, actuator, LiDAR</td><td>Auto-spares</td><td class="num">&asymp; 2,000</td></tr>
+<tr><td>Bench 12 V supply &ge; 10 A</td><td>Off-vehicle power for actuator, LiDAR, hub</td><td>Jumia</td><td class="num">2,500&ndash;5,000</td></tr>
+<tr><td>50 kg load cell + HX711</td><td>Measures applied pedal force</td><td>Nerokas</td><td class="num">&asymp; 2,000</td></tr>
+<tr><td>Used brake-pedal assembly, rig base</td><td>Real pedal, pivot and return spring</td><td>Used-parts yards</td><td class="num">2,500&ndash;4,500</td></tr>
+<tr><td>Pod bracket and VHB; 3 mm aluminium 15&deg; LiDAR plate</td><td>Repeatable pod position; LiDAR heatsink and tilt</td><td>Fabricator</td><td class="num">2,500&ndash;5,000</td></tr>
+<tr><td>ASA/PETG filament, power-box enclosure, glands</td><td>Heat-resistant enclosures (not PLA)</td><td>Nairobi 3D-print shops</td><td class="num">3,500&ndash;6,500</td></tr>
+<tr><td>Laptop mount, fuse tap, looms</td><td>Cabin installation</td><td>Jumia / auto-spares</td><td class="num">4,000&ndash;6,500</td></tr>
+<tr><td colspan="4"><b>Custom PCBs</b></td></tr>
+<tr><td>Pod board (4-layer) and power board (2-layer, 2 oz), &times;5 each</td><td>Fabrication, components, courier and duty</td><td>JLCPCB / PCBWay</td><td class="num">15,000&ndash;28,000</td></tr>
+</table>
+</div>
+{{tab:import|Landed cost of the import consignment (approx. US$810 CIF at 129 KES/US$)}}
+<div class="tablewrap">
+<table class="booktabs lined">
+<tr><th>Charge</th><th>Basis</th><th class="num">Approx.</th></tr>
+<tr><td>Import duty</td><td>0&ndash;25% of CIF depending on classification (worst case assumed)</td><td class="num">&le; US$200</td></tr>
+<tr><td>IDF</td><td>2.5% of CIF</td><td class="num">US$20</td></tr>
+<tr><td>RDL</td><td>2% of CIF</td><td class="num">US$16</td></tr>
+<tr><td>VAT</td><td>16% of (CIF + duty + IDF + RDL)</td><td class="num">&asymp; US$168</td></tr>
+<tr><td><b>Landed</b></td><td></td><td class="num"><b>US$1,050&ndash;1,220 &asymp; KES 135k&ndash;157k</b></td></tr>
+</table>
+</div>
+</section>
+
+<section class="sheet" id="appB">
+<h1>Appendix B: Host&ndash;Hub Protocol Reference</h1>
+<p><b>Frame:</b> <span class="mono">0xAA | type (1) | length (2, LE) | payload (length) | CRC (2, LE)</span>.
+The CRC is CRC-16/CCITT-FALSE (polynomial 0x1021, initial value 0xFFFF, no reflection, no final
+XOR; check value 0x29B1 for &ldquo;123456789&rdquo;), computed over type, length and payload. All
+multi-byte fields are little-endian and packed; payload sizes are asserted at compile time on both
+the hub and the host.</p>
+{{tab:msgs|Message types}}
+<div class="tablewrap">
+<table class="booktabs lined wide">
+<tr><th>Type</th><th>Name</th><th>Direction</th><th>Rate</th><th class="num">Payload</th><th>Contents</th></tr>
+<tr><td>0x01</td><td>SensorReport</td><td>hub &rarr; host</td><td>50 Hz</td><td class="num">63 B</td><td>Time; GNSS latitude, longitude, speed, fix; IMU acceleration, rates, heading; OBD speed, rpm, brake pedal; gesture; ignition; kill switch</td></tr>
+<tr><td>0x02</td><td>ActuationCommand</td><td>host &rarr; hub</td><td>on change</td><td class="num">9 B</td><td>Indicator bits; light and horn bits; brake request 0&ndash;255; duration (ms); host timestamp</td></tr>
+<tr><td>0x03</td><td>AckStatus</td><td>hub &rarr; host</td><td>per command</td><td class="num">8 B</td><td>Time; command accepted; fault code; brake intensity actually applied</td></tr>
+<tr><td>0x04</td><td>Heartbeat</td><td>host &rarr; hub</td><td>&ge; 10 Hz</td><td class="num">0 B</td><td>Liveness only</td></tr>
+<tr><td>0x05</td><td>BenchTelemetry</td><td>hub &rarr; host</td><td>50 Hz, bench build only</td><td class="num">22 B</td><td>Current, applied intensity, magnet, armed, fault, load-cell force, kill switch, measured release times after link loss</td></tr>
+</table>
+</div>
+<p><b>Watchdog contract.</b> The hub treats the link as lost when no valid frame has arrived for
+200 ms. A command that requests an action is accepted only while the hub is armed and only if
+its host timestamp is newer than the last accepted one, so a stale or replayed frame never acts; a
+command requesting nothing is always accepted, since it can only release. A brake always ends after
+its own duration or 1.5 s, whichever is shorter; heartbeats do not extend it.</p>
+
+<h1 id="appC" style="margin-top:1.4em; break-before: page">Appendix C: Safety Properties and Fault Codes</h1>
+<p>The finished system must demonstrate five non-negotiable properties, each verified explicitly:</p>
+<ol>
+<li>The driver&rsquo;s foot always overrides the actuator (pull-only cable; bench check 3).</li>
+<li>A physical kill switch removes actuator power independent of software (E-stop in the relay coil loop; bench check 4).</li>
+<li>The hub releases the actuator within 200 ms of host link loss, independent of host software (watchdog task, IWDG backstop; bench check 5). Across the two-box split, the power board releases in hardware whenever the pod is not driving it (bench check 6).</li>
+<li>The host never drives actuation hardware directly; it only sends a bounded request, and the hub enforces the real ceiling.</li>
+<li>Every actuation event (request, hub decision, applied intensity and duration, release reason) is logged with a timestamp on both host and hub.</li>
+</ol>
+{{tab:faults|Hub fault codes (AckStatus.actuatorFaultCode)}}
+<div class="tablewrap">
+<table class="booktabs lined wide">
+<tr><th>Code</th><th>Meaning</th><th>Hub behaviour</th></tr>
+<tr><td>0</td><td>No fault</td><td>Normal operation</td></tr>
+<tr><td>1</td><td>Overcurrent (&gt; 8 A for 30 ms)</td><td>Actuator released, relays off; latched until power cycle</td></tr>
+<tr><td>2</td><td>Kill switch engaged</td><td>All actuation disarmed; host informed</td></tr>
+<tr><td>3</td><td>Host link timeout (&gt; 200 ms)</td><td>Watchdog release</td></tr>
+<tr><td>4</td><td>Frame error rate exceeded (&gt; 10 of 50)</td><td>Disarmed until 20 clean frames</td></tr>
+<tr><td>5</td><td>Power box absent (cable unplugged or box unpowered)</td><td>Released (also in hardware); current reading ignored; re-arms on a fresh heartbeat</td></tr>
+</table>
+</div>
+{{fig:fig_hub_states.svg|Hub safety state machine}}
+<p><b>Hazard analysis (summary).</b> {{ref:hazards}} lists the main hazards of the actuation
+function and the independent measures that address each.</p>
+{{tab:hazards|Actuation hazards and mitigations}}
+<div class="tablewrap">
+<table class="booktabs lined wide">
+<tr><th>Hazard</th><th>Mitigations (independent layers)</th></tr>
+<tr><td>Brake stuck on after a fault or power loss</td><td>Magnet drops the cable when unpowered; no lead screw; hub releases on link loss; IWDG reset</td></tr>
+<tr><td>Excessive brake force</td><td>Host clamp (60 of 90); hub ceiling 90; overcurrent latch; magnet holding force</td></tr>
+<tr><td>Phantom braking</td><td>Brake only on measured TTC of a confirmed, LiDAR-ranged object; predictions and ML probabilities excluded; low test speeds; manual confirm-to-brake in first Stage D runs</td></tr>
+<tr><td>Driver unable to override</td><td>Pull-only cable goes slack; bench check 3 is the project&rsquo;s hard gate</td></tr>
+<tr><td>Laptop crash or stall</td><td>Hub watchdog (200 ms); commands have a maximum duration; hub boots disarmed</td></tr>
+<tr><td>Corrupt or replayed commands</td><td>CRC-16 on every frame; stale timestamps rejected; frame-error disarm</td></tr>
+<tr><td>Inter-box cable unplugged or cut</td><td>Pull-downs on the power board release everything; presence and kill-sense lines both report it (fault 5); floating current reading ignored</td></tr>
+<tr><td>Hub disturbs the car&rsquo;s CAN bus</td><td>Transceiver in standby by default; silent listening before any transmission; single-shot, read-only requests; short stub</td></tr>
+<tr><td>No evidence of what happened</td><td>Arbiter refuses to arm if the event log cannot record; hub reports every applied value</td></tr>
+</table>
+</div>
+</section>
+
+<section class="sheet" id="appD">
+<h1>Appendix D: Key Algorithms</h1>
+{{fig:fig_software_dataflow.svg|Host software dataflow; each arrow is a typed message on a ring buffer}}
+{{fig:fig_frame_pipeline.svg|Per-frame perception and fusion flow}}
+{{fig:fig_navigation.svg|Navigation pipeline and the three road-status layers|4.3}}
+<h3>D.1 Decision arbiter, rule 1 (brake)</h3>
+<div class="box mono" style="white-space:pre-wrap; text-align:left; font-size:9.5pt; line-height:1.35">for each confirmed track o in the ego path, ahead of the bumper:
+    if o.range was measured by LiDAR within 200 ms
+       and o.closingSpeed &gt; 0.5 m/s and all values finite:
+        ttc(o) = o.gap / o.closingSpeed
+target = argmin ttc
+armed  = hubReportAge &le; 100 ms and killSwitch released
+         and no actuator fault and eventLog healthy
+if target exists and ttc(target) &lt; 1.8 s and pedal not pressed and armed:
+    intensity = min(configured 60, configured max 90, hub ceiling 90)
+    log(rule 1, ttc, gap, closing speed, target, armed)   # before sending
+    send BRAKE(intensity)</div>
+<h3>D.2 Mask-based fusion, per object</h3>
+<div class="box mono" style="white-space:pre-wrap; text-align:left; font-size:9.5pt; line-height:1.35">for each LiDAR point p (time t_p):
+    q = compensate(p, t_p &rarr; t_camera, ego speed, yaw rate)
+    drop q if |ground.distance(q)| &lt; 0.15 m
+    (u, v) = project(q)  # pinhole + k1 k2 p1 p2 k3 distortion
+    keep only the nearest point in each 4 px cell   # depth test
+for each detection d:
+    P = visible points inside erode(mask(d), 1 cell)
+    clusters = split P by depth at gaps &gt; 0.5 m
+    c = nearest cluster with &ge; 20% of P
+    if |c| &ge; 3: range(d) = median(c), source = LIDAR
+    else: range(d) = MiDaS estimate scaled by LiDAR objects, source = ESTIMATED
+non-ground corridor points claimed by no mask &rarr; UNKNOWN obstacles</div>
+<h3>D.3 Hub watchdog task (every 20 ms)</h3>
+<div class="box mono" style="white-space:pre-wrap; text-align:left; font-size:9.5pt; line-height:1.35">kick IWDG (500 ms)
+if now - lastValidHostFrame &gt; 200 ms or report loop silent &gt; 200 ms
+   or killSense pressed or frameErrors &gt; 10/50:
+    release actuator directly (PWM 0, enables low, magnet off)  # no mutex
+    relays off; forget last command; state = DISARMED</div>
+<h3>D.4 HMM map matching</h3>
+<p>For fix z<sub>t</sub> and candidate road point x<sub>t</sub>, emission
+p(z<sub>t</sub>|x<sub>t</sub>) &prop; exp(&minus;&frac12;(|z<sub>t</sub> &minus; x<sub>t</sub>|/&sigma;)<sup>2</sup>); transition
+p(x<sub>t</sub>|x<sub>t&minus;1</sub>) &prop; exp(&minus;|d<sub>route</sub> &minus; d<sub>straight</sub>|/&beta;), where
+d<sub>route</sub> is the driving distance between candidates and d<sub>straight</sub> the distance
+between fixes; the Viterbi path over a sliding window gives the matched positions {{cite:newson2009}}.</p>
+</section>
+
+<section class="sheet" id="appE">
+<h1>Appendix E: Test Plan and Checklists</h1>
+<h3>Stage A: actuator bench rig (gate)</h3>
+<ul>
+<li>Rig check: actuator and pedal fixture on the bench, not in a vehicle.</li>
+<li>Intensity sweep: applied intensity, current, force and response time logged per step.</li>
+<li>Push-back: a person moves the pedal by foot at maximum configured intensity.</li>
+<li>Kill switch pressed mid-actuation: drive and current fall to zero; actuator goes limp.</li>
+<li>USB unplugged mid-actuation: release and zero current within 200 ms, measured by the hub.</li>
+<li>Inter-box cable pulled mid-actuation: limp at once; fault 5 reported; no false overcurrent latch.</li>
+<li>Exit: all six pass on three consecutive attempts, and again on the custom PCB hardware.</li>
+</ul>
+<h3>Stage B: stationary in vehicle (handbrake on, wheels chocked)</h3>
+<ul>
+<li>SensorReports show real OBD-II (read over CAN), GNSS and IMU data.</li>
+<li>IMU mount and camera pitch calibrated; the knock check reads under 1&deg;.</li>
+<li>Inter-box cable pulled with the actuator applied: releases, fault 5.</li>
+<li>A person walking into view at close range produces the correct request in the event log.</li>
+<li>The actuator engages and the driver can push through it, as on the bench.</li>
+<li>Kill switch and watchdog checks repeated in the vehicle.</li>
+<li>Road-projection check performed on first movement.</li>
+</ul>
+<h3>Stage C: empty field, spotter present</h3>
+<ul>
+<li>Actuation, override and watchdog behaviour hold at low vehicle speed.</li>
+<li>Recorded explicitly: stopping-distance and TTC calibration are <i>not</i> validated on loose ground.</li>
+</ul>
+<h3>Stage D: closed campus road section</h3>
+<ul>
+<li>Formal closure arranged with campus security; department safety notification filed in advance.</li>
+<li>Near-zero foot traffic; spotters at both ends and one alongside; agreed abort signal.</li>
+<li>Speed capped at 5&ndash;10 km/h.</li>
+<li>First runs with a manual confirm-to-brake step before automatic triggering.</li>
+<li>Full event log retained from every run.</li>
+</ul>
+</section>
+
+<section class="sheet" id="appF">
+<h1>Appendix F: Development Status and Verification to Date</h1>
+<p>The software is written in C++17 (host) and C++ on FreeRTOS (hub), built with CMake and
+PlatformIO, and kept under version control with a progress log and decision log. {{ref:status}}
+lists the verification carried out to date.</p>
+{{tab:status|Verification carried out to date (September 2026)}}
+<div class="tablewrap">
+<table class="booktabs lined wide">
+<tr><th>Area</th><th>Verification</th><th>Result</th></tr>
+<tr><td>Host unit tests</td><td>All modules, with address and undefined-behaviour sanitizers</td><td>232/232 pass</td></tr>
+<tr><td>Routing and GPU tests</td><td>OSRM routing, map matching, GPU renderer</td><td>29/29 pass</td></tr>
+<tr><td>Hub firmware tests</td><td>Protocol, CRC, framing, safety core, OBD-over-CAN poller (native build); 600,000-event fuzz; mutation checks</td><td>38/38 pass</td></tr>
+<tr><td>Hub firmware build</td><td>STM32F405 target (CAN, bench and ELM327 variants)</td><td>71 KB flash; 7.3% RAM</td></tr>
+<tr><td>Inference</td><td>Four networks together, recorded 2K video</td><td>Median 17.8 ms / frame</td></tr>
+<tr><td>Sign detector</td><td>Held-out validation; Kenyan audit</td><td>mAP50 0.716; 24/25</td></tr>
+<tr><td>Decision arbiter</td><td>End-to-end approach simulation; 200,000-input fuzz</td><td>Brake at TTC 1.70 s; no ceiling violation</td></tr>
+<tr><td>Navigation</td><td>CBD&ndash;Thika route; closure reroute; recorded drive</td><td>43.7 km; 1.2 s; median snap 3.1 m</td></tr>
+<tr><td>Renderer</td><td>2560&times;1440 benchmark; projection test</td><td>54&ndash;82 fps; within 2 px</td></tr>
+<tr><td>Bench tooling</td><td>Protocol self-test of the bench logger</td><td>Pass; ready for hardware</td></tr>
+</table>
+</div>
+{{img:perception_krakow_lanes.jpg|Ego-lane detection by UFLDv2 on recorded road footage (Relaxing Roads 4K, CC BY 3.0)|80}}
+{{img:sign_speed_hump_kenya.jpg|Kenyan audit image, ICRAF Road, Nairobi: road hump (0.77) and 30 km/h speed limit (0.78) detected (image: Matti Blume, CC BY-SA 4.0, Wikimedia Commons)|80}}
+{{img:sign_stop_kenya.jpg|The sign detector on a Kenyan road (A104, Limuru&ndash;Naivasha): stop sign detected at confidence 0.93 (image: KartaView, user ToffeHoff, CC BY-SA 4.0)|80}}
+<p class="note">Remaining work requires hardware: hub bring-up (phase 2), camera (4), LiDAR and
+calibration (6), the actuator bench gate (12), bench integration (13), installation (14) and
+staged validation (15).</p>
+</section>

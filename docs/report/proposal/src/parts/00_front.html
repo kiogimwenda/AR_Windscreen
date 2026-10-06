@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AR Windscreen Project Proposal</title>
+<meta name="description" content="Final year project proposal: Virtualized AR Windscreen Display with Semi-Autonomous Driving Support System. Kiogora Ian Mwenda, ENE212-0251/2021, JKUAT.">
+<style>
+/*{{fonts}}*/
+:root {
+  --paper: #ffffff;
+  --desk: #d6d6d6;
+  --ink: #000000;
+  --rule: #000000;
+  --muted: #444444;
+  color-scheme: light;
+}
+/* Dark mode darkens only the desk around the pages; the pages stay white paper. */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --desk: #2b2b2b; } }
+:root[data-theme="dark"] { --desk: #2b2b2b; }
+* { box-sizing: border-box; }
+html { background: var(--desk); }
+body {
+  margin: 0; padding: 24px 0; background: var(--desk); color: var(--ink);
+  font-family: 'Liberation Serif', 'Times New Roman', serif; font-size: 11pt; line-height: 1.4;
+}
+.sheet {
+  width: 210mm; max-width: calc(100% - 32px); min-height: 297mm; margin: 0 auto 24px;
+  padding: 1in; background: var(--paper); box-shadow: 0 1px 6px rgba(0,0,0,.25);
+}
+.sheet.cover { width: 210mm; min-height: 297mm; }
+@media (max-width: 700px) {
+  body { font-size: 11pt; padding: 16px 0; }
+  .sheet, .sheet.cover { padding: 16px; min-height: 0; }
+  .cover { font-size: 12pt; }
+  .cover .logo { width: 1.3in; }
+  .cover table.student { width: 100%; font-size: 11pt; }
+}
+p { margin: 0 0 0.7em; text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
+h1 { font-size: 16pt; margin: 0 0 0.8em; line-height: 1.25; break-after: avoid; }
+h2 { font-size: 13pt; margin: 1.3em 0 0.5em; line-height: 1.25; break-after: avoid; }
+h3 { font-size: 11.5pt; margin: 1.1em 0 0.4em; break-after: avoid; }
+h4 { font-size: 11pt; font-style: italic; font-weight: normal; margin: 0.9em 0 0.3em; break-after: avoid; }
+a { color: inherit; text-decoration: none; }
+a.cite { white-space: nowrap; }
+ul, ol { margin: 0 0 0.7em; padding-left: 1.6em; }
+li { margin: 0.15em 0; text-align: justify; hyphens: auto; }
+figure { margin: 0.7em 0 0.9em; text-align: center; break-inside: avoid; }
+figure img { max-width: 100%; height: auto; max-height: 2.9in; object-fit: contain; border: 1px solid #000; }
+svg.diagram { width: 100%; max-width: 6.3in; height: auto; max-height: 3.5in; display: block; margin: 0 auto; }
+figcaption { font-style: italic; margin-top: 0.45em; text-align: center; font-size: 10pt; }
+figure[id="fig_gantt.svg"] svg.diagram { max-height: 5.4in; max-width: 6.5in; }
+.tabcap { font-style: italic; text-align: center; margin: 1em 0 0.35em; font-size: 10pt; break-after: avoid; }
+table { border-collapse: collapse; margin: 0 auto 1em; font-size: 9.5pt; line-height: 1.3; break-inside: auto; }
+table.booktabs { border-top: 1.5px solid var(--rule); border-bottom: 1.5px solid var(--rule); }
+table.booktabs th { border-bottom: 1px solid var(--rule); text-align: left; font-weight: normal; padding: 4px 8px; vertical-align: bottom; }
+table.booktabs td { padding: 2px 8px; vertical-align: top; text-align: left; }
+table.booktabs.lined td { border-bottom: 0.5px solid #999; padding: 4px 8px; }
+table.booktabs.lined tr:last-child td { border-bottom: none; }
+table.wide { width: 100%; }
+td.num, th.num { text-align: right !important; white-space: nowrap; }
+.tablewrap { overflow-x: auto; }
+.eq { text-align: center; margin: 0.6em 0 0.8em; font-style: italic; }
+.eq .n { float: right; font-style: normal; }
+code, .mono { font-family: 'Liberation Mono', 'Courier New', monospace; font-size: 10pt; }
+.box { border: 1px solid #000; padding: 0.6em 0.9em; margin: 0.8em 0 1em; break-inside: avoid; }
+.box p:last-child { margin-bottom: 0; }
+.note { font-size: 10.5pt; color: var(--muted); }
+.placeholder { background: #fff3a8; }
+
+/* Cover: the concept paper's cover, reproduced */
+.cover { text-align: center; font-weight: bold; font-size: 14pt; }
+.cover .logo { width: 1.95in; height: auto; margin: 0.25in auto 0.25in; display: block; }
+.cover .u { text-decoration: underline; text-underline-offset: 2px; }
+.cover p { text-align: center; margin: 0; line-height: 1.2; hyphens: none; }
+.cover .gap { height: 1.05em; }
+.cover table.student { margin: 0.9em auto 1.1em; width: 4.6in; border-collapse: collapse; font-size: 13pt; }
+.cover table.student td, .cover table.student th { border: 1px solid #000; padding: 4px 8px; text-align: center; font-weight: bold; }
+.cover table.student th { text-decoration: underline; }
+
+/* Table of contents */
+.toc { list-style: none; padding: 0; }
+.toc li { margin: 0.2em 0; text-align: left; }
+.toc li.l2 { padding-left: 1.8em; }
+.toc li.l3 { padding-left: 3.6em; font-size: 11pt; }
+.toc a { display: flex; gap: 0.4em; }
+.toc a::after { content: ""; flex: 1; border-bottom: 1px dotted #777; margin-bottom: 0.35em; order: 1; }
+.toc .pg { order: 2; }
+
+ol.refs { list-style: none; padding: 0; }
+ol.refs li { padding-left: 2.6em; text-indent: -2.6em; margin: 0 0 0.45em; font-size: 10pt; text-align: left; }
+ol.refs .refno { display: inline-block; width: 2.6em; text-indent: 0; }
+
+@page { size: A4; margin: 1in 1in 0.9in; @bottom-center { content: counter(page); font-family: 'Liberation Serif', serif; font-size: 11pt; } }
+@page cover { size: A4; margin: 1in; @bottom-center { content: none; } }
+@media print {
+  html, body { background: #fff; padding: 0; }
+  .sheet { width: auto; max-width: none; min-height: 0; margin: 0; padding: 0; box-shadow: none; break-before: page; }
+  .sheet:first-child, .sheet:not([id]) { break-before: auto; }
+  .sheet.front { break-before: page; }
+  .sheet.flow { break-before: auto; margin-top: 1.5em; }
+  .sheet.cover { page: cover; width: auto; min-height: 0; }
+  .placeholder { background: none; }
+  .tablewrap { overflow: visible; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================== COVER ============================== -->
+<section class="sheet cover">
+  <img class="logo" src="{{logo}}" alt="JKUAT logo">
+  <p class="u">JOMO KENYATTA UNIVERSITY OF AGRICULTURE AND TECHNOLOGY</p>
+  <p class="u">SCHOOL OF ELECTRICAL, ELECTRONIC AND INFORMATION ENGINEERING</p>
+  <p class="u">DEPARTMENT OF ELECTRONIC AND COMPUTER ENGINEERING</p>
+  <div class="gap"></div>
+  <p class="u">FINAL YEAR PROJECT PROPOSAL</p>
+  <div class="gap"></div>
+  <p class="u">STUDENT DETAILS</p>
+  <table class="student">
+    <tr><th>NAME</th><th>ADMISSION</th></tr>
+    <tr><td>KIOGORA IAN MWENDA</td><td>ENE212-0251/2021</td></tr>
+  </table>
+  <p class="u">COURSE: B.Sc. ELECTRONIC AND COMPUTER ENGINEERING</p>
+  <p class="u">FINAL YEAR PROJECT</p>
+  <p class="u">PROJECT PROPOSAL</p>
+  <p class="u">TITLE: VIRTUALIZED AR WINDSCREEN DISPLAY WITH SEMI-AUTONOMOUS DRIVING SUPPORT SYSTEM</p>
+  <div class="gap"></div>
+  <p>LECTURER: MR. OMBATI</p>
+  <p>DATE OF SUBMISSION: 01/10/2026</p>
+</section>
+
+<!-- ============================== FRONT MATTER ============================== -->
+<section class="sheet front">
+<h1>Abbreviations and Acronyms</h1>
+<div class="tablewrap">
+<table class="booktabs">
+<tr><th>Abbreviation</th><th>Meaning</th></tr>
+<tr><td>ADAS</td><td>Advanced Driver-Assistance System</td></tr>
+<tr><td>AEB</td><td>Autonomous Emergency Braking</td></tr>
+<tr><td>AR</td><td>Augmented Reality</td></tr>
+<tr><td>CAN</td><td>Controller Area Network (in-vehicle bus)</td></tr>
+<tr><td>CPA</td><td>Closest Point of Approach</td></tr>
+<tr><td>CRC</td><td>Cyclic Redundancy Check</td></tr>
+<tr><td>CTRV</td><td>Constant Turn Rate and Velocity (motion model)</td></tr>
+<tr><td>CUDA</td><td>Compute Unified Device Architecture (NVIDIA GPU computing platform)</td></tr>
+<tr><td>CV</td><td>Constant Velocity (motion model)</td></tr>
+<tr><td>EKF</td><td>Extended Kalman Filter</td></tr>
+<tr><td>FCW</td><td>Forward Collision Warning</td></tr>
+<tr><td>FreeRTOS</td><td>Free Real-Time Operating System</td></tr>
+<tr><td>GNSS / GPS</td><td>Global Navigation Satellite System / Global Positioning System</td></tr>
+<tr><td>GPU</td><td>Graphics Processing Unit</td></tr>
+<tr><td>HMM</td><td>Hidden Markov Model</td></tr>
+<tr><td>HUD</td><td>Head-Up Display</td></tr>
+<tr><td>I2C</td><td>Inter-Integrated Circuit (serial bus)</td></tr>
+<tr><td>IMM</td><td>Interacting Multiple Model (filter)</td></tr>
+<tr><td>IMU</td><td>Inertial Measurement Unit</td></tr>
+<tr><td>IWDG</td><td>Independent Watchdog (STM32 hardware timer)</td></tr>
+<tr><td>LiDAR</td><td>Light Detection and Ranging</td></tr>
+<tr><td>mAP</td><td>mean Average Precision</td></tr>
+<tr><td>MLD</td><td>Multi-Level Dijkstra (OSRM routing algorithm)</td></tr>
+<tr><td>MTSD</td><td>Mapillary Traffic Sign Dataset</td></tr>
+<tr><td>NTSA</td><td>National Transport and Safety Authority (Kenya)</td></tr>
+<tr><td>OBD-II</td><td>On-Board Diagnostics, second generation</td></tr>
+<tr><td>OSM</td><td>OpenStreetMap</td></tr>
+<tr><td>OSRM</td><td>Open Source Routing Machine</td></tr>
+<tr><td>PCB</td><td>Printed Circuit Board</td></tr>
+<tr><td>PWM</td><td>Pulse-Width Modulation</td></tr>
+<tr><td>TensorRT</td><td>NVIDIA's deep-learning inference optimiser and runtime</td></tr>
+<tr><td>TTC</td><td>Time to Collision</td></tr>
+<tr><td>UART</td><td>Universal Asynchronous Receiver-Transmitter</td></tr>
+<tr><td>USB-CDC</td><td>USB Communications Device Class (virtual serial port)</td></tr>
+<tr><td>WSL2</td><td>Windows Subsystem for Linux, version 2</td></tr>
+<tr><td>YOLO</td><td>You Only Look Once (single-stage object detector family)</td></tr>
+</table>
+</div>
+</section>
+
+<section class="sheet front">
+<h1>Table of Contents</h1>
+<ul class="toc">
+<li class="l1"><a href="#abstract"><span>Abstract</span></a></li>
+<li class="l1"><a href="#s1"><span>1.0 Introduction and Background</span></a></li>
+<li class="l2"><a href="#s1-1"><span>1.1 Problem Statement</span></a></li>
+<li class="l2"><a href="#s1-2"><span>1.2 Problem Justification</span></a></li>
+<li class="l2"><a href="#s1-3"><span>1.3 Objectives</span></a></li>
+<li class="l2"><a href="#s1-4"><span>1.4 Scope and Limitations</span></a></li>
+<li class="l1"><a href="#s2"><span>2.0 Literature Review</span></a></li>
+<li class="l2"><a href="#s2-1"><span>2.1 Road Safety, Driver Attention and Navigation Displays</span></a></li>
+<li class="l2"><a href="#s2-2"><span>2.2 Augmented-Reality Head-Up Displays</span></a></li>
+<li class="l2"><a href="#s2-3"><span>2.3 Camera-Based Perception with Deep Learning</span></a></li>
+<li class="l2"><a href="#s2-4"><span>2.4 Camera&ndash;LiDAR Fusion, State Estimation and Tracking</span></a></li>
+<li class="l2"><a href="#s2-5"><span>2.5 Routing and Map Matching</span></a></li>
+<li class="l2"><a href="#s2-6"><span>2.6 Collision Avoidance and Functional Safety</span></a></li>
+<li class="l2"><a href="#s2-7"><span>2.7 Summary of Gaps and the Proposed Improvements</span></a></li>
+<li class="l1"><a href="#s3"><span>3.0 Methodology</span></a></li>
+<li class="l2"><a href="#s3-1"><span>3.1 Development Approach</span></a></li>
+<li class="l2"><a href="#s3-2"><span>3.2 System Architecture</span></a></li>
+<li class="l2"><a href="#s3-3"><span>3.3 Hardware Design: the Two-Box Hub</span></a></li>
+<li class="l2"><a href="#s3-4"><span>3.4 Host&ndash;Hub Protocol and the Safety Core</span></a></li>
+<li class="l2"><a href="#s3-5"><span>3.5 Perception</span></a></li>
+<li class="l2"><a href="#s3-6"><span>3.6 Sensor Fusion, Tracking and Motion Prediction</span></a></li>
+<li class="l2"><a href="#s3-7"><span>3.7 Precision Navigation</span></a></li>
+<li class="l2"><a href="#s3-8"><span>3.8 Hazard Assessment and the Decision Arbiter</span></a></li>
+<li class="l2"><a href="#s3-9"><span>3.9 AR Rendering and Display</span></a></li>
+<li class="l2"><a href="#s3-10"><span>3.10 Calibration</span></a></li>
+<li class="l2"><a href="#s3-11"><span>3.11 Testing and Staged Validation</span></a></li>
+<li class="l2"><a href="#s3-12"><span>3.12 Demonstration and Presentation Plan</span></a></li>
+<li class="l1"><a href="#s4"><span>4.0 Expected Results</span></a></li>
+<li class="l1"><a href="#s5"><span>5.0 Project Time Plan</span></a></li>
+<li class="l1"><a href="#s6"><span>6.0 Budget Estimates</span></a></li>
+<li class="l1"><a href="#refs"><span>References</span></a></li>
+<li class="l1"><a href="#appA"><span>Appendix A: Component Specifications</span></a></li>
+<li class="l1"><a href="#appB"><span>Appendix B: Host&ndash;Hub Protocol Reference</span></a></li>
+<li class="l1"><a href="#appC"><span>Appendix C: Safety Properties and Fault Codes</span></a></li>
+<li class="l1"><a href="#appD"><span>Appendix D: Key Algorithms</span></a></li>
+<li class="l1"><a href="#appE"><span>Appendix E: Test Plan and Checklists</span></a></li>
+<li class="l1"><a href="#appF"><span>Appendix F: Development Status and Verification to Date</span></a></li>
+</ul>
+</section>
+
+<!-- ============================== ABSTRACT ============================== -->
+<section class="sheet" id="abstract">
+<h1>Abstract</h1>
+<p>Road crashes killed an estimated 1.19 million people worldwide in 2021 {{cite:who2023}}, and Kenya
+records over four thousand road deaths a year, most of them pedestrians and motorcyclists
+{{cite:ntsa2023}}. Many of these crashes begin with a driver who looked away at the wrong moment:
+at a phone used for navigation, or at a hazard noticed too late. Driver-assistance technology that
+addresses this, such as augmented-reality (AR) head-up displays and automatic emergency braking, is
+sold almost exclusively as factory equipment in new, expensive vehicles, and none of it can be fitted
+to the older cars that make up most of Kenya&rsquo;s fleet.</p>
+<p>This project proposes a <b>Virtualized AR Windscreen Display with Semi-Autonomous Driving
+Support System</b>: a retrofit platform that fuses a 2K camera, a 360&deg; LiDAR, satellite
+positioning, an inertial sensor and the car&rsquo;s own OBD-II data into a real-time model of the road
+ahead. The model drives two things. First, a <b>precision AR navigation display</b>, in which the
+route is drawn onto the live camera view locked to the measured road surface and to the correct
+lane, rather than as a generic arrow floating over the image. Second, a <b>semi-autonomous safety
+layer</b> that detects and tracks road users, warns of hazards and reckless driving, operates the
+indicators and hazard lights, and, as a last resort, applies a force-limited brake through a
+fail-safe actuator which the driver can always override.</p>
+<p>The system is split between a laptop with an NVIDIA RTX 5060 GPU, which runs four TensorRT
+neural networks (object segmentation, Kenyan road-sign detection, lane detection and depth), sensor
+fusion, tracking, offline routing for a 100 km region around Nairobi and GPU rendering; and an
+STM32 microcontroller hub running FreeRTOS, built on two custom circuit boards: a windscreen pod
+behind the mirror carrying the camera and inertial sensor, and an under-dash power box whose outputs
+all default to &ldquo;off&rdquo; in hardware. The hub owns every actuator, reads the car&rsquo;s
+own CAN bus, and enforces the safety rules independently of the laptop, including release within
+200 ms if the laptop stops responding.
+Much of the software has already been built and tested against recorded road video and a recorded
+Nairobi drive: the four networks run together in a median 17.8 ms per frame against a 33 ms
+budget, the AR renderer runs at 54&ndash;82 frames per second at 2560&times;1440, and the braking logic
+fires at the intended time-to-collision in simulation. The remaining work is hardware
+integration, calibration, a mandatory actuator bench test, and staged validation from a bench, to a
+stationary car, to an empty field, to a closed campus road at 5&ndash;10 km/h. The estimated hardware
+budget is KES 195,000&ndash;270,000, most of which is the LiDAR.</p>
+<p><b>Keywords:</b> augmented reality, head-up display, driver assistance, sensor fusion, LiDAR,
+deep learning, map matching, emergency braking, functional safety, embedded systems, CAN bus.</p>
+</section>
