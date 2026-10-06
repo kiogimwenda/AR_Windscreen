@@ -47,3 +47,10 @@ docs/Tomtom's terms.pdf
 # Python bytecode
 __pycache__/
 *.pyc
+
+# KiCad: per-user settings, backups, caches and generated check outputs (check.sh remakes them)
+*.kicad_prl
+*-backups/
+fp-info-cache
+hardware/*/erc.rpt
+hardware/*/*.net

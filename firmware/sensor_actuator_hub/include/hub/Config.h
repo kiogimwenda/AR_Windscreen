@@ -93,6 +93,12 @@ namespace hub_config {
 #define HUB_GESTURE_SCL PB10
 #define HUB_GPS_TX PA2
 #define HUB_GPS_RX PA3
+// Routed on the pod board for later use; no firmware reads them yet (the drivers poll):
+// BNO085 interrupt and reset, APDS-9960 interrupt, GNSS one-pulse-per-second.
+#define HUB_PIN_IMU_INT PC4
+#define HUB_PIN_IMU_RST PC5
+#define HUB_PIN_GESTURE_INT PC7
+#define HUB_PIN_GPS_PPS PB4
 // Status LEDs on the pod's driver-facing edge (active-high): host link, armed, fault.
 #define HUB_PIN_LED_LINK PC13
 #define HUB_PIN_LED_ARMED PC8

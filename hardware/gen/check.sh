@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# check.sh — regenerate both schematics and verify them. Run from anywhere:
+#     hardware/gen/check.sh
+# 1. generate.py writes hardware/{pod,power}_board/*.kicad_sch from the board descriptions;
+# 2. KiCad's own ERC must report 0 violations;
+# 3. the netlists are exported and check_nets.py verifies them against firmware Config.h and the
+#    cable pinout in BUILD_GUIDE 4.8.3, plus the fail-safe rules and the footprints;
+# 4. a PDF of each schematic and a CSV bill of materials are exported for review.
+# Uses KiCad 10 for Windows from WSL (kicad-cli.exe); set KICAD_DIR for another install.
+set -euo pipefail
+HW="$(cd "$(dirname "$0")/.." && pwd)"
+KICAD_DIR="${KICAD_DIR:-/mnt/c/Program Files/KiCad/10.0}"
+CLI="$KICAD_DIR/bin/kicad-cli.exe"
+[[ -x "$CLI" ]] || CLI="$(command -v kicad-cli)"
+win() { if [[ "$CLI" == *.exe ]]; then wslpath -w "$1"; else echo "$1"; fi; }
+
+python3 "$HW/gen/generate.py" --symbols "$KICAD_DIR/share/kicad/symbols"
+for b in pod_board power_board; do
+    d="$HW/$b"
+    "$CLI" sch erc --exit-code-violations -o "$(win "$d")/erc.rpt" "$(win "$d/$b.kicad_sch")" \
+        | grep -i "violation" || { echo "ERC FAILED for $b: see $d/erc.rpt"; exit 1; }
+    "$CLI" sch export netlist -o "$(win "$d")/$b.net" "$(win "$d/$b.kicad_sch")" >/dev/null
+    "$CLI" sch export pdf -o "$(win "$d")/$b.pdf" "$(win "$d/$b.kicad_sch")" >/dev/null
+    "$CLI" sch export bom -o "$(win "$d")/${b}_bom.csv" \
+        --fields "Reference,Value,Footprint,\${QUANTITY},Description" --group-by "Value,Footprint" \
+        "$(win "$d/$b.kicad_sch")" >/dev/null
+done
+KICAD_FOOTPRINTS="$KICAD_DIR/share/kicad/footprints" \
+    python3 "$HW/gen/check_nets.py" "$HW/pod_board/pod_board.net" "$HW/power_board/power_board.net"

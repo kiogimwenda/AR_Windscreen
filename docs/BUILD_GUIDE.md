@@ -849,10 +849,14 @@ magnet lines read LOW (released, cable dropped free) and every relay is off, in 
 firmware involved.
 
 - **Two 12 V feeds.**
-  - *Logic:* switched ACC (ignition) → 3 A fuse → reverse-polarity protection (P-MOSFET "ideal
-    diode") → TVS (e.g. SMCJ24A) → a 60 V-rated buck to 5 V / 1 A (e.g. LMR16030). The TVS clamps
-    load-dump and jump-start transients; a buck rated only to 28 V (MP1584 modules) or 40 V
-    (LM2596) could be destroyed by what the TVS lets through, hence the 60 V part.
+  - *Logic:* switched ACC (ignition) → 3 A fuse → bidirectional TVS (SMCJ24CA) → reverse-polarity
+    Schottky (B560C, 60 V 5 A) → a 60 V-rated buck to 5 V (TPS54360, built exactly to TI's 5 V
+    reference design). The TVS clamps load-dump and jump-start transients; a buck rated only to
+    28 V (MP1584 modules) or 40 V (LM2596) could be destroyed by what the TVS lets through, hence
+    the 60 V part. *(Amended 2026-10-06, schematic capture:* a Schottky diode replaced the planned
+    P-MOSFET "ideal diode". The SOT-23 P-MOSFETs available are rated −30 V, too close to the TVS's
+    ~39 V clamp; the diode costs ~1 W at 2 A, which the SMC package and copper carry, and it needs
+    no gate circuit.)*
   - *Actuator:* battery → 10 A fuse → contacts of the **40 A kill relay** → BTS7960 VIN and the
     magnet. The kill relay's **coil** is fed from the logic feed **through the E-stop's NC
     contact**: pressing the E-stop, a broken wire or no ignition all open the relay (Part 0
@@ -956,7 +960,25 @@ pod's USART3 header (the pre-2026-09-30 arrangement).
 | Gesture cable damaged | Its own I2C bus; IMU unaffected | Isolation by design |
 | Pod knocked | IMU tilt error at rest (`ImuMount::tiltErrorDeg`) and the camera–LiDAR extrinsic score both drop | Detected; recalibrate before driving |
 
-#### 4.8.8 Build sequence
+#### 4.8.8 Schematics: generated, then checked against the firmware *(added 2026-10-06)*
+
+The two boards are described in Python (`hardware/gen/pod_board.py`, `power_board.py`): each part
+names its KiCad library symbol, footprint and value, and maps pin numbers to net names.
+`hardware/gen/check.sh` turns that into ordinary KiCad 10 schematics and then verifies them:
+1. KiCad's own electrical rules check (ERC) must report zero violations;
+2. the exported netlists are checked by `check_nets.py` against **`Config.h`** (every MCU pin, by
+   pin name) and **this guide's 4.8.3 table** (every DB-25 pin, on both boards), plus the
+   fail-safe rules of 4.8.4 (every pod-driven line pulled to its safe state on the power board;
+   every pod input pulled up to its safe reading) and the footprints' existence.
+
+Why generate: the pin assignments already live in the firmware and the cable pinout here.
+Describing the boards once and checking the result against both makes "the board disagrees with
+the firmware" a failed check on the desk, not a board respin after three weeks of shipping. The
+checker was itself tested by breaking the design on purpose (a relay on the wrong pin, a missing
+pull-down, two cable pins swapped): each was caught. Once generated, the files are normal KiCad
+files: tidy the drawing, then lay out the PCB (Phase 12B, `hardware/README.md`).
+
+#### 4.8.9 Build sequence
 
 1. **Bench bring-up with modules (Phase 2, then Phase 12's gate).** An F405 development board
    with an 8 MHz crystal, the sensor breakouts, and a "power box v0" on perfboard (the BTS7960

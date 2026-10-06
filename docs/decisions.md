@@ -883,3 +883,34 @@ BTS7960 and ACS712 modules on the power board. What goes onto the boards is what
 ESP32 flag; STM32duino needs `-D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC`, without which `Serial` was a
 hardware UART and the host link could never have worked. It would have surfaced on the first day of
 Phase 2 bring-up. Fixed; confirmed by the USB device symbols now in the linked firmware.
+
+## Phase 12B, part 1 — hub PCB schematics (2026-10-06)
+
+**The schematics are generated from Python descriptions and checked against the firmware and the
+guide.** `hardware/gen/` describes each part (KiCad symbol, footprint, value, pin-number-to-net map);
+`check.sh` writes KiCad 10 schematics, requires 0 ERC violations, and `check_nets.py` verifies the
+netlists against `Config.h` (by STM32 pin name), the BUILD_GUIDE 4.8.3 cable table (parsed from the
+guide, both boards), the fail-safe pull rules and footprint existence. Reason: the pins already
+live in the firmware and the pinout in the guide; one description checked against both turns a
+disagreement into a failed check instead of a respin. The checker was mutation-tested (wrong MCU
+pin, missing pull-down, swapped cable pins): all caught.
+
+**Reverse polarity: B560C Schottky instead of a P-MOSFET.** The SOT-23 P-MOSFETs in the library are
+−30 V parts, too close to the bidirectional SMCJ24CA's ~39 V clamp. ~1 W at 2 A is acceptable.
+
+**5 V: TI's TPS54360 5 V reference design, unchanged** (SLVSBB4G Fig. 34). Proven values over a
+custom design for a first board.
+
+**Relays and magnet driven directly by logic-level MOSFETs from the cable lines** (with the 10 k
+pull-downs); the 74HCT244 only buffers the BTS7960's three 5 V inputs. Fewer parts, same fail-safe
+default.
+
+**Pod outputs have 1 k series resistors (330 ohm on CAN_TX)**, limiting back-power into an unpowered
+power box to ~3 mA per line. Inputs from the cable: 10 k pull-up to the safe reading, 1 k + 10 nF
+filter (none on CAN_RX/HX711_DOUT, which are data).
+
+**Four more MCU pins are wired and defined in Config.h but not used yet:** BNO085 INT (PC4) and RST
+(PC5), APDS-9960 INT (PC7), GNSS PPS (PB4). Free to route now, costly to add later.
+
+**The IMU and GNSS headers are placeholders for breakouts:** their pin order must be matched to the
+purchased boards before layout (hardware/README.md).

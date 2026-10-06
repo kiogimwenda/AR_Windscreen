@@ -83,7 +83,7 @@ with a different crystal needs `HSE_VALUE` and `Config.h`'s `kHseHz` changed to 
 | # | Item | Spec that matters | Source | Price (KES) | Status |
 |---|---|---|---|---|---|
 | 4.1 | 12 V → 5 V buck converter, **rated to 60 V input**, ≥ 1 A | The power box's 5 V (pod, buffer, ACS712, transceiver). 60 V because the TVS (4.1b) lets ~39 V through a load dump; MP1584 (28 V) and LM2596 (40 V) modules are not enough. Relay coils are 12 V now. | Jumia / Nerokas (or on the power board, §9) | est. 800–1,500 | Check listing |
-| 4.1b | SMCJ24A TVS diode, P-channel MOSFET (reverse-polarity), 3 A and 10 A fuses | Input protection of the logic feed (Part 4.8.4) | Pixel / auto-spares | est. 500 | Common |
+| 4.1b | SMCJ24CA TVS diode, B560C Schottky (reverse polarity; also the buck's catch diode), 3 A and 10 A fuses | Input protection of the logic feed (Part 4.8.4) | Pixel / auto-spares | est. 500 | Common |
 | 4.2 | Inline blade-fuse holders plus assorted ATO fuses | Separate fuses for the peripheral rail, the actuator rail and the LiDAR | Auto-spares strip | est. 500 | Common |
 | 4.3 | Wire: 1.5 mm² and 2.5 mm² automotive, red and black; heat-shrink; crimp ring terminals | Actuator and LiDAR runs | Auto-spares / electrical shops | est. 1,500 | Common |
 | 4.4 | **Laptop in-car power**. See note D. | The guide's USB-C PD car charger will not run this laptop under GPU load. | — | — | **Decision needed** |

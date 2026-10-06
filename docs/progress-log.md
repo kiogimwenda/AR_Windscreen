@@ -2403,3 +2403,32 @@ compensation); `hardware/README.md`.
 **Not done (hardware):** everything physical. Phase 2 bring-up now uses an F405 development board and
 a DB-25 cable; Phase 12B (PCBs, enclosures) is new and needs Ian's work and a supervisor's view of the
 design.
+
+## 2026-10-06 — Phase 12B, part 1: hub PCB schematics
+
+**What:** KiCad 10 schematics for both custom boards of the two-box hub, generated and checked.
+- `hardware/gen/kisch.py`: a small KiCad 10 schematic writer (copies real library symbols, places
+  parts in labelled groups, connects by net label, no-connect flags on unused pins).
+- `hardware/gen/pod_board.py`, `power_board.py`: the two designs (BUILD_GUIDE 4.8.2, 4.8.4).
+- `hardware/gen/check_nets.py` and `check.sh`: generate, ERC, netlist cross-check, PDF and BOM.
+- `hardware/README.md`: what exists, how to check it, layout guidance for Phase 12B.
+- Config.h: four reserved pins defined (IMU INT/RST, gesture INT, GNSS PPS). Guide 4.8.4 amended
+  (reverse-polarity diode, TPS54360), new 4.8.8 (generated schematics); BOM 4.1b.
+
+**Teaching notes (for the viva):** why each pod output has a series resistor (back-powering an
+unpowered box), why each power-board input has a pull-down (the fail-safe rule), why the CAN
+transceiver's TX and standby inputs are pulled UP instead (recessive and standby are their safe
+states), why the TPS54360's input capacitors, diode and inductor must sit together (the switching
+current loop), and why a crystal sits within millimetres of the MCU.
+
+**Verification:**
+- KiCad ERC: **0 violations** on both boards (kicad-cli 10.0.1).
+- `check_nets.py`: **all 101 checks pass**: 33 Config.h pins on the right STM32 pins, all 25 DB-25
+  pins on both boards against the guide's table, series resistors, pull-ups, every fail-safe pull,
+  no lonely nets, every footprint present in KiCad's library.
+- Checker mutation-tested: a relay moved to the wrong pin, a pull-down removed, two cable pins
+  swapped: each produced FAILs; the restored design passes.
+- Firmware still builds with the new Config.h defines.
+
+**Not done:** PCB layout, enclosure design, ordering (Phase 12B, Ian's work; guidance in
+hardware/README.md). The IMU and GNSS header pin orders must be matched to the purchased breakouts.
