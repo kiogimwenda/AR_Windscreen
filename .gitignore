@@ -54,3 +54,6 @@ __pycache__/
 fp-info-cache
 hardware/*/erc.rpt
 hardware/*/*.net
+# KiCad working files: local history and the lock files of an open project
+.history/
+*.lck
