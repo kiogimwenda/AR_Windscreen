@@ -1016,3 +1016,10 @@ connect.
 
 **Pull-downs moved next to the circuits they protect** (actuator, relay and CAN sheets), so the
 fail-safe rule is visible at the point where it acts, rather than in a block of its own.
+
+**Pod board, the same (2026-10-07).** Six function sheets around an MCU sheet. The MCU is drawn with
+every pin running straight out to a hierarchical port, the usual way to draw a large chip: its
+support parts (reset, boot, crystal, VCAP capacitors) sit beside the pins they serve, and nothing
+else crowds it. Where many lines fan into a connector (the DB-25 on the cable sheet), each line's
+vertical run is assigned a column so that the fan-in has no crossings. Power symbols now show the
+rail's name (+3V3, VBUS, +5V, +12V), which the first drawing of the power board lacked.

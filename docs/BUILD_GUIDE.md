@@ -997,7 +997,12 @@ left, car-side connectors on the right, a note on each sheet explaining the circ
 a small router (`kisheet.py`). Every pull-down sits on the sheet that uses its signal, so 4.8.4's
 fail-safe rule is visible where it acts. `check.sh` also builds the label-only version and
 requires the two netlists to be identical, so the drawing cannot change the circuit. The pod board
-follows the same way next.
+is drawn the same way: six sheets around an MCU sheet whose every pin runs straight to a port.
+Drawing it exposed a real error: **three pod-board references were used twice** (R31-R33, by
+the status LEDs and by the CAN_RX and HX711 inputs). KiCad's ERC does not report this; the BOM
+still counted 77 parts, but the netlist the PCB is built from merged each pair (74), so the PCB
+would have lacked three resistors and joined their nets. The cable parts
+are renumbered from R40/C40, and both `generate.py` and `check_nets.py` now reject duplicates.
 
 #### 4.8.9 Build sequence
 

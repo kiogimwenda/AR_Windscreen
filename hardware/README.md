@@ -21,14 +21,16 @@ hardware/gen/check.sh
 1. `gen/generate.py` writes both `.kicad_sch` files from `gen/pod_board.py` and
    `gen/power_board.py`. Each part names its KiCad symbol, footprint and value and maps **pin
    numbers to net names**; the generator copies the real library symbols in.
-   - **Power board (drawn, 2026-10-07):** `gen/power_board_drawing.py` places every part by hand
+   - **Both boards are drawn (2026-10-07).** `gen/power_board_drawing.py` places every part by hand
      on one of eight function sheets (12 V input, 5 V converter, 3.3 V and feeds, brake actuator,
      signal relays, CAN, status inputs, DB-25), and `gen/kisheet.py` routes **real wires** between
      the pins, puts power symbols on power pins, names each net with a label, and draws a root
      sheet that is the **block diagram**: one box per sheet, the cable signals wired between them.
      Open `power_board.kicad_pro`, start on the block diagram, double-click a box to enter it.
-   - **Pod board (not yet redrawn):** parts placed in labelled groups, connected by net label.
-2. KiCad's ERC must report **0 violations**. For the drawn board, the label-only version is also
+     `gen/pod_board_drawing.py` does the same for the pod: power, USB-C, the MCU (in the middle,
+     every pin straight out to a port), sensors and local connectors, status LEDs, and the cable
+     interface (series resistors, pull-ups and filters fanning in to the DB-25 without a crossing).
+2. KiCad's ERC must report **0 violations**. For each drawn board, the label-only version is also
    generated (in a scratch directory) and `gen/compare_nets.py` requires the two netlists to be
    **identical**: same parts, values and footprints, every net joining the same pins under the
    same name. The drawing therefore cannot have changed the circuit. The wire router never lets two
@@ -39,7 +41,8 @@ hardware/gen/check.sh
    - every DB-25 pin on both boards matches the table in BUILD_GUIDE 4.8.3 (parsed from the guide);
    - pod: each cable line passes through a series resistor; inputs read safe when unplugged;
    - power board: every pod-driven line is pulled to its safe state (Part 4.8.4's rule);
-   - no misspelt single-connection nets; every footprint exists in KiCad's library.
+   - no misspelt single-connection nets; no pin in two nets (two parts sharing a reference,
+     which KiCad's ERC does not report); every footprint exists in KiCad's library.
 
    It was tested by breaking the design on purpose (a relay moved to the wrong MCU pin, a
    pull-down removed, two cable pins swapped); each was caught.

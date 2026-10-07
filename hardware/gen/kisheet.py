@@ -137,21 +137,19 @@ class SheetBox:
     is_sheet = True
 
     def __init__(self, sheet, x, y, w, pins, page, min_h=0):
-        # pins: [(net, side, shape) or None (an empty row)], in order down the box
+        # pins: one entry per row down the box: a list of (net, side, shape), empty for a gap
         self.sheet, self.page = sheet, page
         h = max((len(pins) + 2) * U, min_h * U)
         self.x, self.y, self.w, self.h = x, y, w, h
         self.box = (x, y, x + w, y + h)
         self.pins = {}
         self.shapes = {}
-        for row, pin in enumerate(pins, start=1):
-            if pin is None:
-                continue
-            net, side, shape = pin
-            px = x if side == "L" else x + w
-            self.pins[net] = {"cell": (cl(px), cl(y + (row + 0.5) * U)), "out": side, "len": 0,
-                              "etype": "passive"}
-            self.shapes[net] = shape
+        for row, entry in enumerate(pins, start=1):
+            for net, side, shape in entry:  # a row: pins on the left and/or right edge
+                px = x if side == "L" else x + w
+                self.pins[net] = {"cell": (cl(px), cl(y + (row + 0.5) * U)), "out": side, "len": 0,
+                                  "etype": "passive"}
+                self.shapes[net] = shape
         self.part = {"ref": sheet.name, "nets": {n: n for n in self.pins}}
 
     @property
@@ -170,6 +168,8 @@ class Sheet:
         self.placed, self.texts, self.flags, self.rails = [], [], [], []
         self.port_side, self.port_row, self.shapes = {}, {}, {}
         self.default_side = "L"
+        self.columns = {}   # net -> x [U]: where its vertical run should be (a fan-in to a connector)
+        self.splits = {}    # net -> [[(ref, pin), ...], ...]: pieces drawn apart, joined by name
 
     def add(self, ref, x, y, rot=0, mirror=False, fields=None):
         """Place a part by reference at (x, y) in units of 2.54 mm."""
@@ -192,6 +192,12 @@ class Sheet:
 
     def text(self, x, y, s, size=1.6):
         self.texts.append((x * U, y * U, s, size))
+
+    def split(self, net, *pieces):
+        """Draw this net as separate pieces (each a list of (ref, pin); the rest is one more piece),
+        each named by a label: for pins a part already joins inside itself, such as an ESD
+        array's pass-through pins, where an outside wire would only loop around the part."""
+        self.splits[net] = [list(pc) for pc in pieces]
 
     def flag(self, net, x, y):
         self.flags.append((net, x * U, y * U))
@@ -256,7 +262,7 @@ class Grid:
             return False  # own cells are targets
         return self.plain_run(cell) and d not in self.links[cell] and OPP[d] not in self.links[cell]
 
-    def route(self, net, start, start_dir, targets, bend=5.0, cross=30.0, near=1.5):
+    def route(self, net, start, start_dir, targets, bend=5.0, cross=30.0, near=1.5, column=None):
         """A* from a terminal leaving in start_dir to a target cell ({cell: allowed arrival
         directions, or None for any})."""
         tl = list(targets)
@@ -295,6 +301,8 @@ class Grid:
                 if not self.enterable(net, nxt, nd):
                     continue
                 ng = g + 1 + (bend if nd != d else 0) + self.soft.get(nxt, 0)
+                if column is not None and nd in ("U", "D") and nxt[0] != column:
+                    ng += 3  # vertical runs belong in this net's column
                 if self.owner.get(nxt) not in (None, net):
                     ng += cross
                 for dd in DIRS.values():  # keep a little away from other nets' wires
@@ -354,6 +362,7 @@ class Writer:
             "below": ((cx, y1 + 0.6, "top"), (cx, y1 + 2.4, "top")),
             "split": ((cx, y0 - 0.6, "bottom"), (cx, y1 + 0.6, "top")),
             "aboveleft": ((cx - 1.6, y0 - 2.4, "right bottom"), (cx - 1.6, y0 - 0.6, "right bottom")),
+            "belowright": ((x1, y1 + 0.6, "right top"), (x1, y1 + 2.4, "right top")),
         }[mode]
         sym = ["symbol", ["lib_id", q(part["sym"])], ["at", str(round(p.x, 3)), str(round(p.y, 3)), str(p.rot)]]
         if p.mirror:
@@ -444,7 +453,7 @@ class Writer:
             legs = [step(cell, out, 1), end]
             rot = ({"D": 0, "U": 180, "R": 90, "L": 270} if not up else
                    {"U": 0, "D": 180, "R": 270, "L": 90})[out]
-            body = [step(end, out, k) for k in (1, 2)]
+            body = [step(end, out, k) for k in (1, 2, 3)]
             plan = [(cell, end)]
         for a, b in plan:
             self.wire(a, b)
@@ -510,18 +519,25 @@ class Writer:
             self.power_symbol(net, cell, 0)
             gr.pinpts[cell] = net
             gr.owner[cell] = net
-            for k in (1, 2, 3):
+            for k in (1, 2, 3, 4):
                 for sd in (-1, 0, 1):
                     gr.hard.add((cell[0] + sd, cell[1] + (-k if up else k)))
             rail_terms.setdefault(net, []).append((cell, "D" if up else "U"))
+        flag_terms = {}
         for net, x, y in s.flags:
             self.n["flg"] += 1
             self.lib_sym("power:PWR_FLAG")
             self.items.append(pwr_flag(f"#FLG{self.n['flg']:03d}", x, y, self.project, self.path))
             a, b = (cl(x), cl(y)), (cl(x), cl(y) + 2)
             self.wire(a, b)
-            self.power_symbol(net, b, 0)
-            gr.block_rect(x - 2.5, y - 4, x + 2.5, y + 5)
+            if net in POWER_NETS:
+                self.power_symbol(net, b, 0)
+                gr.block_rect(x - 2.5, y - 4, x + 2.5, y + 5)
+            else:  # a flag on a signal net: wired to the net like a pin
+                gr.block_rect(x - 2.5, y - 4, x + 2.5, y + 1.3)
+                gr.pinpts[b] = net
+                gr.owner[b] = net
+                flag_terms.setdefault(net, []).append((b, "D"))
         # every signal pin's way out (4 cells) is kept clear of power symbols
         self.lanes = set()
         for p in s.placed:
@@ -529,10 +545,12 @@ class Writer:
                 if net not in POWER_NETS or (id(p), num) in railed:
                     pin = p.pins[num]
                     self.lanes.update(step(pin["cell"], pin["out"], k) for k in range(1, 5))
-        # power pins that are not on a rail
+        # power pins that are not on a rail (stacked pins share one stub and symbol)
+        done = set()
         for p in s.placed:
             for num, net in p.nets.items():
-                if net in POWER_NETS and (id(p), num) not in railed:
+                if net in POWER_NETS and (id(p), num) not in railed and p.pins[num]["cell"] not in done:
+                    done.add(p.pins[num]["cell"])
                     self.power_pin(net, p.pins[num]["cell"], p.pins[num]["out"])
         # ports
         port_terms = {}
@@ -563,18 +581,36 @@ class Writer:
             port_terms[net] = (cell, out)
 
         # route, shortest nets first
-        routed = [n for n in nets if n not in POWER_NETS] + [r["net"] for r in s.rails]
+        routed = [n for n in nets if n not in POWER_NETS] + [r["net"] for r in s.rails] + list(flag_terms)
         routed = list(dict.fromkeys(routed))
+
+        def pieces_of(net):
+            """[(terminals, has_port)] for each separately drawn piece of a net."""
+            allt = terms_of(net)
+            if net not in s.splits:
+                return [(allt, net in port_terms)]
+            cell_of = {(p.part["ref"], num): p.pins[num]["cell"] for p, num in nets.get(net, [])}
+            out, used = [], set()
+            for pc in s.splits[net]:
+                cells = {cell_of[rp] for rp in pc}
+                used |= cells
+                out.append(([t for t in allt if t[0] in cells], False))
+            rest = [t for t in allt if t[0] not in used]
+            port_cell = port_terms[net][0] if net in port_terms else None
+            out.append((rest, port_cell in [c for c, _ in rest]))
+            return out
 
         def terms_of(net):
             t = []
             if net in port_terms:
                 t.append(port_terms[net])
-            t += rail_terms.get(net, [])
+            t += rail_terms.get(net, []) + flag_terms.get(net, [])
             for p, num in nets.get(net, []):
                 if net in POWER_NETS and (id(p), num) not in railed:
                     continue
-                t.append((p.pins[num]["cell"], p.pins[num]["out"]))
+                pin = (p.pins[num]["cell"], p.pins[num]["out"])
+                if pin[0] not in [c for c, _ in t]:  # stacked pins: one terminal
+                    t.append(pin)
             return t
 
         def spread(net):
@@ -583,13 +619,15 @@ class Writer:
                 return 0
             return (max(a for a, _ in cs) - min(a for a, _ in cs)) + (max(b for _, b in cs) - min(b for _, b in cs))
 
+        to_name = []
         for net in sorted(routed, key=lambda n: (spread(n), n)):
-            self.route_net(net, terms_of(net))
-        # name the nets that stay on this sheet
-        for net in routed:
-            if net in port_terms or net in POWER_NETS:
-                continue
-            self.name_net(net)
+            for terms, has_port in pieces_of(net):
+                cells = self.route_net(net, terms)
+                if net not in POWER_NETS and not has_port and cells:
+                    to_name.append((net, cells))
+        # name every piece that no port names
+        for net, cells in to_name:
+            self.name_net(net, cells)
         for net, cells in self.net_cells.items():
             self.emit(net, cells)
         return self
@@ -599,7 +637,7 @@ class Writer:
         if len(terms) < 2:
             if terms and net not in POWER_NETS:
                 self.unrouted.append((net, "only one terminal on this sheet"))
-            return
+            return set()
         first = terms[0]
         cells = {first[0]}
         targets = {first[0]: {OPP[first[1]]}}
@@ -607,7 +645,8 @@ class Writer:
         while rest:
             rest.sort(key=lambda t: min(abs(t[0][0] - a) + abs(t[0][1] - b) for a, b in targets))
             cell, out = rest.pop(0)
-            path = gr.route(net, cell, out, targets)
+            col = self.s.columns.get(net)
+            path = gr.route(net, cell, out, targets, column=None if col is None else cl(col * U))
             if path is None:
                 self.unrouted.append((net, f"pin at ({mm(cell[0])}, {mm(cell[1])}) mm"))
                 continue
@@ -620,14 +659,14 @@ class Writer:
             for c, o in [(first[0], first[1])]:
                 if not gr.own_dirs(c, net):
                     targets[c] = {OPP[o]}
-        self.net_cells[net] = cells
+        self.net_cells.setdefault(net, set()).update(cells)
+        return cells
 
-    def name_net(self, net):
+    def name_net(self, net, cells):
         """A local label where its text has room: on a horizontal run (text above it), else on a
         vertical run (text beside it). With no room the net keeps KiCad's automatic name; the
         drawing stays readable and the connection is the same."""
         gr = self.grid
-        cells = self.net_cells.get(net, set())
         need = int(len(net) * 0.85) + 2
 
         def free(c):
@@ -729,11 +768,17 @@ class Writer:
 
 
 def power_sym(lib_id, ref, net, x, y, rot, project, path):
+    # the rail's name beyond the arrow's tip, upright (KiCad turns fields with the symbol)
+    dx, dy = {0: (0, -1), 180: (0, 1), 90: (-1, 0), 270: (1, 0)}[rot % 360]
+    reach = 3.6 + (0.45 * len(net) if dx else 0)
+    vx, vy = round(x + dx * reach, 3), round(y + dy * reach, 3)
+    show = net != "GND"
     return ["symbol", ["lib_id", q(lib_id)], ["at", str(x), str(y), str(rot)],
             ["unit", "1"], ["exclude_from_sim", "no"], ["in_bom", "yes"],
             ["on_board", "yes"], ["dnp", "no"], ["uuid", uid()],
             ["property", q("Reference"), q(ref), ["at", str(x), str(y), "0"], *fnt(1.27, None, True)],
-            ["property", q("Value"), q(net), ["at", str(x), str(y), "0"], *fnt(1.0, None, True)],
+            ["property", q("Value"), q(net), ["at", str(vx), str(vy), "90" if rot % 180 == 90 else "0"],
+             *fnt(1.27, None, not show)],
             ["property", q("Footprint"), q(""), ["at", str(x), str(y), "0"], *fnt(1.27, None, True)],
             ["property", q("Datasheet"), q(""), ["at", str(x), str(y), "0"], *fnt(1.27, None, True)],
             ["pin", q("1"), ["uuid", uid()]],
@@ -799,12 +844,14 @@ def build_project(lib, project, title, sheets, root, outdir, date, comment):
     rs.texts = [(x * U, y * U, t, size) for x, y, t, size in root.texts]
     for box in root.boxes:
         s, x, y, wdt, pins = box[:5]
-        named = {pn[0] for pn in pins if pn}
+        # a row is None (gap), one (net, side), or a list of them
+        rows = [[] if r is None else [r] if isinstance(r, tuple) else list(r) for r in pins]
+        named = {n for r in rows for n, _ in r}
         missing, extra = s.ports - named, named - s.ports
         if missing or extra:
             problems.append(("root", f"{s.name}: sheet pins missing {sorted(missing)} extra {sorted(extra)}"))
         rs.placed.append(SheetBox(s, x * U, y * U, wdt * U,
-                                  [(pn[0], pn[1], s.shapes.get(pn[0], "passive")) if pn else None for pn in pins],
+                                  [[(n, side, s.shapes.get(n, "passive")) for n, side in r] for r in rows],
                                   s.page, box[5] if len(box) > 5 else 0))
     wr = Writer(rs, project, f"/{root_uuid}", counters).build()
     problems += [("root", f"{n}: {why}") for n, why in wr.unrouted]

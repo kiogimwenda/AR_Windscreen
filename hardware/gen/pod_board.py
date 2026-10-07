@@ -1,4 +1,4 @@
-"""The windscreen pod board (BUILD_GUIDE Part 4.8.2). 4-layer, about 70 x 50 mm.
+"""The windscreen pod board (BUILD_GUIDE Part 4.8.2). 4-layer, 80 x 55 mm.
 
 Every MCU pin assignment here must equal firmware/sensor_actuator_hub/include/hub/Config.h, and
 every DB-25 pin must equal BUILD_GUIDE 4.8.3; check_nets.py verifies both from the exported
@@ -149,7 +149,7 @@ groups.append(("Status LEDs (driver-facing edge)", leds, 2))
 cable_nets = {"1": "X_5V_CABLE", "2": "X_5V_CABLE", "3": "GND", "4": "GND", "6": "GND",
               "11": "GND", "25": "GND", "SH": "GND", "10": "X_BRAKE_CURRENT"}
 cable_parts = []
-n = 10
+n = 40  # R40/C40 upwards: clear of every other reference on this board (R31-R33 are the LEDs')
 for sig, (dbpin, _, ohms) in OUTPUTS.items():
     cable_nets[str(dbpin)] = "X_" + sig
     cable_parts.append(R(f"R{n}", ohms, sig, "X_" + sig, desc=f"series, DB-25 pin {dbpin}"))

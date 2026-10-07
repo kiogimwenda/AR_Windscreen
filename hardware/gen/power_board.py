@@ -1,4 +1,4 @@
-"""The under-dash power board (BUILD_GUIDE Part 4.8.4). 2-layer, 2 oz copper, about 100 x 80 mm.
+"""The under-dash power board (BUILD_GUIDE Part 4.8.4). 2-layer, 2 oz copper, 110 x 80 mm.
 
 The rule that makes the two-box split safe: every line the pod drives enters this board through a
 10 k pull-down (or, for the CAN transceiver's TX and standby inputs, a pull-up to their silent

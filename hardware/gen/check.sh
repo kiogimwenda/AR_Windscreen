@@ -29,7 +29,7 @@ for b in pod_board power_board; do
 done
 REF="$(mktemp -d)"
 trap 'rm -rf "$REF"' EXIT
-for b in power_board; do
+for b in pod_board power_board; do
     python3 "$HW/gen/generate.py" --symbols "$KICAD_DIR/share/kicad/symbols" --flat --out "$REF" "$b" >/dev/null
     "$CLI" sch export netlist -o "$(win "$REF")/$b.net" "$(win "$REF/$b/$b.kicad_sch")" >/dev/null
     python3 "$HW/gen/compare_nets.py" "$REF/$b.net" "$HW/$b/$b.net"

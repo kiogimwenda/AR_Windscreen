@@ -55,6 +55,10 @@ def build_drawn(m, drawing, lib, outdir):
 
 def build(module, lib, outdir, flat=False):
     m = importlib.import_module(module)
+    refs = [p["ref"] for _, ps, _ in m.groups for p in ps]
+    dups = sorted({r for r in refs if refs.count(r) > 1})
+    if dups:  # KiCad's ERC does not catch this; the netlist silently merges the parts
+        sys.exit(f"{module}: duplicate references {dups}")
     pro = outdir / m.PROJECT / f"{m.PROJECT}.kicad_pro"
     if not flat and (HERE / f"{module}_drawing.py").exists():
         build_drawn(m, importlib.import_module(f"{module}_drawing"), lib, outdir)

@@ -12,7 +12,8 @@ Checks, each printed as PASS/FAIL:
      must read safe when the cable is out have their pull-ups;
   4. on the power board, every pod-driven line has a pull-down to GND (CAN_TX and CAN_STBY: a
      pull-up to +3V3), so an unpowered pod or an unplugged cable leaves everything off;
-  5. no net has only one connection (a misspelt net name would);
+  5. no net has only one connection (a misspelt net name would), and no pin is in two nets (two
+     parts sharing a reference, which KiCad's ERC does not report);
   6. every part has a footprint.
 Exit status 0 only if every check passes.
 """
@@ -74,7 +75,7 @@ def read_netlist(path):
     nets = {}
     pinnet = {}
     for m in re.finditer(r'\(net\s+\(code "\d+"\)\s+\(name "([^"]+)"\)(.*?)\n\t\t\)', s, re.S):
-        name = m.group(1).lstrip("/")
+        name = m.group(1).rsplit("/", 1)[-1]  # drop the sheet path of a hierarchical design
         nodes = re.findall(r'\(node\s+\(ref "([^"]+)"\)\s+\(pin "([^"]+)"\)(?:\s+\(pinfunction "([^"]*)"\))?',
                            m.group(2))
         nets[name] = nodes
@@ -170,6 +171,17 @@ def main(pod_net, box_net):
         check(bool(resistor_between(bc, bn, sig, rail)), f"box: {sig} defaults via a resistor to {rail}")
     q = [r for r, p, _ in bn.get("BOX_PRESENT", []) if r.startswith("Q")]
     check(bool(q), "box: BOX_PRESENT pulled low by a MOSFET (present only while powered)")
+
+    # 5a. Every pin in exactly one net: two parts given the same reference are merged into one
+    # by the netlist, and that shows as a pin in two nets
+    for label, nets in (("pod", pn), ("box", bn)):
+        seen, twice = {}, set()
+        for name, nodes in nets.items():
+            for ref, pin, _ in nodes:
+                if (ref, pin) in seen and seen[(ref, pin)] != name:
+                    twice.add(ref)
+                seen[(ref, pin)] = name
+        check(not twice, f"{label}: every reference is unique (no pin in two nets) {sorted(twice)}")
 
     # 5, 6. Single-node nets; footprints
     for label, nets, comps in (("pod", pn, pc), ("box", bn, bc)):

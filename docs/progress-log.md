@@ -2596,3 +2596,33 @@ nets, names included); all `check_nets.py` checks pass (102 PASS lines in `check
 reviewed as a rendered PDF. The BOM export is byte-identical to before.
 
 **Next:** the pod board the same way.
+
+
+## 2026-10-07 — Pod board schematic redrawn; duplicate references found
+
+**What:**
+- `hardware/gen/pod_board_drawing.py`: six sheets (pod supply, USB-C, MCU, sensors and local
+  connectors, status LEDs, cable interface) under a block diagram with the MCU in the middle.
+- `kisheet.py`: stacked pins (the STM32's and USB-C's) share one terminal; PWR_FLAGs on signal
+  nets are wired into the net; per-net column hints for crossing-free fan-ins; nets can be drawn
+  as separate pieces joined by name (USB D+/D- either side of the ESD array, which joins its own
+  pins inside); power symbols show the rail's name; sheet-box rows with pins on both sides.
+- `check.sh` compares both boards' drawn and label-only netlists.
+
+**Defects found:**
+1. **R31, R32 and R33 were each used twice on the pod board** (status LEDs, and the CAN_RX and
+   HX711 input resistors): the cable-part numbering ran from R10 into the LEDs' range. KiCad's ERC
+   did not report it, and the BOM still listed all 77 parts, but the netlist (what the PCB is
+   built from) merged each pair into one part: 74, so the PCB would have lacked three resistors
+   and joined their nets. Found because the drawing looks parts up by reference. *Fix:* cable
+   parts from R40/C40; `generate.py` rejects duplicate references; `check_nets.py` fails if any pin
+   is in two nets (it flags R31-R33 on the old netlist).
+2. Power symbols had no visible name (+3V3, VBUS, +5V and +12V looked alike). *Fix:* name shown.
+3. In a hierarchical design KiCad names a sheet's own nets with the sheet path
+   (`/Inter-box cable.../X_BRAKE_RPWM`); `check_nets.py` only stripped a leading `/`, so 40 checks
+   failed on the drawn pod board. *Fix:* the name after the last `/`.
+
+**Verification:** ERC 0 violations on both boards; drawn netlists identical to the label-only ones
+(pod 77 parts / 88 nets; power 82 / 59, names included); `check.sh` 105 PASS, 0 FAIL. Mutation:
+BRAKE_EN moved to the wrong MCU pin was caught (Config.h check), then restored. Every page
+reviewed as a rendered PDF.
