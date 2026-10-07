@@ -5,7 +5,7 @@ Phase 12B the plan.
 
 | Directory | Contents | Status (2026-10-06) |
 |---|---|---|
-| `gen/` | The board descriptions and the tools that turn them into KiCad files and check them | Done |
+| `gen/` | The board descriptions, the power board's drawing, and the tools that turn them into KiCad files and check them | Done |
 | `pod_board/` | KiCad 10 project: STM32F405RGT6, 8 MHz crystal, USB-C, diode-OR'd 5 V to 3.3 V, IMU / GNSS / gesture / SWD / ELM327 headers, status LEDs, DB-25 with series resistors and input filters. 4-layer. | Schematic done, ERC clean, cross-checked; outline, holes and edge-connector positions set; **PCB layout to do** |
 | `power_board/` | KiCad 10 project: 12 V fuse, TVS and reverse-polarity diode; TPS54360 5 V (TI reference design); 3.3 V; 74HCT244 buffer; BTS7960 and ACS712 module headers; magnet and relay MOSFETs with flyback diodes; fail-safe pull-downs; SN65HVD230 CAN; presence MOSFET; PC817 brake-light input; terminals for the kill relay, E-stop, relays, actuator, LiDAR and OBD lead; DB-25. 2-layer, 2 oz. | Schematic done, ERC clean, cross-checked; outline, holes and edge-connector positions set; **PCB layout to do** |
 | `enclosures/` | OpenSCAD: LiDAR roof mount, power-box chassis and box drilling templates; shared board outlines (`common/boards.scad`). See its README. | LiDAR mount and power box designed; pod, E-stop and gesture puck wait for the parts and the car |
@@ -20,9 +20,20 @@ hardware/gen/check.sh
 ```
 1. `gen/generate.py` writes both `.kicad_sch` files from `gen/pod_board.py` and
    `gen/power_board.py`. Each part names its KiCad symbol, footprint and value and maps **pin
-   numbers to net names**; the generator copies the real library symbols in, places the parts in
-   labelled groups, and connects pins by net label.
-2. KiCad's ERC must report **0 violations**.
+   numbers to net names**; the generator copies the real library symbols in.
+   - **Power board (drawn, 2026-10-07):** `gen/power_board_drawing.py` places every part by hand
+     on one of eight function sheets (12 V input, 5 V converter, 3.3 V and feeds, brake actuator,
+     signal relays, CAN, status inputs, DB-25), and `gen/kisheet.py` routes **real wires** between
+     the pins, puts power symbols on power pins, names each net with a label, and draws a root
+     sheet that is the **block diagram**: one box per sheet, the cable signals wired between them.
+     Open `power_board.kicad_pro`, start on the block diagram, double-click a box to enter it.
+   - **Pod board (not yet redrawn):** parts placed in labelled groups, connected by net label.
+2. KiCad's ERC must report **0 violations**. For the drawn board, the label-only version is also
+   generated (in a scratch directory) and `gen/compare_nets.py` requires the two netlists to be
+   **identical**: same parts, values and footprints, every net joining the same pins under the
+   same name. The drawing therefore cannot have changed the circuit. The wire router never lets two
+   nets touch; a wire may only cross another at right angles over a plain run (no dot, no
+   connection), never at a bend, pin or junction.
 3. `gen/check_nets.py` reads the exported netlists and verifies, against the sources of truth:
    - every pin in `firmware/.../Config.h` is on the right STM32 pin of the pod board;
    - every DB-25 pin on both boards matches the table in BUILD_GUIDE 4.8.3 (parsed from the guide);

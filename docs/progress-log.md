@@ -2559,3 +2559,40 @@ why the template is generated, and how to check a print is truly 1:1 (the 100 mm
 
 **Still to check against real parts (marked VERIFY):** the box's inside size, module and relay
 socket holes, heatsink height, DB-25 shell; the LiDAR's dowel holes before drilling them.
+
+## 2026-10-07 — Power board schematic redrawn as wired sheets
+
+**Why:** Ian found the generated schematics hard to read: every pin was connected by net label,
+so the circuit could only be followed by matching names.
+
+**What:**
+- `hardware/gen/kisheet.py`: hierarchical KiCad 10 writer. Parts placed by hand (position,
+  rotation, mirror); wires routed by an A* maze router on the 1.27 mm grid; power symbols upright
+  on power pins (or one symbol on a drawn rail); hierarchical labels for nets that leave a sheet;
+  local labels naming the rest; a root sheet with one box per sheet and the cable signals wired
+  between the boxes.
+- `hardware/gen/power_board_drawing.py`: the power board's layout: 12 V input, 5 V converter,
+  3.3 V and feeds, brake actuator, signal relays, CAN, status inputs, DB-25; notes on each sheet.
+- `hardware/gen/compare_nets.py` and a `check.sh` step: the label-only and the drawn netlists must
+  be identical. `generate.py --flat --out DIR` builds the label-only version.
+
+**Defects found:**
+1. **`check_nets.py` never read the components** (so "every part has a footprint" passed with
+   nothing to check): KiCad 10 writes `(comp` and `(ref` on separate lines and the pattern
+   expected a space. *Fix:* `\s+`. Now 74 pod and 82 power-board parts are read; all have
+   footprints. The net checks were unaffected (a different pattern).
+2. Multi-line notes with raw newlines made KiCad load a sheet as blank. *Fix:* escaped `\n`.
+3. KiCad turns a field's angle and justification with its symbol: rotated parts showed sideways
+   reference text, mirrored connectors misplaced it. *Fix:* fields written centred, angle undone.
+4. Ground symbols dog-legged across the DB-25's neighbouring signal rows. *Fix:* each signal pin's
+   exit lane is reserved before power symbols are placed.
+
+**Teaching notes:** hierarchical sheets (sheet pins, hierarchical labels, how KiCad names a net that
+spans sheets); why a plain wire crossing is not a connection and a junction dot is; reading a
+buck converter's schematic against TI's reference drawing.
+
+**Verification:** ERC 0 violations; drawn netlist identical to the label-only one (82 parts, 59
+nets, names included); all `check_nets.py` checks pass (102 PASS lines in `check.sh`); every page
+reviewed as a rendered PDF. The BOM export is byte-identical to before.
+
+**Next:** the pod board the same way.

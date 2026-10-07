@@ -994,3 +994,25 @@ all car-side leads leave through glands in the opposite wall.
 
 **Drilling templates are generated from the models' own hole lists** (`make_templates.py`), and
 checked for true scale by rasterising at 10 px/mm, so the paper and the model cannot disagree.
+
+## The power board schematic drawn as wired sheets (2026-10-07)
+
+**Ian found the label-only schematics hard to follow**, and he was right: connecting every pin by
+net label is exact, but parts that touch in the circuit can sit far apart, and the reader has to
+match names by eye. The power board is now **eight function sheets under a block-diagram root**,
+with real wires.
+
+**Still generated, not hand-drawn.** The circuit stays in `power_board.py`; a separate drawing file
+says only where each part goes and which way round; a small maze router draws the wires. So the
+existing checks (Config.h, the 4.8.3 cable table, the fail-safe pull-downs, footprints) keep
+running, and a later change to the circuit redraws itself. Hand-tidying the old sheet in KiCad
+was the alternative: it would have ended regeneration, and every later change would be by hand.
+
+**Proof that the drawing did not change the circuit:** `check.sh` builds the label-only version as
+well and requires the two exported netlists to be identical (82 parts with the same values and
+footprints, 59 nets joining the same pins under the same names). The router itself never lets two
+nets touch: a crossing is allowed only at right angles over a plain run, where KiCad does not
+connect.
+
+**Pull-downs moved next to the circuits they protect** (actuator, relay and CAN sheets), so the
+fail-safe rule is visible at the point where it acts, rather than in a block of its own.

@@ -66,7 +66,7 @@ def check(ok, what):
 def read_netlist(path):
     s = Path(path).read_text(encoding="utf-8")
     comps = {}
-    for m in re.finditer(r'\(comp \(ref "([^"]+)"\)(.*?)\n\t\t\)', s, re.S):
+    for m in re.finditer(r'\(comp\s+\(ref "([^"]+)"\)(.*?)\n\t\t\)', s, re.S):
         body = m.group(2)
         val = re.search(r'\(value "([^"]*)"\)', body)
         fp = re.search(r'\(footprint "([^"]*)"\)', body)

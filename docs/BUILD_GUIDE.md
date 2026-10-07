@@ -989,6 +989,16 @@ checker was itself tested by breaking the design on purpose (a relay on the wron
 pull-down, two cable pins swapped): each was caught. Once generated, the files are normal KiCad
 files: tidy the drawing, then lay out the PCB (Phase 12B, `hardware/README.md`).
 
+*Amended 2026-10-07: the power board is drawn, not just labelled.* A schematic connected only by
+net labels is exact but hard to read: the reader matches names by eye. The power board is now a
+**hierarchy of eight wired sheets** under a root sheet that is its block diagram, laid out by hand
+in `hardware/gen/power_board_drawing.py` (signal flowing left to right, pod-side ports on the
+left, car-side connectors on the right, a note on each sheet explaining the circuit) and wired by
+a small router (`kisheet.py`). Every pull-down sits on the sheet that uses its signal, so 4.8.4's
+fail-safe rule is visible where it acts. `check.sh` also builds the label-only version and
+requires the two netlists to be identical, so the drawing cannot change the circuit. The pod board
+follows the same way next.
+
 #### 4.8.9 Build sequence
 
 1. **Bench bring-up with modules (Phase 2, then Phase 12's gate).** An F405 development board

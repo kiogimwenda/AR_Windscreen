@@ -5,7 +5,9 @@
 # 2. KiCad's own ERC must report 0 violations;
 # 3. the netlists are exported and check_nets.py verifies them against firmware Config.h and the
 #    cable pinout in BUILD_GUIDE 4.8.3, plus the fail-safe rules and the footprints;
-# 4. a PDF of each schematic and a CSV bill of materials are exported for review.
+# 4. a PDF of each schematic and a CSV bill of materials are exported for review;
+# 5. a board drawn as wired sheets (<board>_drawing.py) is also generated label-only in a scratch
+#    directory, and compare_nets.py requires the two netlists to be identical.
 # Uses KiCad 10 for Windows from WSL (kicad-cli.exe); set KICAD_DIR for another install.
 set -euo pipefail
 HW="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,6 +26,13 @@ for b in pod_board power_board; do
     "$CLI" sch export bom -o "$(win "$d")/${b}_bom.csv" \
         --fields "Reference,Value,Footprint,\${QUANTITY},Description" --group-by "Value,Footprint" \
         "$(win "$d/$b.kicad_sch")" >/dev/null
+done
+REF="$(mktemp -d)"
+trap 'rm -rf "$REF"' EXIT
+for b in power_board; do
+    python3 "$HW/gen/generate.py" --symbols "$KICAD_DIR/share/kicad/symbols" --flat --out "$REF" "$b" >/dev/null
+    "$CLI" sch export netlist -o "$(win "$REF")/$b.net" "$(win "$REF/$b/$b.kicad_sch")" >/dev/null
+    python3 "$HW/gen/compare_nets.py" "$REF/$b.net" "$HW/$b/$b.net"
 done
 KICAD_FOOTPRINTS="$KICAD_DIR/share/kicad/footprints" \
     python3 "$HW/gen/check_nets.py" "$HW/pod_board/pod_board.net" "$HW/power_board/power_board.net"
