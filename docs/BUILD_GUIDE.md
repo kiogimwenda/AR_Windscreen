@@ -785,7 +785,7 @@ of the 360°; the Mid-360 is rated to 55 °C and the glass zone gets hotter in t
 firmware, the sensors it reads next to it. The price is a 25-way cable to the power box, made
 safe by 4.8.4's rule: every line that reaches the power box defaults to "off" in hardware.
 
-#### 4.8.2 The pod board (4-layer, about 70 × 50 mm)
+#### 4.8.2 The pod board (4-layer, 80 × 55 mm)
 
 - **MCU: STM32F405RGT6** (LQFP64, 168 MHz, 1 MB flash, 192 KB RAM, two bxCAN controllers, USB
   OTG FS). Chosen over the F411 for CAN (OBD straight from the car) and over BGA/QFN parts because
@@ -841,7 +841,7 @@ trim, clear of the curtain airbag. Shield bonded to ground **at the power box en
 | 22 | CAN_STBY | pod → box | transceiver Rs; HIGH (default) = standby |
 | 23, 24 | HX711_DOUT, HX711_SCK | — | bench rig load cell only; unused in the car |
 
-#### 4.8.4 The power board (2-layer, 2 oz copper, about 100 × 80 mm)
+#### 4.8.4 The power board (2-layer, 2 oz copper, 110 × 80 mm)
 
 **The rule that makes the split safe: every signal from the pod enters the power board through a
 10 kΩ pull-down.** MCU in reset, MCU unpowered, cable unplugged or cut: the brake drive, enable and
@@ -930,12 +930,23 @@ pod's USART3 header (the pre-2026-09-30 arrangement).
     webcams are rated only to 40 °C.
   - *Camera:* a UVC board camera with an **M12 lens and locking ring** fits the pod and gives a
     fixed focus by construction (BOM 2.6b). The existing USB webcam remains usable on the bench.
-- **Power box enclosure:** an ABS project box (about 150 × 100 × 60 mm) or printed ASA, cable
-  glands for every lead, vents over the BTS7960 heatsink, screwed to a solid bracket under the dash
-  (never to the steering column), clear of the pedals' travel and of the driver's knees.
+- **Power box enclosure** *(amended 2026-10-06, designed: `hardware/enclosures/power_box/`)*: a
+  bought **ABS junction box, about 250 × 150 × 100 mm, IP65 class**, holding a printed chassis
+  plate that carries the power board, the BTS7960 and ACS712 modules and the six automotive relays
+  in their sockets. The earlier 150 × 100 × 60 estimate could not hold the relays beside the board,
+  and a printed box that size would exceed most printer beds. The DB-25 passes through the front
+  wall, every lead through an M16 cable gland in the rear wall, and vent slots in the side wall sit
+  level with the BTS7960 heatsink. Screwed to a solid bracket under the dash (never to the steering
+  column), clear of the pedals' travel and of the driver's knees. 1:1 drilling templates for the
+  walls and floor are generated from the model.
 - **LiDAR roof bracket:** a 3 mm aluminium plate of at least 100 × 100 mm (the Livox manual asks for
   ≥ 3 mm and ≥ 10,000 mm² of metal as a heatsink, and ≥ 10 mm of free space around the sensor),
   on a **15° forward wedge**, clamped to roof bars or a magnetic base with a safety tether.
+  *(Designed 2026-10-06, `hardware/enclosures/lidar_mount/`:* a 130 × 130 top plate (12,675 mm²
+  exposed), a printed ASA wedge with M4 heat-set inserts, a 150 × 150 base plate on four
+  rubber-coated D43 pot magnets, tether hole; connector to the rear. The LiDAR's M3 holes are 5 mm
+  deep: M3 × 7 screws through the 3 mm plate, never longer. Optical centre 47 mm above the LiDAR's
+  base, 50 mm above the top plate's underside, for the extrinsics.)*
   - *Why tilt:* the Mid-360 sees from −7° to +52° vertically. Level at about 1.55 m, its lowest
     beam reaches the road only 1.55 / tan 7° = 12.6 m ahead. Tilted 15° forward, the forward view
     becomes −22° to +37°, and the road is visible from 1.55 / tan 22° ≈ 3.8 m, or wherever the

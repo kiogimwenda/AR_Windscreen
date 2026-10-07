@@ -969,3 +969,28 @@ are declared before SystemManager so they outlive its threads.
 **ModemManager** (desktop Linux) probes new ACM devices with AT commands; that would trip the hub's
 frame-error fault at every connection. Documented in Appendix D (found via the simulator's
 pseudo-terminal echo, which did the same).
+
+## Board outlines and the first enclosures (2026-10-06)
+
+**One file sets both boards' outlines, holes and edge-connector positions** (`hardware/gen/outlines.py`),
+and writes both the starter KiCad PCBs and `hardware/enclosures/common/boards.scad`. The enclosure
+standoffs and cut-outs therefore move with the board; the two can only disagree if someone edits a
+generated file. Pod board 80 × 55 mm (was "about 70 × 50": the DB-25 alone is 53 mm wide and the
+corners need M3 holes); power board 110 × 80 mm (room for the 2 oz high-current tracks and ten
+terminal blocks along one edge).
+
+**LiDAR mount: two aluminium plates and a printed wedge, rather than a bent or machined bracket.**
+Flat 3 mm plates can be cut by any fabricator from the DXF, or drilled by hand from the 1:1
+templates; the 15° lives in the printed part, so a different tilt (set at installation from the
+bonnet, Part 4.8.6) is a re-print, not a new bracket. The top plate is the Livox heatsink. Pot
+magnets with rubber coating hold without touching the paint; the tether is not optional.
+
+**Power box: a bought ABS junction box with a printed chassis plate, not a printed box.** Six
+automotive relays (28 mm sockets) beside the 110 × 80 board need about 240 × 140 mm of floor; a
+printed box that size exceeds a 220 × 220 bed, and an IP65 junction box is stronger and sealed. The
+chassis is screwed up through the floor into inserts, so nothing depends on the bought box's
+internal bosses. The board sits against the front wall so the DB-25 passes straight through it;
+all car-side leads leave through glands in the opposite wall.
+
+**Drilling templates are generated from the models' own hole lists** (`make_templates.py`), and
+checked for true scale by rasterising at 10 px/mm, so the paper and the model cannot disagree.

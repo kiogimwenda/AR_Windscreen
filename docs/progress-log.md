@@ -2516,3 +2516,46 @@ independent codecs tested against each other beat one tested against itself.
   command, hub disarmed with fault 3 afterwards.
 
 **Phase 3 exit criteria still need the real hub** (13.2 loopback with the Phase 2 firmware).
+
+## 2026-10-06 — Board outlines, LiDAR roof mount, power-box enclosure
+
+**What:**
+- `hardware/gen/outlines.py`: both boards' outlines, M3 holes and edge-connector positions in one
+  place; writes the starter `.kicad_pcb` files and `hardware/enclosures/common/boards.scad`. Pod
+  80 × 55 mm (4 layers), power 110 × 80 mm (2 layers, 2 oz).
+- `hardware/enclosures/lidar_mount/lidar_mount.scad`: base plate on four pot magnets, printed 15°
+  wedge with M4 inserts, 130 × 130 top plate as the Livox heatsink; STL, DXF/SVG, renders.
+- `hardware/enclosures/power_box/power_box.scad`: printed chassis for a bought ~250 × 150 × 100 ABS
+  junction box (board, BTS7960, ACS712, six relays), DB-25 through the front wall, eight M16
+  glands at the rear, vents by the heatsink; chassis STL, renders.
+- `hardware/enclosures/make_templates.py`: 1:1 drilling templates (PDF) from each model's own hole
+  lists: LiDAR plates, and the power box's front, rear and left walls and floor (DB-25 D cut-out).
+- `hardware/enclosures/README.md`: fasteners, print settings, assembly, what to measure first.
+- Guide 4.8.2, 4.8.4, 4.8.6 and BOM 6.3, 6.3c, 9.1, 9.2 amended (board sizes, the larger box).
+
+**Defects found:**
+1. **The first wedge floated above the base:** a hand-built polyhedron had faces wound the wrong
+   way. *Fix:* the wedge is a block intersected with a tilted half-space.
+2. **The wedge's lightening pocket cut into the insert bosses.** *Fix:* shrunk to 40 × 30 mm.
+3. **The power board would have been mirrored in the box:** KiCad's y axis points down, so copying
+   its coordinates straight into the box frame flips the board. *Fix:* the board is placed turned
+   180° (top edge to the front wall) through one function, `board_to_plate()`; the render shows
+   the fuses front-right and the module headers beside the modules, as on the KiCad outline.
+4. **The guide's 150 × 100 × 60 power box cannot hold six 28 mm relays** beside the board. *Fix:*
+   a ~250 × 150 × 100 junction box; guide and BOM amended.
+5. **A floor-template table spilled onto a fifth page.** *Fix:* tighter landscape layout.
+
+**Teaching notes:** why the 15° lives in a printed wedge and the plates stay flat (a different tilt
+is a re-print); a heatsink plate's "exposed area"; heat-set inserts versus screws into plastic;
+why the template is generated, and how to check a print is truly 1:1 (the 100 mm bar).
+
+**Verification:**
+- Both starter PCBs load in KiCad 10: DRC 0 violations, 0 unconnected.
+- LiDAR mount: side render shows the front lower and the connector to the rear; hole positions
+  match manual v1.2's dimensions; 130² − 65² = 12,675 mm² ≥ 10,000.
+- Power box: top and 3D renders checked for clashes (gland bodies above the 36 mm relays; bosses
+  clear of the modules, relays and board); chassis renders as one solid.
+- Templates rasterised at 10 px/mm: the 246 mm wall measures 246.2 mm (line width).
+
+**Still to check against real parts (marked VERIFY):** the box's inside size, module and relay
+socket holes, heatsink height, DB-25 shell; the LiDAR's dowel holes before drilling them.

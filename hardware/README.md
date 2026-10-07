@@ -6,9 +6,9 @@ Phase 12B the plan.
 | Directory | Contents | Status (2026-10-06) |
 |---|---|---|
 | `gen/` | The board descriptions and the tools that turn them into KiCad files and check them | Done |
-| `pod_board/` | KiCad 10 project: STM32F405RGT6, 8 MHz crystal, USB-C, diode-OR'd 5 V to 3.3 V, IMU / GNSS / gesture / SWD / ELM327 headers, status LEDs, DB-25 with series resistors and input filters. 4-layer. | Schematic done, ERC clean, cross-checked; **PCB layout to do** |
-| `power_board/` | KiCad 10 project: 12 V fuse, TVS and reverse-polarity diode; TPS54360 5 V (TI reference design); 3.3 V; 74HCT244 buffer; BTS7960 and ACS712 module headers; magnet and relay MOSFETs with flyback diodes; fail-safe pull-downs; SN65HVD230 CAN; presence MOSFET; PC817 brake-light input; terminals for the kill relay, E-stop, relays, actuator, LiDAR and OBD lead; DB-25. 2-layer, 2 oz. | Schematic done, ERC clean, cross-checked; **PCB layout to do** |
-| `enclosures/` | Printable pod, power box, gesture puck; LiDAR wedge-plate drawing | Not started |
+| `pod_board/` | KiCad 10 project: STM32F405RGT6, 8 MHz crystal, USB-C, diode-OR'd 5 V to 3.3 V, IMU / GNSS / gesture / SWD / ELM327 headers, status LEDs, DB-25 with series resistors and input filters. 4-layer. | Schematic done, ERC clean, cross-checked; outline, holes and edge-connector positions set; **PCB layout to do** |
+| `power_board/` | KiCad 10 project: 12 V fuse, TVS and reverse-polarity diode; TPS54360 5 V (TI reference design); 3.3 V; 74HCT244 buffer; BTS7960 and ACS712 module headers; magnet and relay MOSFETs with flyback diodes; fail-safe pull-downs; SN65HVD230 CAN; presence MOSFET; PC817 brake-light input; terminals for the kill relay, E-stop, relays, actuator, LiDAR and OBD lead; DB-25. 2-layer, 2 oz. | Schematic done, ERC clean, cross-checked; outline, holes and edge-connector positions set; **PCB layout to do** |
+| `enclosures/` | OpenSCAD: LiDAR roof mount, power-box chassis and box drilling templates; shared board outlines (`common/boards.scad`). See its README. | LiDAR mount and power box designed; pod, E-stop and gesture puck wait for the parts and the car |
 
 Each board folder also has `<board>.pdf` (the schematic, for reading without KiCad) and
 `<board>_bom.csv` (parts grouped by value and footprint).
@@ -86,3 +86,16 @@ place, route, run DRC.
 **Then:** DRC clean, a 1:1 paper print to check every footprint against the real part, Gerbers,
 order (JLCPCB / PCBWay), assemble, and bring up with Part 4.7 before the bench gate is re-run on
 this hardware (three consecutive passes of all six items).
+
+## Board outlines: the one constraint shared with the enclosures
+
+```bash
+python3 hardware/gen/outlines.py           # --force to overwrite a .kicad_pcb already being laid out
+```
+`gen/outlines.py` holds each board's size, corner radius, M3 mounting holes and the positions of
+its edge connectors (DB-25, USB-C, fuses, terminal blocks, LEDs, headers). It writes the starter
+`<board>.kicad_pcb` (outline on Edge.Cuts, hole positions on User.Drawings, connector boxes on
+User.Comments: place H1–H4 and the connectors on them) and `enclosures/common/boards.scad`, which
+the enclosure models include. Pod board 80 × 55 mm, 4 layers; power board 110 × 80 mm, 2 layers.
+If a layout needs a change, change it there and regenerate both. The starter files passed KiCad's
+DRC with no errors.

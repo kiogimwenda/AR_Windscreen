@@ -104,9 +104,9 @@ with a different crystal needs `HSE_VALUE` and `Config.h`'s `kHseHz` changed to 
 |---|---|---|---|
 | 6.1 | Adjustable laptop mount (seat-bolt or passenger-side floor pole) | Jumia | est. 3,000–6,000 |
 | 6.2 | Windscreen pod glass bracket (small aluminium/steel plate) and **3M VHB tape**; isopropyl alcohol | Fabricator / hardware store | est. 500–1,000 |
-| 6.3 | LiDAR roof mount: **3 mm aluminium plate ≥ 100 × 100 mm on a 15° wedge** (Livox: ≥ 3 mm, ≥ 10,000 mm² as heatsink), roof-bar clamps or magnetic base, safety tether | Fabricator (Kariokor / Industrial Area) | est. 2,000–4,000 |
+| 6.3 | LiDAR roof mount: **3 mm aluminium plate ≥ 100 × 100 mm on a 15° wedge** (Livox: ≥ 3 mm, ≥ 10,000 mm² as heatsink), roof-bar clamps or magnetic base, safety tether. *Designed 2026-10-06:* two plates 130² and 150² (DXF for laser cutting, or drill from the templates), 4 × D43 rubber-coated pot magnets (M6), M3 × 7, 3 × 5 dowels, M4 inserts and screws (`hardware/enclosures/README.md`) | Fabricator (Kariokor / Industrial Area) | est. 3,000–5,000 |
 | 6.3b | **3D-printing filament, ASA or PETG, 1 kg** (never PLA: softens at ~55 °C) and printing time | Pod, power box, gesture puck | Nairobi 3D-printing shops / Jumia | est. 2,500–4,500 |
-| 6.3c | Power-box enclosure (ABS, ~150 × 100 × 60 mm) and cable glands | If not printed | Pixel / electrical shops | est. 1,000–2,000 |
+| 6.3c | Power-box enclosure: ABS junction box ~250 × 150 × 100 mm (IP65), 8 × M16 cable glands, M3/M4 heat-set inserts and screws (amended 2026-10-06: the 150 × 100 × 60 box cannot hold the six relays; parts list in `hardware/enclosures/README.md`) | Holds the printed chassis | Electrical shops | est. 1,500–3,000 |
 | 6.4 | Add-a-fuse tap for the switched ACC circuit | Auto-spares strip | est. 300 |
 | 6.5 | Cable ties, split loom, trim tools | Auto-spares strip | est. 800 |
 
@@ -171,8 +171,8 @@ before ordering.
 
 | # | Item | Notes | Est. |
 |---|---|---|---|
-| 9.1 | Pod board, 4-layer, ~70 × 50 mm, ×5 | Four layers for a solid ground under the GNSS and IMU | US$15–35 |
-| 9.2 | Power board, 2-layer, 2 oz copper, ~100 × 80 mm, ×5 | 2 oz for the actuator and relay currents | US$10–25 |
+| 9.1 | Pod board, 4-layer, 80 × 55 mm, ×5 | Four layers for a solid ground under the GNSS and IMU | US$15–35 |
+| 9.2 | Power board, 2-layer, 2 oz copper, 110 × 80 mm, ×5 | 2 oz for the actuator and relay currents | US$10–25 |
 | 9.3 | Components: STM32F405RGT6 ×2 (one spare), 8 MHz crystals, AP2112K-3.3, USB-C sockets, USBLC6-2SC6, 60 V buck IC + inductor, SMCJ24A, 74HCT244, MOSFETs, SN65HVD230, PESD2CAN, PC817, DB-25 PCB connectors, passives | From the board house's assembly service or LCSC/Mouser; hand-solderable packages chosen (LQFP64, SOIC, SOT-23, 0805) | US$40–70 |
 | 9.4 | Optional machine assembly of the fine-pitch parts | If hand-soldering the LQFP64 is not wanted | US$15–40 |
 | 9.5 | Courier to Kenya and duty/VAT | Express courier; duty and VAT on the declared value | US$30–60 |
