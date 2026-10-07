@@ -1023,3 +1023,24 @@ support parts (reset, boot, crystal, VCAP capacitors) sit beside the pins they s
 else crowds it. Where many lines fan into a connector (the DB-25 on the cable sheet), each line's
 vertical run is assigned a column so that the fan-in has no crossings. Power symbols now show the
 rail's name (+3V3, VBUS, +5V, +12V), which the first drawing of the power board lacked.
+
+## Camera pipeline: undistorted frames carry their own camera model (2026-10-07)
+
+**The frames on frameBus are undistorted, and the camera model that describes them is published
+with them: `CameraPipeline::frameModel()` (zero distortion, the new camera matrix).** Part 6 says to
+undistort; `CameraModel::project()`, used by SceneReconstruction and RoadSurfaceProjector, applies
+the lens distortion itself. Both are right only if the model handed to the projectors describes the
+frames they see. Given the raw calibration, they would distort an already-undistorted image again:
+34.7 px off near the edges for the test lens (test_camera_pipeline). Undistorting once, at the
+source, also gives the lane model straight lines. `getOptimalNewCameraMatrix` with alpha = 0 crops
+to valid pixels, so no black border reaches the detector.
+
+**Remap through precomputed maps, not `cv::undistort()` per frame:** identical output, the maps built
+once; 3.9 ms per 2K frame on the CPU, so CUDA is not needed (Part 6.2's condition).
+
+**A camera that stops is a fault, not a degraded mode.** Bounded reads (GStreamer read timeout), and
+`stall_timeout_s` without a frame shuts the system down, leaving the hub's watchdog to release.
+
+**Phase 4 exit check by measurement:** `camera_check` passes a size only at >= 95 % of the requested
+rate with **no lost frame**, because the average hides losses (29.8 fps with a lost frame, on a test
+source, is a FAIL). The 2K-or-1080p decision waits for the real camera through usbipd.

@@ -7,10 +7,14 @@
 //
 // Run from the repository root:
 //     build/host/ar_drive_assist [config_dir] [log_path] [--serial <device>] [--no-hub]
+//                                [--camera <source>] [--no-camera]
 // The defaults are host/config, logs/session.log and vehicle_params.yaml's serial_device. The log
 // is appended to, and each run begins with a SESSION_START line.
 //   --serial <device>  overrides serial_device, e.g. the pseudo-terminal hub_sim prints;
-//   --no-hub           starts without the hub (development only: nothing can be actuated).
+//   --no-hub           starts without the hub (development only: nothing can be actuated);
+//   --camera <source>  overrides camera.yaml's source: another device, a video file to replay, or
+//                      "gst:<pipeline>";
+//   --no-camera        starts without the camera (development only).
 // Without a reachable hub (and without --no-hub) startup fails, naming the device: no hub, no
 // system.
 
@@ -22,6 +26,7 @@
 #include <string>
 #include <vector>
 
+#include "ar_drive_assist/camera/CameraPipeline.h"
 #include "ar_drive_assist/fusion/HubReportFeeder.h"
 #include "ar_drive_assist/fusion/SensorFusion.h"
 #include "ar_drive_assist/system/EventLog.h"
@@ -32,13 +37,17 @@ using namespace ar_drive_assist;
 
 int main(int argc, char** argv) {
     std::vector<std::string> positional;
-    std::string serialOverride;
-    bool noHub = false;
+    std::string serialOverride, cameraOverride;
+    bool noHub = false, noCamera = false;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--serial") && i + 1 < argc) {
             serialOverride = argv[++i];
         } else if (!std::strcmp(argv[i], "--no-hub")) {
             noHub = true;
+        } else if (!std::strcmp(argv[i], "--camera") && i + 1 < argc) {
+            cameraOverride = argv[++i];
+        } else if (!std::strcmp(argv[i], "--no-camera")) {
+            noCamera = true;
         } else {
             positional.emplace_back(argv[i]);
         }
@@ -64,10 +73,20 @@ int main(int argc, char** argv) {
                                                         config.vehicle.imuMountRpyDeg[2]);
         HubReportFeeder feeder(fusion, feederCfg);
         std::mutex fusionMutex;
+        // Buses outlive every thread too (Part 5.3: one producer, one consumer each).
+        CameraPipeline::FrameBus frameBus;
 
         SystemManager mgr(config, log);
 
-        // Phase 4:  mgr.start<CameraPipeline>(...);
+        // Phase 4: the camera. Until Phase 5's InferenceThread is started here, nothing reads
+        // frameBus: it fills, and the camera's EventLog line counts the dropped frames.
+        if (!noCamera) {
+            CameraConfig cam = loadCameraConfig(configDir + "/camera.yaml");
+            if (!cameraOverride.empty()) cam.source = cameraOverride;
+            mgr.start<CameraPipeline>(cam, frameBus, &log);
+        } else {
+            log.logGeneral("started with --no-camera: no perception");
+        }
         // Phase 5:  mgr.start<MlInferenceEngine>(...);
         // Phase 6:  mgr.start<LidarProcessor>(...);
         // Phase 7:  FusionThread (feeder above), tracker, motion predictor

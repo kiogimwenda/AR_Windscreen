@@ -1,0 +1,13 @@
+# Camera capture (docs/BUILD_GUIDE.md Part 6, CameraConfig.h). Phase 4 decides 2560x1440 or the
+# 1920x1080 fallback by measurement (build/host/camera_check), never by assumption.
+source: /dev/video0        # a UVC device; or a video file to replay; or "gst:<pipeline>"
+width: 2560
+height: 1440
+fps: 30
+format: MJPG               # MJPG: JPEG frames, how USB cameras deliver 2K; YUYV: uncompressed
+intrinsics: host/config/camera_intrinsics.yaml   # Part 12.1; the template = not calibrated
+undistort: true            # once calibrated; frames and frameModel() are then undistorted
+loop: true                 # files only
+realtime: true             # files only: paced at the file's own frame rate
+stall_timeout_s: 1.0       # no frame this long = camera FAULT, the system shuts down
+report_every_s: 10.0       # measured fps to the EventLog

@@ -110,6 +110,12 @@ target_link_libraries(render_bench PRIVATE ${OpenCV_LIBS} SDL2::SDL2 OpenGL::GL 
 
 # Phase 3 (with no hub yet): a software hub on a pseudo-terminal, running the FIRMWARE's own
 # SafetyCore and FrameCodec. HubSim.cpp alone sees the firmware's include directory.
+# Phase 4's exit check: the sustained frame rate the camera delivers at each candidate size.
+add_executable(camera_check tools/camera_check.cpp src/camera/CameraPipeline.cpp
+               src/camera/CameraConfig.cpp src/system/EventLog.cpp)
+target_include_directories(camera_check PRIVATE include)
+target_link_libraries(camera_check PRIVATE ${OpenCV_LIBS} Eigen3::Eigen yaml-cpp::yaml-cpp ar_schemas)
+
 find_package(Threads REQUIRED)
 add_executable(hub_sim tools/hub_sim/main.cpp tools/hub_sim/HubSim.cpp)
 target_include_directories(hub_sim PRIVATE tools/hub_sim

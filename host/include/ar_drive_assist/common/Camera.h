@@ -9,6 +9,9 @@
 //   vehicle:          x forward, y left, z up; origin on the ground under the rear axle
 //                     (Part 12.2).
 // Intrinsics: config/camera_intrinsics.yaml (Part 12.1), pinhole plus OpenCV's k1, k2, p1, p2, k3.
+// The model must describe the FRAMES it is used with. CameraPipeline undistorts the frames it
+// publishes, so their model is CameraPipeline::frameModel() (zero distortion, a new camera
+// matrix), never the raw calibration file: see camera/CameraConfig.h.
 // Extrinsics: config/camera_extrinsics.yaml (Part 12.2), the camera's position [x, y, z] and
 // [roll, pitch, yaw] in the vehicle frame. Pitch positive = looking DOWN (a rotation about the
 // vehicle's left axis tips the forward axis towards the ground).

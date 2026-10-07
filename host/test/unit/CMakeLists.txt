@@ -148,3 +148,10 @@ target_link_libraries(test_ar_renderer PRIVATE Eigen3::Eigen ar_schemas yaml-cpp
 
 # --- Later phases (targets added as each phase implements its subsystem) ------------------------
 # Phase 7:  test_multi_object_tracker.cpp, test_motion_predictor.cpp, test_mask_lidar_fusion.cpp
+
+# --- Phase 4 ----------------------------------------------------------------------------------
+# The camera's configuration, calibration file and frame-rate measurement (no OpenCV). The capture
+# itself runs through GStreamer in host/test/integration/test_camera_pipeline.cpp (label camera).
+add_unit_test(test_camera_config test_camera_config.cpp ${HOST_SRC}/camera/CameraConfig.cpp)
+target_link_libraries(test_camera_config PRIVATE Eigen3::Eigen yaml-cpp::yaml-cpp)
+target_compile_definitions(test_camera_config PRIVATE HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")

@@ -1140,6 +1140,29 @@ private:
 
 ---
 
+*Implemented 2026-10-07 (Phase 4), with these amendments:*
+- *Interface:* `CameraPipeline(cfg, frameBus, log)` and `run(stop)`, the SystemManager contract
+  every subsystem uses, rather than `init()`/`run()`/`stop()`. Configuration is
+  `host/config/camera.yaml` (source, size, rate, MJPG or YUYV, the intrinsics file); the source can
+  also be a video file (replayed at its own rate) or a `gst:` pipeline.
+- *Undistortion and the camera model:* the maps are computed once (`cv::initUndistortRectifyMap`)
+  and each frame is `cv::remap`ped: the same result as `cv::undistort()`, which rebuilds those maps
+  on every call. Measured: 3.9 ms per 2560×1440 frame on the CPU, ~12 % of the 33 ms budget, so the
+  CPU stays. **The published frames are undistorted, so the camera model that describes them has
+  zero distortion and a new camera matrix: `CameraPipeline::frameModel()`.** Every consumer that
+  projects into the image (SceneReconstruction, RoadSurfaceProjector, the renderer) must use that
+  model, never the raw calibration, or the lens distortion is applied twice (34.7 px error at the
+  edge in the test lens). Until Part 12.1 is done, frames are published raw and a warning is
+  logged.
+- *Timestamps and failure:* a new `cv::Mat` per capture (VideoCapture would otherwise overwrite
+  the pixels of a frame the inference thread still holds); steady-clock timestamps; reads bounded
+  by a timeout, and a camera silent for `stall_timeout_s` (1 s) is a FAULT that shuts the system
+  down (a driver-assist system without its camera is blind, not degraded).
+- *Measuring fps (Part 6.2):* the sustained rate, the longest gap and late frames (gaps over 1.5
+  frame periods: lost frames) go to the EventLog every 10 s. **Phase 4's exit check is
+  `build/host/camera_check`**: it measures each candidate size through usbipd exactly as the
+  system opens it and passes a size only at ≥ 95 % of the requested rate with no lost frame.
+
 *Amended 2026-09-30 (4.8.6): the camera lives in the windscreen pod on the same rigid carrier as
 the IMU, behind a matte hood against the glass. A UVC board camera with an M12 lens and locking
 ring is recommended there (fixed focus by construction); the current webcam serves on the bench.
@@ -2372,7 +2395,7 @@ Exit criteria: Part 4.7's bench verification checklist passes in full (50 Hz sen
 Deliverables: `SystemManager`, `EventLog`, message bus (`RingBuffer`), `VehicleInterface` fully implemented against the real firmware from Phase 2.
 Exit criteria: 13.2's loopback integration test passes — host receives 50 Hz `SensorReport`s from the real hub, and a synthetic `ActuationRequest` sent through `VehicleInterface` correctly toggles the bench-wired relay.
 
-**Phase 4 — Camera pipeline**
+**Phase 4 — Camera pipeline** *(software done 2026-10-07; the exit check needs the camera attached: `build/host/camera_check`)*
 Deliverables: `CameraPipeline` (Part 6).
 Exit criteria: sustained fps at target resolution measured and logged; resolution finalized (2K or the 1080p fallback) and written to `docs/decisions.md`.
 

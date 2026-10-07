@@ -2626,3 +2626,47 @@ reviewed as a rendered PDF. The BOM export is byte-identical to before.
 (pod 77 parts / 88 nets; power 82 / 59, names included); `check.sh` 105 PASS, 0 FAIL. Mutation:
 BRAKE_EN moved to the wrong MCU pin was caught (Config.h check), then restored. Every page
 reviewed as a rendered PDF.
+
+## 2026-10-07 — Phase 4: CameraPipeline (software; exit check waits for the camera)
+
+**What:**
+- `camera/CameraConfig.{h,cpp}`: sources (UVC device through GStreamer, video file, `gst:`
+  pipeline), the MJPG/YUYV pipeline strings, `camera.yaml` and `camera_intrinsics.yaml` loading
+  (the template = uncalibrated; nonsense refused), `FrameRateMonitor` (sustained fps, longest gap,
+  late frames).
+- `camera/CameraPipeline.{h,cpp}`: capture -> stamp -> undistort (precomputed maps) -> frameBus;
+  `frameModel()`, the camera model of the published frames; bounded reads, stall = FAULT; bus
+  overflow counted; the measured rate logged every 10 s.
+- `tools/camera_check`: Phase 4's exit check (each size measured through usbipd; `--list`).
+- `main.cpp`: the camera starts with the system (`--camera <source>`, `--no-camera`).
+- `host/config/camera.yaml`; guide Part 6 and Phase 4 amended; Camera.h notes which model to use.
+
+**Defects found (all before they shipped):**
+1. **The design would have distorted twice:** Part 6 undistorts the frames, while CameraModel
+   applies the lens distortion when projecting. *Fix:* the pipeline publishes the model of its
+   frames; consumers take that one (decisions.md).
+2. **Reusing one capture Mat would overwrite a frame the inference thread still holds**
+   (VideoCapture writes into a Mat's existing buffer when the size matches, even if shared).
+   *Fix:* a new Mat per frame; a test holds a frame across later captures.
+3. **The constructor's size-probe frame would have been published late with a current
+   timestamp.** *Fix:* it is never published.
+4. An unbounded read would hang the thread on a stalled camera. *Fix:* GStreamer read timeout.
+
+**Teaching notes:** why 2K needs MJPG over USB (bandwidth); reference-counted cv::Mat and buffer
+reuse; undistortion maps; why a frame-rate average hides lost frames.
+
+**Verification:**
+- Unit (CI): `test_camera_config`, 12 tests; whole suite 272/272.
+- Integration (`ctest -L camera`, GStreamer's videotestsrc as the camera): 9/9: every frame in
+  order at 30 fps; held frames unchanged; both camera formats' pipelines decode; **undistorted
+  dots within 0.66 px of frameModel()'s projection** (34.7 px if distorted again); a calibration
+  for another size refused; stall reported in < 1.5 s; stop in < 300 ms; bus overflow counted;
+  file replay.
+- Mutations caught: buffer reuse; the lens model published with undistorted frames; unbounded
+  reads (the stall test now has a deadline, so it fails rather than hangs).
+- `camera_check` on test sources: PASS at 30.01 fps; FAIL at 29.80 fps with one lost frame.
+- The application with a 2560x1440 test source: 30.0 fps, 0 late, undistortion 3.9 ms/frame;
+  clean shutdown in 28 ms. (Frames pile up on the bus until Phase 5's thread is wired: counted.)
+
+**Phase 4 exit criteria still need the camera** attached through usbipd: run `camera_check`,
+record the table in decisions.md, set the size in camera.yaml, then calibrate (Part 12.1).

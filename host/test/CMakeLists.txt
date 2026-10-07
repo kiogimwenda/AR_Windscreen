@@ -48,3 +48,14 @@ target_include_directories(test_windowed_sink PRIVATE ../include)
 target_link_libraries(test_windowed_sink PRIVATE ${OpenCV_LIBS} SDL2::SDL2 OpenGL::GL GLEW::GLEW
                       Eigen3::Eigen GTest::gtest GTest::gtest_main)
 gtest_discover_tests(test_windowed_sink PROPERTIES LABELS gpu DISCOVERY_TIMEOUT 60)
+
+# Phase 4: CameraPipeline through real OpenCV + GStreamer, with GStreamer's test source standing in
+# for the camera (no device, no GPU):   ctest --test-dir build -L camera
+add_executable(test_camera_pipeline integration/test_camera_pipeline.cpp
+               ../src/camera/CameraPipeline.cpp ../src/camera/CameraConfig.cpp
+               ../src/system/EventLog.cpp)
+target_include_directories(test_camera_pipeline PRIVATE ../include)
+target_link_libraries(test_camera_pipeline PRIVATE ${OpenCV_LIBS} Eigen3::Eigen yaml-cpp::yaml-cpp
+                      ar_schemas GTest::gtest GTest::gtest_main)
+target_compile_definitions(test_camera_pipeline PRIVATE HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
+gtest_discover_tests(test_camera_pipeline PROPERTIES LABELS camera DISCOVERY_TIMEOUT 60)
