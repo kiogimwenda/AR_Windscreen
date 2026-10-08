@@ -30,6 +30,7 @@ data/footage/
 # Sign-detector training runs and datasets (large; overnight run 2026-09-24/25)
 host/models/training/
 data/datasets/
+data/recordings/
 
 # Model weights downloaded by tools (e.g. ultralytics fetches yolo26n.pt into the working
 # directory for its AMP check). Project weights live in host/models/weights/, already ignored.
@@ -57,3 +58,5 @@ hardware/*/*.net
 # KiCad working files: local history and the lock files of an open project
 .history/
 *.lck
+
+PRE_HARDWARE_TODO.md

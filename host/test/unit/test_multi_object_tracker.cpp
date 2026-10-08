@@ -248,3 +248,50 @@ TEST(Tracker, FastNeighboursKeepSeparateTracks) {
     EXPECT_NEAR(a->filter.position().y(), 0, 0.3);
     EXPECT_NEAR(b->filter.position().y(), 3.5, 0.3);
 }
+
+// The measured run (Track::measuredRunSinceMs) that DecisionArbiter rule 1 requires: it starts
+// with a LiDAR-measured update and is broken by a miss or by an estimate-only update, so a track
+// that coasts and is re-associated starts again from zero (the ghost found on the KITTI replay).
+TEST(Tracker, MeasuredRunStartsWithAMeasurementAndBreaksOnAMissOrAnEstimate) {
+    MultiObjectTracker t;
+    for (int k = 0; k < 4; ++k)
+        t.update(batchAt(1000 + 100 * k, {meas(20 - 0.5 * k, 0, kVehicle)}));
+    ASSERT_EQ(t.tracks().size(), 1u);
+    EXPECT_EQ(t.tracks()[0].measuredRunSinceMs, 1000u);
+
+    t.update(batchAt(1400, {}));  // a miss: coasting
+    EXPECT_EQ(t.tracks()[0].measuredRunSinceMs, 0u);
+    t.update(batchAt(1500, {meas(17.5, 0, kVehicle)}));  // re-acquired: a new run
+    ASSERT_EQ(t.tracks().size(), 1u);
+    EXPECT_EQ(t.tracks()[0].measuredRunSinceMs, 1500u);
+
+    ObjectMeasurement estimate = meas(17, 0, kVehicle);
+    estimate.rangeMeasured = false;  // MiDaS-scaled: moves the track, never counts as measured
+    t.update(batchAt(1600, {estimate}));
+    EXPECT_EQ(t.tracks()[0].measuredRunSinceMs, 0u);
+}
+
+// A cycle in which nothing was looked at (no usable LiDAR scan) is not a miss: the track is
+// predicted, keeps its state and its measured run. A track left unseen past maxCoastS retires.
+TEST(Tracker, AnUnobservedCycleIsNotAMiss) {
+    MultiObjectTracker t;
+    for (int k = 0; k < 4; ++k)
+        t.update(batchAt(1000 + 100 * k, {meas(20 - 0.5 * k, 0, kVehicle)}));
+    ASSERT_EQ(t.tracks().size(), 1u);
+    ASSERT_EQ(t.tracks()[0].state, TrackState::CONFIRMED);
+    MeasurementBatch none = batchAt(1400, {});
+    none.observed = false;
+    t.update(none);
+    ASSERT_EQ(t.tracks().size(), 1u);
+    EXPECT_EQ(t.tracks()[0].state, TrackState::CONFIRMED);
+    EXPECT_EQ(t.tracks()[0].misses, 0);
+    EXPECT_EQ(t.tracks()[0].measuredRunSinceMs, 1000u);
+    EXPECT_EQ(t.tracks()[0].lastTimeMs, 1400u);  // predicted to the cycle's time
+    t.update(batchAt(1500, {meas(17.5, 0, kVehicle)}));
+    EXPECT_EQ(t.tracks()[0].measuredRunSinceMs, 1000u) << "the run continues";
+
+    MeasurementBatch late = batchAt(1500 + 1600, {});  // beyond maxCoastS (1.5 s)
+    late.observed = false;
+    t.update(late);
+    EXPECT_TRUE(t.tracks().empty());
+}

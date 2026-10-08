@@ -265,6 +265,16 @@ usbipd attach --wsl --busid <busid-of-device>
 ```
 Do this for the USB camera, the USB-to-Ethernet adapter, and the STM32 hub's USB-serial port. Devices must be re-attached after every WSL2 restart — write `attach_usb_devices.ps1` (see repo structure) to bind/attach all three in one command, and run it at the start of every dev session.
 
+*Amended 2026-10-08: the script is written.* From PowerShell on Windows, in the repository folder:
+`.\host\scripts\attach_usb_devices.ps1 -Camera <VID:PID> -Ethernet <VID:PID> -Save` the first time
+(as admin: an unshared device must be bound once), then `.\host\scripts\attach_usb_devices.ps1`
+every session (no admin needed). Devices are named by USB hardware id (VID:PID, from `usbipd
+list`), which survives a change of port, or by bus id; the hub defaults to 0483:5740, the STM32's
+USB serial port. It binds only what is unshared, attaches only what is not attached, reports what
+is not plugged in, and lists `/dev/video*`, `/dev/ttyACM*` and the adapter from inside WSL2.
+`-Detach` gives them back to Windows. Tested here for parsing (Windows PowerShell 5.1) and for
+finding devices by both kinds of id; binding and attaching the real devices waits for them.
+
 ### 2.3 Base Debian packages
 
 Inside WSL2 Debian:
@@ -275,6 +285,14 @@ sudo apt install -y build-essential cmake git pkg-config curl wget unzip \
     libspdlog-dev flatbuffers-compiler libflatbuffers-dev libsdl2-dev \
     libgoogle-glog-dev libgtest-dev python3-pip python3-venv v4l-utils
 ```
+
+*Amended 2026-10-08:* `host/scripts/setup_env.sh` does Parts 2.3 and 2.6–2.9 in one step and then
+2.10's verification: the apt packages the build actually finds (CMake's `find_package` list, plus
+the GStreamer decoders and the OSRM tools; anything already built from source is left alone), the
+`dialout` and `video` groups (so the host never needs sudo), ModemManager disabled (Appendix D),
+Livox SDK2 into `~/.local/livox`, and the Python tools' packages (`host/scripts/requirements.txt`,
+into the active virtual environment). `--dry-run` shows what it would do; `--check-only` only
+verifies. It never installs CUDA/TensorRT or builds OpenCV (2.4, 2.5); it checks them.
 
 ### 2.4 CUDA / cuDNN / TensorRT for Blackwell (sm_120)
 
@@ -323,6 +341,14 @@ git clone https://github.com/Livox-SDK/Livox-SDK2.git
 cd Livox-SDK2 && mkdir build && cd build
 cmake .. && make -j$(nproc) && sudo make install
 ```
+
+*Amended 2026-10-07:* `sudo` is not needed. Installing into a local prefix works the same, and is
+how the development machine has it: `cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/.local/livox && make
+-j$(nproc) && make install`. `host/CMakeLists.txt` looks in `~/.local/livox` and `/usr/local`; when
+it finds the SDK it prints "Livox SDK2: ... (live Mid-360 capture enabled)" and builds
+`lidar/LivoxCapture` (`AR_HAVE_LIVOX`). Without the SDK the host still builds, and replays work;
+only `--replay`-less runs with the LiDAR need it. The SDK is not needed in CI: the packet decoding
+(`lidar/LivoxPackets`) has no SDK dependency and is unit-tested with synthetic packets.
 
 ### 2.9 STM32 firmware toolchain (PlatformIO)
 
@@ -1018,6 +1044,16 @@ are renumbered from R40/C40, and both `generate.py` and `check_nets.py` now reje
 3. **Enclosures**, printed and test-fitted in the car with the power off; the pod's heat checked
    by leaving it in the sun on a parked day and reading the hub's reports.
 
+*Amended 2026-10-08: the assembly-day documents exist, in [`docs/assembly/`](assembly/README.md):*
+the DB-25 cable's build sheet (pin by pin, both boards' side of every line, continuity and
+"once both boards are up" checks), the power board's and the pod board's bring-up (current-limited
+first power, rails with their computed values, the fail-safe state, each line by hand, flashing by
+ST-Link or USB DFU), the power box's off-board wiring, and the bench rig's setup. They are
+**generated** from the board descriptions (`hardware/gen/assembly.py`), so a pin or a value always
+matches the schematics; `hardware/gen/check.sh` fails if they are out of date. Computed, for
+example: the 5 V rail 5.00 V (0.8 V reference × (1 + 53.6k/10.2k)); the brake-current line idle at
+1.67 V on the power board alone and 1.56 V once the pod's 100 k loads it.
+
 ---
 
 ## Part 5 — Host Application Architecture
@@ -1035,6 +1071,19 @@ One process, one thread per subsystem, connected by a lock-free-ish message bus 
 7. `VehicleInterfaceThread` — owns the USB-serial connection to the hub; the only thread that reads/writes `HubProtocol` frames directly (see Part 11).
 8. `NavigationThread` — owns `NavigationEngine`, `MapMatcher`, and `RoadSurfaceProjector` (Part 11.2–11.4) as one sequential pipeline; consumes `VehiclePose` (from `FusionThread`), the ground-plane model (from `LidarThread`, Part 8.1), and lane points (from `detectionBus`); produces `RoadProjectedRoute` onto a new `navOverlayBus`. Runs at the LiDAR's ground-plane refresh rate — no benefit projecting the overlay faster than its geometry input updates.
 9. Main thread — `SystemManager`: starts/stops the above, owns the config load, owns the `EventLog`.
+
+*Implemented 2026-10-07 (before any hardware, on replayed data).* Every thread above runs from
+`main.cpp`: `CameraPipeline`, `MlInferenceEngine`, `LidarReplay` or the live `LivoxCapture` (Part 8.1),
+`scene/FusionThread` (scene fusion and the tracker), `decision/DecisionThread` (threat assessment,
+`DecisionArbiter::step`, the request to `VehicleInterface` every cycle), `render/RenderThread`,
+`nav/NavigationThread` and `VehicleInterface`. The ego EKF is shared through `fusion/EgoEstimator`
+(fed on `VehicleInterface`'s thread, read as snapshots). The buses and their single producer and
+consumer are in `system/PipelineMessages.h`; where two threads need the same messages the producer
+writes two buses (the camera to inference and display; fusion to decision, display and
+navigation). Start order: inference first (its engines load for seconds), then fusion, render,
+navigation, the hub link, decision, and the sensors last, so a replay's clocks all start together.
+The build is optimised by default (`RelWithDebInfo`): unoptimised, the LiDAR thread fell behind
+real time and every scan arrived too old to fuse.
 
 ### 5.2 Top-level CMake
 
@@ -1262,6 +1311,39 @@ Use `pcl::VoxelGrid` for downsampling, `pcl::SACSegmentation` (plane model) for 
 
 **Important change from the original design:** the fitted ground plane used to be an internal step, discarded once obstacle clustering was done with it. It is no longer discarded — publish it as `GroundPlaneModel` on a new `groundPlaneBus`. `RoadSurfaceProjector` (Part 11.4) depends directly on this being real, current, measured geometry — it is what lets the navigation overlay stay locked to the actual road surface through slopes and dips at close range, instead of assuming a flat road. Do not skip this change; a `LidarProcessor` that still throws the plane away will silently force `RoadSurfaceProjector` onto the flat-ground fallback for every point, defeating the precision requirement without any obvious error.
 
+*Amended 2026-10-07: the ground fit is built (`lidar/LidarProcessor`), and it is not optional for
+safety either.* Each scan's road plane is fitted by a seeded RANSAC plus a least-squares refinement
+(Eigen, deterministic, testable in CI without PCL) to the points in the corridor ahead near the
+previous plane, and published with the scan (`LidarFrame::ground`); `FusionThread` measures obstacles
+against it and passes it to navigation. On the KITTI replay, the flat-road assumption made a road
+rising 2 deg ahead into an "obstacle" that the LiDAR's rings swept towards the car at 25 m/s, and
+the arbiter braked for it.
+
+*Amended 2026-10-07 (later): the live capture is built (`lidar/LivoxCapture`, `lidar/LivoxPackets`).*
+What it does, and where it departs from the sketch above:
+- **Packets to points.** The SDK's point callback hands over each UDP packet; `decodeLivoxPacket`
+  reads it at fixed byte offsets (Cartesian high precision, int32 mm, 14 bytes a point; or low,
+  int16 cm, 8 bytes), drops "no return" points at (0, 0, 0), and gives each point its own time
+  (first-point timestamp + i x interval / count). `static_assert`s in `LivoxCapture.cpp` hold those
+  offsets to the SDK's own `LivoxLidarEthernetPacket`, so an SDK that changes the layout fails to
+  compile instead of mis-decoding.
+- **Two clocks.** Without PTP or a GNSS pulse the Mid-360 stamps points with its own clock.
+  `ScanAssembler` maps it onto the host's steady clock with the smallest (arrival - LiDAR time)
+  offset over a 2 s window (the packet that waited least), and restarts if the LiDAR clock jumps
+  (a reboot). Every point carries a host time, which fusion's motion compensation uses.
+- **Scans.** 100 ms of points make one `LidarFrame`; the ground fit runs on it (above), then it goes
+  on the LiDAR bus. A processing thread that falls behind keeps the newest three scans.
+- **Watchdog.** No point packet for `stall_timeout_s` (`config/lidar.yaml`, 1.0 s) is a FAULT and
+  shuts the system down, as for the camera: without the LiDAR nothing can be measured, so nothing
+  may be braked for. No data within 10 s of start is a startup error naming Appendix C.
+- **Not done, deliberately:** voxel downsampling and PCL clustering. Fusion clusters the points
+  itself (`SceneReconstruction`, voxel connected components, linear time) and has kept up with
+  KITTI's ~120k-point scans in real time; it has not been timed on a Mid-360's clouds yet. Time it
+  in Part 13.3 and add downsampling only if fusion falls behind (it would cost near-field detail).
+  The road-anomaly pass has no consumer yet and is left for after the first road test.
+- **To verify on the hardware** (Part 13.3): the packet format against a live Mid-360 (data type
+  1, the default), the clock offset settling in the 10 s status line, and the scan rate.
+
 ### 8.2 Sensor fusion (EKF)
 
 ```cpp
@@ -1364,6 +1446,18 @@ point and occluded points. Expected ranges and assignments are computed by hand,
 decoders.
 
 ---
+
+*Amended 2026-10-07 (KITTI replay): what is measured, and one object, one measurement.*
+- **The near face, not the median.** Each fused object and LiDAR-only obstacle carries `nearFace`:
+  the cluster's 5th-percentile x (the surface the car would hit), laterally the middle of that
+  face. The tracker follows it and the gap is measured to it. The median of all points (the first
+  version) sits metres behind the rear of a car whose side is visible: the gap read up to 1.4 m
+  long at the end of an approach, and a LiDAR-only and a camera-fused measurement of the same car
+  disagreed by over a metre and made two tracks.
+- **Duplicates merged.** Two detections over one object (a box and an occluded neighbour's partial
+  mask) can choose the same LiDAR cluster. Measurements within 0.3 m of each other are one object:
+  the best-supported is kept. A duplicate otherwise starts a second track and breaks the real
+  one's measured run (Part 9.3).
 
 ## Part 9 — Decision / Arbiter and Reckless-Driving Detection
 
@@ -1604,6 +1698,32 @@ decision can never disagree about what is in the lane.
 - **Risk `r`** follows the overlay design §3.1. Sudden braking ahead also sets the 0.4 floor.
 
 ---
+
+*Amended 2026-10-07 (KITTI replay, item 1 of the pre-hardware list): two more conditions on rule 1,
+each found as a false brake on a real recorded drive, and the evidence for both is in the
+progress log; then an onset confirmation, from the same drive replayed with timing variations.
+Ian to review.*
+- **The object must also be in the STRAIGHT path** (`EgoRelativeTrack::inStraightPath`), not only
+  the constant-turn path from the current yaw rate. Close in the two agree, so a real target in a
+  bend still brakes; far out, extrapolating a turn on a corner exit swept across a car parked at the
+  kerb 13 m ahead. That overlap is still a warning (rule 3).
+- **The target must have been measured by the LiDAR without a break for
+  `brake_min_measured_track_ms` (200 ms: three scans)** (`Track::measuredRunSinceMs`). A track that
+  had coasted for 0.6 s was re-associated to an unrelated fragment at the bumper and braked on its
+  first frame back. Tolerating one missed frame was tried and rejected: a chain of road
+  fragments, born at 28 m and "closing" at 31 m/s in a city street, then reached a false brake. The
+  cost is a delay of up to 200 ms after a missed association in a crowded scene (1.7 m at
+  30 km/h). A cycle with no usable LiDAR scan is not a break: nothing was measured either way
+  (`MeasurementBatch::observed`, Part 9.1's tracker); the 200 ms freshness condition above still
+  applies.
+- **Braking STARTS only once the above has held on the same target on every cycle since it first
+  did, and the LiDAR has measured that target at least `brake_confirm_ms` later** (100 ms: a second
+  scan, at any camera rate; `DecisionArbiter::step()`). A measurement confirms, never a prediction:
+  a kerbside cyclist's track, predicted inward on a cycle without a scan, otherwise completed it.
+  Once braking, it continues on every cycle the condition holds. Each
+  false brake found with real-time timing variations (`replay_inspect --jitter`) lasted one cycle: a
+  one-scan velocity spike, or a parked car flickering across the path's edge. Cost: 100 ms (0.8 m
+  at 30 km/h).
 
 ## Part 10 — AR Renderer and Display Sink
 
@@ -2121,10 +2241,47 @@ python3 scripts/run_camera_calibration.py --checkerboard 9x6 --square-size-mm 25
 ```
 Print a 9×6 checkerboard, capture 20–30 images of it at varied angles/distances filling the frame, using the same camera/resolution/lens setting the final system will run at (recalibrate if you change resolution). The script wraps `cv::calibrateCamera()` and writes focal length, principal point, and distortion coefficients to the YAML consumed by `CameraPipeline` (Part 6) and `SceneReconstruction` (Part 8.3).
 
+*Amended 2026-10-08: the script is built (`host/scripts/run_camera_calibration.py`, tested in CI on
+rendered checkerboards through a known lens).* Run from the repository root:
+`python3 host/scripts/run_camera_calibration.py --images calib/ --checkerboard 9x6
+--square-size-mm 25` (`--capture /dev/video0` first takes the views from the camera, at
+`camera.yaml`'s resolution, saving one whenever the board is sharp and placed differently).
+- `9x6` counts **inner** corners: a board of 10 × 7 squares.
+- It refuses a set whose views are all near-frontal (focal length cannot be separated from
+  distance), whose corners cover too little of the image, or whose RMS error is over 1 px; a view
+  far worse than the rest (blur, a bent board) is dropped and the solve repeated.
+- **Get views into the image's corners**, with a board small enough to fit whole there: the lens
+  is only measured where corners were seen. In the test, the recovered model matched the true one
+  to 0.34 px over the region the views covered (up to a 0.09° rotation that the LiDAR–camera
+  calibration absorbs) and was off by up to 2 px in the extreme corners no complete board reached.
+- It prints the horizontal field of view: compare it with the lens's datasheet.
+
 ### 12.2 Camera-to-vehicle and LiDAR-to-camera extrinsic calibration
 
 - **Camera-to-vehicle**: measure the camera's mounting position and orientation relative to the vehicle's reference frame (typically the rear axle midpoint, ground-projected) by hand — tape measure and a level are sufficient for the accuracy this system needs; write the result to `config/camera_extrinsics.yaml`.
 - **LiDAR-to-camera**: place a checkerboard visible to both sensors simultaneously, capture a synchronized camera image and LiDAR scan, and compute the rotation/translation between them (a straightforward point-correspondence solve — OpenCV's `solvePnP` against the checkerboard corners found in both the image and, after manually picking the same corners in the point cloud, works for a one-off calibration; a dedicated LiDAR-camera calibration toolbox is a nice-to-have, not required). Write to `config/lidar_camera_extrinsics.yaml`.
+
+*Amended 2026-10-08: board PLANES, not picked corners; the tool is built.* A Mid-360 scans in a
+non-repeating pattern, so no LiDAR point lands on a corner, and picking "the same corners in the
+point cloud" by hand would be guesswork. Instead:
+1. Record with the system itself: `build/host/ar_drive_assist --record calib1` (`system/Recorder.h`;
+   it writes the replay format, `system/Recording.h`). Hold a rigid board (foam board, the
+   checkerboard printed on it with a plain margin) **still for 2 s each** in 6–10 poses 3–8 m
+   ahead: left, right, near, far, and tilted forward, back and to each side by 20–40°. Nothing
+   within 0.3 m of the board; stand behind it, arms below its edge.
+2. `python3 host/scripts/run_lidar_camera_calibration.py calib1 --checkerboard 9x6
+   --square-size-mm 80 --board-size-mm 900x700` (the whole board, margin included). Per held pose,
+   the camera gives the board's plane (solvePnP); the LiDAR points on the board, accumulated over
+   the held seconds, are picked with the current estimate (starting from the hand-measured mount,
+   which may be up to `--margin-m` 0.3 m off); the transform that puts every point on its pose's
+   plane is solved (robust least squares), and the picking tightened and repeated. It refuses
+   poses that leave a direction unconstrained ("tilt the board more ways") and drops a pose far
+   worse than the rest. It prints the LiDAR's resulting place on the car (with
+   `camera_extrinsics.yaml`): compare with the mount drawing and an inclinometer (12.2.2).
+3. In the test (synthetic recording, 7 poses, 2 cm LiDAR noise, a person behind the board, a start
+   3° and 10 cm off): 0.39° and 4 cm from the truth, LiDAR points landing within 6.8 px of where
+   they should at 5–40 m with a 1000 px focal length. The limit is the camera's own estimate of
+   each board's plane at 4–7 m; 12.2.1's monitor then refines the rotation from the driving scene.
 
 ### 12.2.1 Startup verification and bounded refinement of the LiDAR–camera extrinsics
 
@@ -2187,6 +2344,37 @@ perturbation of the extrinsics. It checks that:
 - a small perturbation is recovered within tolerance;
 - a large one ends `DEGRADED` rather than "fixed" at the bound;
 - a featureless scene never produces `REFINED`.
+
+*Amended 2026-10-08: built (`scene/ExtrinsicMonitor`, `scene/ExtrinsicMonitorThread`); what the
+evidence changed.*
+- **The score is edge alignment only,** made robust by three findings on KITTI: depth edges are
+  scored as PAIRS (a near point and the point behind it across the outline, at the midpoint of their
+  projections; the near points alone sit inside every outline, and above objects there is often
+  only sky, so the score kept rising by pitching up); closeness to an image edge is taken relative
+  to its local mean (dense foliage and facades otherwise "scored" any point moved into them); and
+  the search runs coarse to fine (a 3-D grid, then coordinate search, on a 4× blurred edge map, then
+  on the sharp one). Mask agreement is not used: it would make the check depend on the detector.
+- **Decisions on held-out frames.** Each check fits on half the window and tests on the other half;
+  each axis of a correction is kept only as far as the held-out half supports it, so a weakly
+  constrained axis (roll, on a wide image) cannot drift on noise.
+- **"Beyond the bounds" is looked for, not inferred:** a coarse search 3× wider, polished on the
+  sharp map; DEGRADED only if a clearly better alignment lies outside the bounds on both halves.
+  (Two inferences were tried and failed on the data: "the best is at the bound" fired on a drifting
+  roll; "the score is a clear peak" passed a 2.5° error, the score being noise there.) Errors beyond
+  3° are out of reach; 12.2.2's knock check covers those.
+- **Rotation only by default** (`maxTransM` = 0): a few centimetres hardly change the score.
+- **No evidence while the car turns** (over 3°/s): a timing error is then a rotation of the cloud,
+  and replaying KITTI in real time "refined" 0.97° of yaw out of it before this gate.
+- **Fusion:** a refinement changes only the camera's projection; the LiDAR's place in the vehicle,
+  which braking uses, stays the calibrated one. DEGRADED stops mask-based ranging: every point goes
+  to the LiDAR-only obstacles in the vehicle-frame corridor, and the renderer shows the driver a
+  fixed amber "recalibrate" notice (`SceneSnapshot::extrinsicsDegraded`).
+- **Tests** are integration tests (`host/test/integration/test_extrinsic_monitor.cpp`, label
+  `pipeline`), not unit tests: they need OpenCV's image processing, which the CPU-only unit suite
+  does not link. Synthetic: the truth VERIFIED; 0.7° REFINED back to within 0.12°; 2.5° DEGRADED; a
+  featureless scene never REFINED; nothing while turning. KITTI's real frames: from KITTI's own
+  calibration and from a mount knocked 0.72° off it, both end within 0.22° and 0.34° of KITTI's
+  (its published calibration being itself a few tenths of a degree uncertain); a 2.5° knock DEGRADED.
 
 ### 12.2.2 IMU mounting, camera pitch and LiDAR tilt (added 2026-09-30, the two-box hub)
 
@@ -2268,6 +2456,27 @@ Run with `ctest` from the `host/build` directory; wire this into Part 14's phase
 - `replay_recorded_frames.py` (in `tools/bench_rig/`) feeds a pre-recorded camera+LiDAR dataset through the full pipeline offline and checks the pipeline runs end-to-end without crashing and produces a plausible `DetectionFrame`/`ActuationRequest` stream — this is how you validate the whole software stack **before** any hub or vehicle hardware is involved.
 - A loopback test against the firmware: run the firmware on the bench (Part 4.7's setup) and run the real `VehicleInterface` against it, asserting `SensorReport`s arrive at 50 Hz and a synthetic `ActuationRequest` results in the correct bench-wired relay/actuator behaviour.
 - Part 12.4's road-projection precision check, repeated here as a gating integration check rather than a one-off — do not consider Phase 11 (Part 14) complete until it passes, since a visibly drifting nav overlay is as much a "this subsystem doesn't work yet" signal as a failing unit test.
+
+*Implemented 2026-10-07, before any hardware.* `python3 tools/bench_rig/replay_recorded_frames.py`
+- **Recordings** (`system/Recording.h`): camera video and frame times, LiDAR scans and times, the
+  hub's SensorReport fields (`hub.csv`) and the calibration, in one directory. The project's own
+  drives will be recorded in it; `tools/bench_rig/kitti_to_recording.py` converts a KITTI raw drive
+  (real synchronised camera, Velodyne and GPS/IMU; CC BY-NC-SA 3.0, credit Geiger et al. 2013).
+- **`hub_sim --replay <recording>/hub.csv`** plays the GPS/IMU through the firmware's own
+  SafetyCore; `ar_drive_assist --replay <recording>` runs every host thread on the recording.
+- **`replay_inspect`** runs the same classes frame by frame, deterministically: per-frame tracks
+  and decisions (CSV) and an annotated video (LiDAR coloured by height above the fitted road,
+  detections, tracks, the decision).
+- **The test obstacle** (`--inject-obstacle gap,speed,appear_s`, `lidar/InjectedObstacle.h`): a
+  recorded drive rarely contains what the brake exists for, so a box is placed on the road the car
+  really drove and seen by BOTH sensors (points in the LiDAR, painted into the camera). Two simpler
+  versions were physically impossible and gave misleading results; both are recorded in the
+  progress log.
+- **The checks** (21): no brake on the drive as recorded; with an obstacle early and late in the
+  drive, braking starts while the true time to collision is >= 1.0 s, never lapses longer than a
+  brake command's 300 ms hold, measures the gap within 0.3 m, never brakes with no obstacle; and
+  in real time, inference and fusion run, a BRAKE request is acknowledged as applied by the hub,
+  there is no FAULT, and the shutdown is ordered with the final zeroed command.
 
 ### 13.3 Actuator bench test (before any vehicle involvement — mandatory gate)
 
@@ -2604,8 +2813,18 @@ reprojection_error_px: 0.0   # fill in from the calibration script's output; kee
 # Inside WSL2 Debian, after enabling mirrored networking (Part 2.1):
 ip addr show                      # confirm the host's Ethernet interface is visible
 sudo ip addr add 192.168.1.50/24 dev eth1   # match the LiDAR's subnet
-ping 192.168.1.100                # LiDAR default IP — confirm reachability before starting LidarProcessor
+ping 192.168.1.1xx                # the Mid-360's IP: see below
 ```
+*Corrected 2026-10-07:* a Mid-360 does not sit at 192.168.1.100. Its factory address is
+**192.168.1.1xx, where xx is the last two digits of its serial number** (on the label), and it
+sends its point data to the host address it was configured with, 192.168.1.50 from the factory
+(Livox Mid-360 user manual; check both with Livox Viewer 2 on Windows if no data arrives). So the
+host's adapter takes 192.168.1.50, which is also `host_ip` in `host/config/lidar.yaml`; change both
+together if that address is taken. The SDK finds the LiDAR by itself; `LivoxCapture` logs its
+serial number and address when it appears, and switches it to normal (measuring) mode.
+In mirrored mode, Windows' firewall can drop the LiDAR's UDP data (ports 56100-56501) before it
+reaches WSL2: if the ping works but no point data arrives, allow those ports inbound on the
+adapter, or bind the adapter into WSL2 as below.
 If mirrored mode isn't available (pre-22H2 Windows), fall back to binding the USB-to-Ethernet adapter itself via `usbipd-win` so it enumerates as its own interface directly inside WSL2, then apply the same static IP configuration to that interface.
 
 ### Appendix D — Troubleshooting Quick Reference

@@ -63,6 +63,7 @@ OverlayScene ArRenderer::build(const RenderInputs& in) {
         it.sourceId = source;
         sc.items.push_back(it);
     };
+    if (in.systemNotice) label(*in.systemNotice, {24, 48}, palette::kAmber, 30, kLayerHud, -1);
     auto barrier = [&](double x, double y, const Rgba& c, float pulse, int source) {
         OverlayItem it;
         it.kind = OverlayKind::ROAD_BARRIER;

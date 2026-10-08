@@ -14,5 +14,18 @@ ego_path_half_width_m: 1.2        # an object counts as "in lane" within this of
                                   # (half the car's width plus a margin)
 min_closing_speed_mps: 0.5        # below this closing speed no time-to-collision is computed
                                   # (a stopped car 30 m ahead at 0.1 m/s is not a 300 s TTC event)
+brake_min_measured_track_ms: 200  # added 2026-10-07: rule 1 brakes only on a target measured by the
+                                  # LiDAR without a break for this long (3 scans at 10 Hz). A track
+                                  # that coasts and re-associates to another cluster starts again.
+                                  # Cost: up to 200 ms on a truly sudden obstacle (1.7 m at 30 km/h).
+                                  # Found on the KITTI replay (progress log); Ian to review.
+brake_confirm_ms: 100             # added 2026-10-07: rule 1 STARTS braking only once its condition
+                                  # has held on the same target on every cycle, and the LiDAR has
+                                  # measured it again this long after it first qualified (a second
+                                  # scan, at any camera rate; never a prediction). Once braking, it
+                                  # continues while any target qualifies. Filters one-scan velocity
+                                  # spikes and objects flickering across the path's edge (6 of 40
+                                  # jittered KITTI replays). Cost: 100 ms (0.8 m at 30 km/h).
+                                  # Ian to review.
 hub_state_max_age_ms: 100         # a hub report older than this means "not known to be armed":
                                   # the hub reports at 50 Hz, so 100 ms is five missed reports

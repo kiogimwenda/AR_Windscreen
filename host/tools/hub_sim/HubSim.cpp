@@ -12,7 +12,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <thread>
 
@@ -36,6 +38,9 @@ struct HubSim::Impl {
     mutable std::mutex outMutex;
     Outputs out;
     std::atomic<std::uint64_t> frames{0}, errors{0}, commands{0}, reports{0};
+    std::vector<ReplayReport> replay;  // set before start()
+    bool replayStarted = false;
+    std::uint32_t replayStartMs = 0;
 
     hub::SafetyCore core;
     hub::FrameParser parser;
@@ -44,6 +49,10 @@ struct HubSim::Impl {
         return static_cast<std::uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                               std::chrono::steady_clock::now() - t0)
                                               .count());
+    }
+
+    ReplayReport replayAt(std::uint32_t ms) const {
+        return sim::replayAt(replay, replay.front().tUs + static_cast<std::int64_t>(ms) * 1000);
     }
 
     void send(hub_protocol::MessageType type, const void* payload, std::size_t len) {
@@ -116,6 +125,7 @@ struct HubSim::Impl {
                 }
                 std::lock_guard<std::mutex> lock(outMutex);
                 out.brakeIntensity = o.brakeIntensity;
+                if (o.brakeIntensity > out.peakBrake) out.peakBrake = o.brakeIntensity;
                 out.cableMagnet = o.cableMagnet;
                 out.indicators = o.indicators;
                 out.lights = o.lights;
@@ -126,16 +136,36 @@ struct HubSim::Impl {
             if (now - lastReport >= hub_config::kSensorReportPeriodMs) {
                 lastReport = now;
                 if (paused.load()) continue;
-                eastM += 10.0 * 0.02;
                 hub_protocol::SensorReport r{};
                 r.timestampMs = now;
-                r.latitude = -1.2864;
-                r.longitude = 36.8172 + eastM / 111320.0;
-                r.speedKph = 36.0f;
-                r.gpsFixValid = 1;
-                r.accelZ = 1.0f;
-                r.headingDeg = 90.0f;
-                r.obdSpeedKph = 36.0f;
+                if (!replay.empty()) {
+                    if (!replayStarted && frames.load() > 0) {
+                        replayStarted = true;  // the host is talking: the drive starts now
+                        replayStartMs = now;
+                    }
+                    const ReplayReport row = replayAt(replayStarted ? now - replayStartMs : 0);
+                    r.latitude = row.lat;
+                    r.longitude = row.lon;
+                    r.speedKph = row.speedKph;
+                    r.gpsFixValid = row.fix;
+                    r.accelX = row.ax;
+                    r.accelY = row.ay;
+                    r.accelZ = row.az;
+                    r.gyroX = row.gx;
+                    r.gyroY = row.gy;
+                    r.gyroZ = row.gz;
+                    r.headingDeg = row.headingDeg;
+                    r.obdSpeedKph = row.obdKph;
+                } else {
+                    eastM += 10.0 * 0.02;
+                    r.latitude = -1.2864;
+                    r.longitude = 36.8172 + eastM / 111320.0;
+                    r.speedKph = 36.0f;
+                    r.gpsFixValid = 1;
+                    r.accelZ = 1.0f;
+                    r.headingDeg = 90.0f;
+                    r.obdSpeedKph = 36.0f;
+                }
                 r.obdRpm = 1800;
                 r.obdBrakePedalActive = 0xFF;
                 r.ignitionOn = box.load() ? 1 : 0;
@@ -196,6 +226,71 @@ void HubSim::setPowerBoxPresent(bool present) {
 void HubSim::setActuatorCurrent(float amps) {
     impl_->current = amps;
 }
+void HubSim::setReplay(std::vector<ReplayReport> rows) {
+    if (impl_->running.load()) throw std::logic_error("HubSim: setReplay before start()");
+    impl_->replay = std::move(rows);
+}
+
+ReplayReport replayAt(const std::vector<ReplayReport>& replay, std::int64_t t) {
+    if (t <= replay.front().tUs) return replay.front();
+    if (t >= replay.back().tUs) return replay.back();
+    std::size_t i = 1;
+    while (replay[i].tUs < t) ++i;
+    const ReplayReport &a = replay[i - 1], &b = replay[i];
+    const double f = double(t - a.tUs) / double(b.tUs - a.tUs);
+    auto mix = [f](double x, double y) { return x + (y - x) * f; };
+    ReplayReport r = a;
+    r.tUs = t;
+    r.lat = mix(a.lat, b.lat);
+    r.lon = mix(a.lon, b.lon);
+    r.speedKph = float(mix(a.speedKph, b.speedKph));
+    r.ax = float(mix(a.ax, b.ax));
+    r.ay = float(mix(a.ay, b.ay));
+    r.az = float(mix(a.az, b.az));
+    r.gx = float(mix(a.gx, b.gx));
+    r.gy = float(mix(a.gy, b.gy));
+    r.gz = float(mix(a.gz, b.gz));
+    r.obdKph = float(mix(a.obdKph, b.obdKph));
+    double dh = b.headingDeg - a.headingDeg;
+    if (dh > 180) dh -= 360;
+    if (dh < -180) dh += 360;
+    r.headingDeg = float(std::fmod(a.headingDeg + dh * f + 360.0, 360.0));
+    return r;
+}
+
+std::vector<ReplayReport> loadReplayReports(const std::string& csvPath) {
+    std::ifstream in(csvPath);
+    if (!in) throw std::runtime_error(csvPath + ": cannot read");
+    std::vector<ReplayReport> rows;
+    std::string line;
+    std::getline(in, line);  // header
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        std::vector<std::string> f;
+        std::stringstream ss(line);
+        std::string c;
+        while (std::getline(ss, c, ',')) f.push_back(c);
+        if (f.size() < 12) throw std::runtime_error(csvPath + ": short row '" + line + "'");
+        ReplayReport r;
+        r.tUs = std::stoll(f[0]);
+        r.lat = std::stod(f[1]);
+        r.lon = std::stod(f[2]);
+        r.speedKph = std::stof(f[3]);
+        r.fix = static_cast<std::uint8_t>(std::stoi(f[4]));
+        r.ax = std::stof(f[5]);
+        r.ay = std::stof(f[6]);
+        r.az = std::stof(f[7]);
+        r.gx = std::stof(f[8]);
+        r.gy = std::stof(f[9]);
+        r.gz = std::stof(f[10]);
+        r.headingDeg = std::stof(f[11]);
+        r.obdKph = f.size() > 12 && !f[12].empty() ? std::stof(f[12]) : NAN;
+        rows.push_back(r);
+    }
+    if (rows.empty()) throw std::runtime_error(csvPath + ": no reports");
+    return rows;
+}
+
 void HubSim::setReportsPaused(bool paused) {
     impl_->paused = paused;
 }

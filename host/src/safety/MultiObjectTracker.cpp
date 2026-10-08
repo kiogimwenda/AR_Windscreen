@@ -134,6 +134,19 @@ void MultiObjectTracker::process(const MeasurementBatch& batch) {
         if (t > tr.lastTimeMs) tr.filter.predict((t - tr.lastTimeMs) / 1000.0);
         tr.lastTimeMs = std::max(tr.lastTimeMs, t);
     }
+    if (!batch.observed) {
+        tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(),
+                                     [&](const Track& tr) {
+                                         return t > tr.lastUpdateMs &&
+                                                (t - tr.lastUpdateMs) / 1000.0 > cfg_.maxCoastS;
+                                     }),
+                      tracks_.end());
+        for (Track& tr : tracks_) {
+            tr.history.emplace_back(t, tr.filter.state());
+            while (tr.history.size() > cfg_.historyLength) tr.history.pop_front();
+        }
+        return;
+    }
 
     // 2. Measurements into the world frame.
     std::vector<Eigen::Vector2d> zw;
@@ -199,7 +212,12 @@ void MultiObjectTracker::process(const MeasurementBatch& batch) {
         ++tr.hits;
         tr.misses = 0;
         tr.lastUpdateMs = t;
-        if (m.rangeMeasured) tr.lastMeasuredRangeMs = t;
+        if (m.rangeMeasured) {
+            tr.lastMeasuredRangeMs = t;
+            if (tr.measuredRunSinceMs == 0) tr.measuredRunSinceMs = t;
+        } else {
+            tr.measuredRunSinceMs = 0;
+        }
         if (tr.state == TrackState::PREDICTED_ONLY ||
             (tr.state == TrackState::TENTATIVE && tr.hits >= cfg_.confirmHits)) {
             tr.state = TrackState::CONFIRMED;
@@ -211,6 +229,7 @@ void MultiObjectTracker::process(const MeasurementBatch& batch) {
         if (matched[i]) continue;
         Track& tr = tracks_[i];
         ++tr.misses;
+        tr.measuredRunSinceMs = 0;  // the run is broken
         if (tr.state == TrackState::TENTATIVE) {
             tr.hits = 0;  // "consecutive" hits: a gap restarts confirmation
         } else {
@@ -245,7 +264,7 @@ void MultiObjectTracker::process(const MeasurementBatch& batch) {
         tr.hits = 1;
         tr.birthCov = Rw[j];
         tr.lastUpdateMs = tr.lastTimeMs = t;
-        if (m.rangeMeasured) tr.lastMeasuredRangeMs = t;
+        if (m.rangeMeasured) tr.lastMeasuredRangeMs = tr.measuredRunSinceMs = t;
         tracks_.push_back(std::move(tr));
     }
 

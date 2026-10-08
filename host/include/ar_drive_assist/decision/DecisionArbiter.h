@@ -19,6 +19,12 @@
 //      ARMED means: a hub report no older than `hub_state_max_age_ms`, kill switch not engaged,
 //      no actuator fault in the hub's last AckStatus, AND the EventLog still able to record.
 //      Unknown is not armed. A system that cannot record actuation evidence must not actuate.
+//      ONSET CONFIRMATION (step() only, added 2026-10-07): braking starts once the above has held
+//      on the SAME target on every cycle since it first did, AND the LiDAR has measured that target
+//      at least `brake_confirm_ms` after that first cycle (a later measurement, not a prediction,
+//      confirms it); until then rules 2-4 apply. Once braking, it continues on any cycle the above
+//      holds. One LiDAR scan's velocity spike, or an object flickering across the path's edge, then
+//      never brakes (KITTI replay, progress log).
 //   2. HAZARDS (reason HARD_BRAKE_DETECTED): the IMU shows deceleration above `hard_brake_decel_g`.
 //   3. A HIGH/CRITICAL reckless-driving or hazard assessment in the ego path: a WARNING for the
 //      renderer and warning tone. The request stays NONE: reckless-driving detection never brakes
@@ -72,6 +78,12 @@ struct Decision {
     bool armed = false;
     int targetTrackId = -1;  // rule 1/3: the object concerned
     double ttcS = -1, gapM = -1, closingSpeedMps = 0;
+    double lateralM = 0;                 // rule 1's target: left of the car's centre line (m)
+    int32_t targetClass = -1;            // its ObjectClass (-1 = LiDAR only)
+    std::uint64_t measuredRunMs = 0;     // how long the LiDAR has measured it without a break
+    std::uint64_t targetMeasuredMs = 0;  // when the LiDAR last measured it
+    bool brakeQualifies = false;         // rule 1's condition holds this cycle (confirmed or not)
+    std::uint64_t confirmingMs = 0;  // step(): how long it has held on this target, not yet braking
     std::vector<std::string> warnings;  // rule 3: for the renderer and the warning tone
     std::string context() const;        // one line for the EventLog
 };
@@ -80,9 +92,9 @@ class DecisionArbiter {
 public:
     DecisionArbiter(const DecisionThresholds& thresholds, EventLog* log = nullptr);
 
-    // Pure: the decision for one cycle.
+    // Pure: the decision for one cycle, WITHOUT the onset confirmation.
     Decision evaluate(const ArbiterInput& in) const;
-    // evaluate() + the evidence trail. Use this in the running system.
+    // evaluate() + the onset confirmation + the evidence trail. Use this in the running system.
     Decision step(const ArbiterInput& in);
 
     bool armed(const ArbiterInput& in) const;
@@ -93,6 +105,11 @@ private:
     DecisionThresholds th_;
     EventLog* log_;
     bool lastWasActive_ = false;
+    int pendingTarget_ = -1;  // the target rule 1 is confirming
+    std::uint64_t pendingSinceMs_ = 0;
+    bool braking_ = false;
+
+    Decision evaluate(const ArbiterInput& in, bool allowBrake) const;
 };
 
 }  // namespace ar_drive_assist

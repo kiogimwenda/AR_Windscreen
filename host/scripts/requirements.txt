@@ -1,0 +1,8 @@
+# Python packages for host/scripts and tools/bench_rig (setup_env.sh installs these into the active
+# virtual environment). The model-training scripts need PyTorch and Ultralytics on top: see
+# docs/BUILD_GUIDE.md Part 7, not installed here.
+numpy
+scipy
+pyyaml
+opencv-python-headless  # the tools only; the host itself uses the C++ OpenCV 4.10 CUDA build
+pytest

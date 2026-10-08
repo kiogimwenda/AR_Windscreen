@@ -41,8 +41,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <opencv2/core.hpp>
 #include <opencv2/videoio.hpp>
+#include <vector>
 
 #include "ar_drive_assist/camera/CameraConfig.h"
 #include "ar_drive_assist/camera/CameraFrame.h"
@@ -58,8 +60,10 @@ public:
 
     // Opens the source and reads the first frame (so the size is known and checked). Throws
     // std::runtime_error, naming the source, if it cannot be opened, delivers the wrong size, or
-    // does not match the calibration.
-    CameraPipeline(const CameraConfig& cfg, FrameBus& frames, EventLog* log = nullptr);
+    // does not match the calibration. `display`: a second bus for the renderer (each bus has
+    // one reader); every frame goes to both, sharing its pixels.
+    CameraPipeline(const CameraConfig& cfg, FrameBus& frames, EventLog* log = nullptr,
+                   FrameBus* display = nullptr);
 
     // SystemManager contract: capture and publish until stop.
     void run(const std::atomic<bool>& stop);
@@ -76,10 +80,21 @@ public:
     cv::Size frameSize() const { return size_; }
     double sourceFps() const { return sourceFps_; }
 
+    // Replays only: called on every published frame (after undistortion) with the replay time in
+    // seconds, to draw a test object into it (lidar/InjectedObstacle.h). Set before run().
+    void setReplayHook(std::function<void(cv::Mat&, double)> hook) {
+        replayHook_ = std::move(hook);
+    }
+
+    // Called with every published frame (after undistortion), on the camera's thread; it must
+    // return at once (system/Recorder.h copies and queues). Set before run().
+    void setFrameTap(std::function<void(const CameraFrame&)> tap) { tap_ = std::move(tap); }
+
     struct Stats {
-        std::uint64_t captured = 0;  // frames read from the source
-        std::uint64_t busDrops = 0;  // dropped because frameBus was full
-        double meanUndistortMs = 0;  // per frame, when undistorting
+        std::uint64_t captured = 0;      // frames read from the source
+        std::uint64_t displayDrops = 0;  // dropped because the display bus was full
+        std::uint64_t busDrops = 0;      // dropped because frameBus was full
+        double meanUndistortMs = 0;      // per frame, when undistorting
     };
     Stats stats() const { return stats_; }  // read after run() returns, or from the run thread
 
@@ -91,6 +106,11 @@ private:
     CameraConfig cfg_;
     FrameBus& frames_;
     EventLog* log_;
+    FrameBus* display_;
+    std::vector<std::int64_t> frameTimesUs_;
+    std::function<void(cv::Mat&, double)>
+        replayHook_;  // a recording's capture times (empty: fixed rate)
+    std::function<void(const CameraFrame&)> tap_;
     CameraSourceKind kind_;
     cv::VideoCapture cap_;
     cv::Size size_;

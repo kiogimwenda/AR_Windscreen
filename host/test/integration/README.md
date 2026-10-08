@@ -20,6 +20,15 @@ Built with the main host build and run with `ctest --test-dir build -L <label>`:
 | `gpu` | TensorRT engine, GPU pre-processing, the windowed renderer | the GPU (and WSLg for the window) |
 | `osrm` | routing and map-matching | the OSRM tools |
 | `camera` | `CameraPipeline` through real OpenCV and GStreamer: order, timestamps, rate, buffer ownership, both camera formats' decode pipelines, undistortion against the published model, calibration mismatch, stall detection, prompt stop, bus overflow, file replay | GStreamer only: `videotestsrc` stands in for the camera |
+| `pipeline` | the glue between the threads: duplicate measurements merged, the decision cycle, the renderer's inputs, the injected obstacle's geometry, recordings and the `Recorder`'s round trip; `ExtrinsicMonitor` (Part 12.2.1) on synthetic scenes and, when `data/recordings/kitti_0005` exists, on KITTI | nothing (CPU only) |
 
-None of these run in CI (Part 13.5 is explicit about that) — they run on the actual machine, on the
+
+The whole-system replay (Part 13.2) is a script, not a ctest: `python3
+tools/bench_rig/replay_recorded_frames.py` (needs a recording, see `data/README.md`).
+
+The calibration tools' tests are Python, in `host/test/scripts/` (`python3 -m pytest
+host/test/scripts`): synthetic checkerboard images and LiDAR scans with a known answer. Those DO run
+in CI (they need only OpenCV, NumPy, SciPy and PyYAML).
+
+None of the ctest labels above run in CI (Part 13.5 is explicit about that) — they run on the actual machine, on the
 bench, and eventually on the vehicle.

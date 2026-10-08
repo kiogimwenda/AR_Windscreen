@@ -62,6 +62,10 @@ struct DecisionThresholds {
     double egoPathHalfWidthM = 0.0;          // an object is "in lane" within this of the ego path
     double minClosingSpeedMps = 0.0;         // below this, no time-to-collision is computed
     double hubStateMaxAgeMs = 0.0;           // older hub reports mean "not known to be armed"
+    // Added 2026-10-07 (KITTI replay): rule 1 needs this long an unbroken LiDAR-measured run.
+    double brakeMinMeasuredTrackMs = 0.0;
+    // Added 2026-10-07: rule 1's condition must hold on one target this long before braking starts.
+    double brakeConfirmMs = 0.0;
 };
 
 struct Config {

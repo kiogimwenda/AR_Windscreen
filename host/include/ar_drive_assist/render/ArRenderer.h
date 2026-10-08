@@ -74,6 +74,9 @@ struct RenderInputs {
     std::vector<SignObservation> signs;
     std::optional<int> mapMaxSpeedKph;
     bool roadChanged = false;
+    // A system fault the driver must act on, shown as a fixed amber notice at the top left
+    // (ExtrinsicMonitor DEGRADED: Part 12.2.1 "the driver is told to recalibrate").
+    std::optional<std::string> systemNotice;
 };
 
 struct RendererConfig {

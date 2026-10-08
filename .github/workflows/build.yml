@@ -47,6 +47,16 @@ jobs:
       - name: Run unit tests
         run: ctest --test-dir host/test/unit/build --output-on-failure
 
+  calibration-tools:
+    name: Calibration tools (Python, synthetic scenes with known answers — Part 12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.x" }
+      - run: pip install opencv-python-headless numpy scipy pyyaml pytest
+      - run: python -m pytest host/test/scripts -q
+
   format-check:
     name: clang-format check
     runs-on: ubuntu-latest

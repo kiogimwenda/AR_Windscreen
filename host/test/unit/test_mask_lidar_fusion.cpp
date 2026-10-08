@@ -408,3 +408,19 @@ TEST(MaskLidarFusion, SignPlacedByRetroreflectivePoints) {
     EXPECT_NEAR(o.position.y(), 3.0, 0.15);
     EXPECT_NEAR(o.position.z(), 2.3, 0.15);
 }
+
+// nearFace: the surface the car would hit, not the middle of the object. A car 10 m ahead seen
+// from behind and to one side: its rear face (x = 10, y from -0.9 to 0.9) and its left side
+// (y = 0.9, x from 10 to 14). The median of all points sits on the side, metres back; the near
+// face is the rear face's centre (KITTI replay, 2026-10-07).
+TEST(NearFace, IsTheRearFaceNotTheMedian) {
+    std::vector<Eigen::Vector3d> pts;
+    for (double z = 0.3; z <= 1.5; z += 0.1) {
+        for (double y = -0.9; y <= 0.9; y += 0.1) pts.emplace_back(10, y, z);
+        for (double x = 10; x <= 14; x += 0.1) pts.emplace_back(x, 0.9, z);
+    }
+    pts.emplace_back(3.0, 0.0, 1.0);  // one stray point in front must not move it
+    const Eigen::Vector3d f = nearFace(pts);
+    EXPECT_NEAR(f.x(), 10.0, 0.05);
+    EXPECT_NEAR(f.y(), 0.0, 0.2);  // the rear face's centre, not the side at 0.9
+}

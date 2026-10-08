@@ -3,6 +3,7 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <fstream>
 #include <stdexcept>
 #include <vector>
 
@@ -84,6 +85,28 @@ CameraConfig loadCameraConfig(const std::string& path) {
     if (c.stallTimeoutS <= 0 || c.reportEveryS <= 0)
         throw std::runtime_error(path + ": stall_timeout_s and report_every_s must be positive");
     return c;
+}
+
+std::vector<std::int64_t> loadFrameTimes(const std::string& csvPath) {
+    std::ifstream in(csvPath);
+    if (!in) throw std::runtime_error(csvPath + ": cannot read");
+    std::vector<std::int64_t> t;
+    std::string line;
+    std::getline(in, line);  // header
+    while (std::getline(in, line)) {
+        const auto comma = line.find(',');
+        if (comma == std::string::npos) continue;
+        try {
+            t.push_back(std::stoll(line.substr(comma + 1)));
+        } catch (const std::exception&) {
+            throw std::runtime_error(csvPath + ": malformed line '" + line + "'");
+        }
+        if (t.size() > 1 && t.back() < t[t.size() - 2])
+            throw std::runtime_error(csvPath + ": times go backwards at frame " +
+                                     std::to_string(t.size() - 1));
+    }
+    if (t.empty()) throw std::runtime_error(csvPath + ": no frames");
+    return t;
 }
 
 CameraIntrinsics loadCameraIntrinsics(const std::string& path) {

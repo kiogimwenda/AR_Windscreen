@@ -7,7 +7,8 @@
 #    cable pinout in BUILD_GUIDE 4.8.3, plus the fail-safe rules and the footprints;
 # 4. a PDF of each schematic and a CSV bill of materials are exported for review;
 # 5. a board drawn as wired sheets (<board>_drawing.py) is also generated label-only in a scratch
-#    directory, and compare_nets.py requires the two netlists to be identical.
+#    directory, and compare_nets.py requires the two netlists to be identical;
+# 6. the assembly-day documents (docs/assembly, assembly.py) must be up to date with the boards.
 # Uses KiCad 10 for Windows from WSL (kicad-cli.exe); set KICAD_DIR for another install.
 set -euo pipefail
 HW="$(cd "$(dirname "$0")/.." && pwd)"
@@ -36,3 +37,4 @@ for b in pod_board power_board; do
 done
 KICAD_FOOTPRINTS="$KICAD_DIR/share/kicad/footprints" \
     python3 "$HW/gen/check_nets.py" "$HW/pod_board/pod_board.net" "$HW/power_board/power_board.net"
+python3 "$HW/gen/assembly.py" --check

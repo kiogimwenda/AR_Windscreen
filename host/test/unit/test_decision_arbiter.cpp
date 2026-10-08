@@ -37,6 +37,8 @@ DecisionThresholds thresholds() {
     t.egoPathHalfWidthM = 1.2;
     t.minClosingSpeedMps = 0.5;
     t.hubStateMaxAgeMs = 100;
+    t.brakeMinMeasuredTrackMs = 200;
+    t.brakeConfirmMs = 100;
     return t;
 }
 
@@ -61,7 +63,8 @@ const Track* trackWithId(int id) {
     return &gTracks.back();
 }
 
-// A qualifying object: confirmed, LiDAR-ranged, in the ego path.
+// A qualifying object: confirmed, LiDAR-ranged without a break for 0.5 s, in the ego path (both
+// the curved and the straight one).
 EgoRelativeTrack object(int id, double gapM, double closingMps) {
     EgoRelativeTrack o;
     o.track = trackWithId(id);
@@ -69,6 +72,8 @@ EgoRelativeTrack object(int id, double gapM, double closingMps) {
     o.gapM = gapM;
     o.closingSpeedMps = closingMps;
     o.inEgoPath = true;
+    o.inStraightPath = true;
+    o.measuredRunMs = 500;
     o.confirmed = true;
     o.rangeMeasured = true;
     return o;
@@ -90,6 +95,8 @@ ArbiterInput input(std::vector<EgoRelativeTrack> objs, std::uint64_t nowMs = 100
     in.nowMs = nowMs;
     in.ego.speedMps = 15;
     in.objects = std::move(objs);
+    for (auto& o : in.objects)
+        if (o.lastMeasuredMs == 0) o.lastMeasuredMs = nowMs;  // measured this cycle, by default
     in.hub = armedHub(nowMs);
     return in;
 }
@@ -151,6 +158,16 @@ TEST(Arbiter, OnlyConfirmedMeasuredInPathClosingObjectsCanBrake) {
     o = object(1, 15, 10);
     o.inEgoPath = false;
     check(o, "adjacent lane");
+    o = object(1, 15, 10);
+    o.inStraightPath = false;
+    check(o, "in the curved path only (a corner exit sweeping across a parked car)");
+    o = object(1, 15, 10);
+    o.measuredRunMs = 100;
+    check(o, "measured for only 100 ms without a break (a re-associated ghost)");
+    o = object(1, 15, 10);
+    o.measuredRunMs = 200;
+    EXPECT_EQ(a.evaluate(input({o})).request.type, RequestType::RequestType_BRAKE)
+        << "exactly brake_min_measured_track_ms is enough";
     check(object(1, 15, 0.3), "closing slower than min_closing_speed_mps");
     check(object(1, 15, -5), "pulling away");
     check(object(1, -1, 10), "behind the bumper");
@@ -296,6 +313,8 @@ TEST(ArbiterCeiling, NoInputCombinationExceedsTheCeilingOrBypassesTheConditions)
             o.confirmed = u(rng) < 0.8;
             o.rangeMeasured = u(rng) < 0.8;
             o.inEgoPath = u(rng) < 0.7;
+            o.inStraightPath = u(rng) < 0.8;
+            o.measuredRunMs = static_cast<std::uint64_t>(u(rng) * 400);
             in.objects.push_back(o);
         }
         if (u(rng) < 0.3) {
@@ -323,10 +342,12 @@ TEST(ArbiterCeiling, NoInputCombinationExceedsTheCeilingOrBypassesTheConditions)
         ASSERT_NE(in.hub.brakePedalActive, 1) << "k=" << k;
         bool justified = false;
         for (const auto& o : in.objects) {
-            justified = justified || (o.confirmed && o.rangeMeasured && o.inEgoPath &&
-                                      std::isfinite(o.gapM) && std::isfinite(o.closingSpeedMps) &&
-                                      o.gapM > 0 && o.closingSpeedMps > th.minClosingSpeedMps &&
-                                      o.gapM / o.closingSpeedMps < th.ttcBrakeThresholdS);
+            justified =
+                justified || (o.confirmed && o.rangeMeasured && o.inEgoPath && o.inStraightPath &&
+                              o.measuredRunMs >= th.brakeMinMeasuredTrackMs &&
+                              std::isfinite(o.gapM) && std::isfinite(o.closingSpeedMps) &&
+                              o.gapM > 0 && o.closingSpeedMps > th.minClosingSpeedMps &&
+                              o.gapM / o.closingSpeedMps < th.ttcBrakeThresholdS);
         }
         ASSERT_TRUE(justified) << "k=" << k;
     }
@@ -384,10 +405,11 @@ TEST(Arbiter, StepWritesTheEvidenceTrail) {
         EventLog log(path.string());
         DecisionArbiter a(thresholds(), &log);
         a.step(input({}, 1000));                   // idle: not logged
-        a.step(input({object(1, 15, 10)}, 1100));  // BRAKE
-        a.step(input({object(1, 12, 10)}, 1200));  // BRAKE
-        a.step(input({}, 1300));                   // release: logged
-        a.step(input({}, 1400));                   // idle: not logged
+        a.step(input({object(1, 16, 10)}, 1100));  // confirming: not logged
+        a.step(input({object(1, 15, 10)}, 1200));  // BRAKE
+        a.step(input({object(1, 12, 10)}, 1300));  // BRAKE
+        a.step(input({}, 1400));                   // release: logged
+        a.step(input({}, 1500));                   // idle: not logged
     }
     std::ifstream f(path);
     std::string line;
@@ -409,6 +431,53 @@ TEST(Arbiter, StepWritesTheEvidenceTrail) {
     EXPECT_EQ(brakes, 2);
     EXPECT_TRUE(contextOk);
     std::filesystem::remove(path);
+}
+
+// Onset confirmation (step()): braking starts only once rule 1 has held on the SAME target on every
+// cycle for brake_confirm_ms; once braking, it continues while any target qualifies.
+TEST(Arbiter, StepConfirmsTheOnsetOnOneTarget) {
+    auto brakes = [](DecisionArbiter& a, std::vector<EgoRelativeTrack> objs, std::uint64_t ms) {
+        return a.step(input(std::move(objs), ms)).request.type == RequestType::RequestType_BRAKE;
+    };
+    {  // one qualifying cycle (a velocity spike): never brakes
+        DecisionArbiter a(thresholds());
+        EXPECT_FALSE(brakes(a, {object(1, 15, 10)}, 1000));
+        EXPECT_FALSE(brakes(a, {object(1, 15, 2)}, 1100));   // TTC 7.5 s: no longer qualifies
+        EXPECT_FALSE(brakes(a, {object(1, 15, 10)}, 1200));  // starts again
+        EXPECT_FALSE(brakes(a, {object(1, 15, 10)}, 1250));
+        EXPECT_TRUE(brakes(a, {object(1, 14, 10)}, 1300));  // held 100 ms
+    }
+    {  // the target changes while confirming: the confirmation restarts
+        DecisionArbiter a(thresholds());
+        EXPECT_FALSE(brakes(a, {object(1, 15, 10)}, 1000));
+        EXPECT_FALSE(brakes(a, {object(2, 15, 10)}, 1100));
+        EXPECT_TRUE(brakes(a, {object(2, 14, 10)}, 1200));
+    }
+    {  // once braking, a change of target (a re-associated track) does not lapse it
+        DecisionArbiter a(thresholds());
+        brakes(a, {object(1, 15, 10)}, 1000);
+        EXPECT_TRUE(brakes(a, {object(1, 14, 10)}, 1100));
+        EXPECT_TRUE(brakes(a, {object(3, 13, 10)}, 1200));
+    }
+    {  // a prediction does not confirm: the target must be MEASURED brake_confirm_ms later
+        DecisionArbiter a(thresholds());
+        EXPECT_FALSE(brakes(a, {object(1, 15, 10)}, 1000));
+        auto predicted = object(1, 14, 10);
+        predicted.lastMeasuredMs = 1000;  // no scan since (the tracker only predicted)
+        EXPECT_FALSE(brakes(a, {predicted}, 1100));
+        EXPECT_TRUE(brakes(a, {object(1, 13, 10)}, 1200));  // measured again: confirmed
+    }
+    {  // while confirming, rule 2 still applies, and the context says so
+        DecisionArbiter a(thresholds());
+        auto in = input({object(1, 15, 10)}, 1000);
+        in.ego.longitudinalAccelMps2 = -0.5 * 9.80665;
+        const Decision d = a.step(in);
+        EXPECT_EQ(d.request.type, RequestType::RequestType_HAZARDS);
+        EXPECT_NE(d.context().find("confirming_ms=0"), std::string::npos) << d.context();
+    }
+    // evaluate() alone is the single-cycle rule, without the confirmation.
+    EXPECT_EQ(DecisionArbiter(thresholds()).evaluate(input({object(1, 15, 10)})).request.type,
+              RequestType::RequestType_BRAKE);
 }
 
 // --- End to end through the real tracker -------------------------------------------------------
@@ -450,7 +519,7 @@ TEST(ArbiterEndToEnd, LeadCarBrakingHardTriggersBrakeInTime) {
         dr.tracker.update({ms, dr.ego.pose, {lidar(leadX - dr.egoX, 0)}});
         ArbiterInput in = input(toEgoFrame(dr.tracker.tracks(), dr.ego, {}), ms);
         in.ego = dr.ego;
-        const Decision d = dr.arbiter.evaluate(in);
+        const Decision d = dr.arbiter.step(in);
         const double gap = leadX - dr.egoX - 3.5, closing = 15 - leadV;
         const double trueTtc = closing > 0 ? gap / closing : kInf;
         if (d.request.type == RequestType::RequestType_BRAKE) {
@@ -479,7 +548,7 @@ TEST(ArbiterEndToEnd, NoPhantomBraking) {
             dr.tracker.update({ms, dr.ego.pose, {measure(k, dr.egoX)}});
             ArbiterInput in = input(toEgoFrame(dr.tracker.tracks(), dr.ego, {}), ms);
             in.ego = dr.ego;
-            if (dr.arbiter.evaluate(in).request.type == RequestType::RequestType_BRAKE) return k;
+            if (dr.arbiter.step(in).request.type == RequestType::RequestType_BRAKE) return k;
         }
         return -1;
     };

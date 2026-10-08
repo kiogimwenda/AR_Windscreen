@@ -191,6 +191,8 @@ Config SystemManager::loadConfig(const std::string& configDir) {
     cfg.decision.egoPathHalfWidthM = decision.positive("ego_path_half_width_m");
     cfg.decision.minClosingSpeedMps = decision.positive("min_closing_speed_mps");
     cfg.decision.hubStateMaxAgeMs = decision.positive("hub_state_max_age_ms");
+    cfg.decision.brakeMinMeasuredTrackMs = decision.positive("brake_min_measured_track_ms");
+    cfg.decision.brakeConfirmMs = decision.positive("brake_confirm_ms");
 
     return cfg;
 }

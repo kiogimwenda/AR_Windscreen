@@ -54,7 +54,9 @@ const char* kVehicle =
 const char* kDecision =
     "ttc_brake_threshold_s: 1.8\nhard_brake_decel_g: 0.4\ntailgating_min_gap_s: 1.0\n"
     "brake_actuator_max_intensity: 90\nbrake_request_intensity: 60\n"
-    "ego_path_half_width_m: 1.2\nmin_closing_speed_mps: 0.5\nhub_state_max_age_ms: 100\n";
+    "ego_path_half_width_m: 1.2\nmin_closing_speed_mps: 0.5\nhub_state_max_age_ms: 100\n"
+    "brake_min_measured_track_ms: 200\n"
+    "brake_confirm_ms: 100\n";
 
 // Writes a valid config pair, with `key` in `file` replaced by `replacement` (or removed if
 // replacement is empty).

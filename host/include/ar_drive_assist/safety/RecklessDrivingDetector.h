@@ -63,8 +63,15 @@ struct EgoRelativeTrack {
     double gapM = 0;             // x minus the front-bumper distance: the physical gap ahead
     double closingSpeedMps = 0;  // positive when the gap is shrinking
     bool inEgoPath = false;      // within the ego path corridor (curvature from the yaw rate)
-    bool confirmed = false;      // CONFIRMED, not tentative or coasting on prediction
-    bool rangeMeasured = false;  // last LiDAR-measured range within `measuredRangeMaxAgeMs`
+    // Also within the corridor of the STRAIGHT path ahead. Rule 1 brakes only on an object in
+    // both: close in the two agree, so a real target in a bend still brakes; far out, a
+    // constant-turn extrapolation on a corner exit sweeps across parked cars at the kerb (KITTI
+    // replay, 2026-10-07), and that overlap alone is a warning (rule 3), not a brake.
+    bool inStraightPath = false;
+    std::uint64_t measuredRunMs = 0;   // length of the track's unbroken LiDAR-measured run (ms)
+    bool confirmed = false;            // CONFIRMED, not tentative or coasting on prediction
+    bool rangeMeasured = false;        // last LiDAR-measured range within `measuredRangeMaxAgeMs`
+    std::uint64_t lastMeasuredMs = 0;  // when that range was measured (0 = never)
 };
 
 struct EgoFrameConfig {

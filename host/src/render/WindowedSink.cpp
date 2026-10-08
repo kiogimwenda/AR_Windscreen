@@ -308,7 +308,10 @@ WindowedSink::~WindowedSink() {
         SDL_GL_DeleteContext(static_cast<SDL_GLContext>(glContext_));
     }
     if (window_) SDL_DestroyWindow(window_);
-    if (glContext_ || window_) SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    // The video subsystem and the GL library are deliberately NOT unloaded (see init()): Mesa's
+    // D3D12 driver keeps worker threads, and unloading the library under them crashes the
+    // process (found 2026-10-07: a segfault on every shutdown of the running system, the render
+    // thread stopping while the others were still being joined). They go with the process.
 }
 
 bool WindowedSink::init(const FrameGeometry& geometry, const CameraModel& camera,
@@ -321,6 +324,13 @@ bool WindowedSink::init(const FrameGeometry& geometry, const CameraModel& camera
     ::setenv("MESA_D3D12_DEFAULT_ADAPTER_NAME", opt_.adapterHint.c_str(), 0);
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         error_ = std::string("SDL video: ") + SDL_GetError();
+        return false;
+    }
+    // One reference to the GL library for the life of the process, so destroying the window never
+    // unloads the driver while its threads run (see the destructor).
+    static const bool glPinned = SDL_GL_LoadLibrary(nullptr) == 0;
+    if (!glPinned) {
+        error_ = std::string("SDL GL library: ") + SDL_GetError();
         return false;
     }
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);

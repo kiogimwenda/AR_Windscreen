@@ -2670,3 +2670,219 @@ reuse; undistortion maps; why a frame-rate average hides lost frames.
 
 **Phase 4 exit criteria still need the camera** attached through usbipd: run `camera_check`,
 record the table in decisions.md, set the size in camera.yaml, then calibrate (Part 12.1).
+
+## 2026-10-07 — Pre-hardware item 1: the whole system on a recorded drive
+
+**What:**
+- Threads (Part 5.1): `scene/FusionThread`, `decision/DecisionThread`, `render/RenderThread`,
+  `nav/NavigationThread`, `lidar/LidarReplay`; `fusion/EgoEstimator`; buses in
+  `system/PipelineMessages.h`; the camera's second (display) bus; `main.cpp` starts them all
+  (`--replay`, `--inject-obstacle`, `--destination`, `--no-display`).
+- Recordings (`system/Recording.h`); `tools/bench_rig/kitti_to_recording.py` (KITTI raw drive
+  2011_09_26_0005: 154 frames, 15.8 s, a city drive with a cyclist ahead); `hub_sim --replay`.
+- `tools/replay_inspect` (deterministic, CSV + annotated video); `lidar/InjectedObstacle`
+  (world-fixed, both sensors); `lidar/LidarProcessor` ground fit (item 2 begun).
+- `tools/bench_rig/replay_recorded_frames.py`: the Part 13.2 harness, 21 checks.
+
+**Defects found on the replay, each fixed and tested:**
+1. **Ghost target braked on** (frame 95): a track coasted 0.6 s, re-associated to a LiDAR fragment
+   at the bumper, kept its old 11.6 m/s closing speed: TTC 0.005 s, BRAKE. *Fix:* rule 1 needs an
+   unbroken 200 ms LiDAR-measured run (`brake_min_measured_track_ms`).
+2. **Corner exit** (frame 129): finishing a right turn (-10 deg/s), the constant-turn path ran
+   through a car parked at the kerb 13 m ahead. *Fix:* rule 1 also needs the straight path.
+3. **Flat road assumed** (frame 5): a road rising ahead became a "wall" of LiDAR points rushing at
+   25 m/s; it braked. *Fix:* the ground fitted per scan (`LidarProcessor`).
+4. **Median instead of near face:** the gap read up to 1.4 m long; the LiDAR-only and camera
+   measurements of one car made two tracks (0.5 s late braking). *Fix:* `nearFace`.
+5. **Duplicate measurements** of one surface broke the real track's measured run (braking lapsed
+   for 1 s). *Fix:* merged within 0.3 m.
+6. **The injected obstacle was physically impossible twice** (LiDAR only; fixed in the car's
+   frame). *Fix:* world-fixed on the recorded road, painted into the camera.
+7. **Unoptimised build** (no CMAKE_BUILD_TYPE, -O0): the LiDAR replay fell behind; 94 of 98 scans
+   "too old", no fusion, no brake in real time. *Fix:* RelWithDebInfo by default.
+8. **Segfault on every shutdown with the window open:** SDL unloaded the GL library under Mesa's
+   D3D12 driver threads. *Fix:* the GL library is pinned for the life of the process.
+9. Tried and rejected: tolerating one missed frame in the measured run (a false brake came back).
+
+**Teaching notes:** why a stopped car must be consistent across sensors (and how an inconsistent
+test object misleads); the near face vs the median for time to collision; ground-plane RANSAC;
+ghost tracks and track persistence in AEB; corner-exit path prediction; dlclose under live threads.
+
+**Verification:**
+- `replay_recorded_frames.py`: **21/21 PASS**. Recorded drive: 0 brakes (it made 2 false ones
+  before). Obstacle at 2.4 s: braking from a true TTC of 1.13 s (a real cyclist's track took over
+  the obstacle and needed 4 frames to turn its velocity round); at 11 s: from 1.68 s; no lapse
+  beyond the 300 ms hold; gap error +0.05 / +0.02 m mean. Real time: 16 BRAKE requests, the
+  firmware's SafetyCore applied 60, no FAULT, ordered shutdown, exit 0; the drive without the
+  obstacle: no brake.
+- Unit 281/281 (new: ground fit 6, measured run, corner exit, near face, arbiter conditions);
+  integration: pipeline 6, camera 9, gpu 20, osrm 9.
+- With the window open (WSLg, D3D12 on the RTX 5060): runs, brakes, exits 0.
+
+**Not done here (needs hardware or later items):** the live Livox capture (item 2), the Mid-360's
+own coverage, Part 12.4's projection precision check on the real camera.
+
+## 2026-10-07 — Item 1 re-verified under real-time timing; item 2: the live Mid-360 capture
+
+**Why:** re-running the harness after item 1, the real-time drive with no obstacle braked once
+(1 request, peak 60). Intermittent: 2 of 4 real-time runs, then 0 of 8. To make it reproducible,
+`replay_inspect --jitter SEED` replays the drive with the timing variations of a real-time run (a
+frame sometimes gets the scan before the newest; the hub clock shifted by up to +-60 ms).
+
+**Defects found with the jitter, each fixed and tested:**
+1. **One-cycle false brakes** (6 of 40 seeds on the drive with no obstacle): a velocity spike from
+   one scan (closing at 23-37 m/s while the car did 6 m/s), or a parked car or kerbside cyclist
+   flickering across the 1.2 m path edge (TTC 1.69-1.80 s). Every one lasted one cycle. *Fix:* rule
+   1 starts braking only once its condition has held on the same target and the LiDAR has measured
+   that target again 100 ms later (`brake_confirm_ms`, `DecisionArbiter::step()`); once braking it
+   continues. Cost: up to 100 ms (0.8 m at 30 km/h). **For Ian to review** with the other rule-1
+   changes.
+2. **A frame with no usable LiDAR scan counted as a miss for every track.** Under jitter, one frame
+   in three had none (the scan before the newest was over 150 ms old); every measured run restarted,
+   and the stopped obstacle in the lane was braked for at a true TTC of 0.0 s, or never. *Fix:*
+   `MeasurementBatch::observed = false` for such frames: tracks are predicted only. Rule 1's
+   "measured within 200 ms" still applies.
+3. **The confirmation completed on a prediction:** after fix 2, a kerbside cyclist's track,
+   predicted inward through a frame with no scan, completed it and braked (seed 11, frame 137).
+   *Fix:* the confirming measurement must be a real one (fix 1 as stated).
+
+**What the jitter still shows (reported by the harness, not failed):** with the obstacle at 11 s,
+braking starts at a true TTC of 1.16-1.58 s in 15 of 16 seeds (0.85 s in one, where the obstacle
+stands beside a real cyclist whose track takes over its measurements on stale-scan frames). With the
+obstacle at 2.4 s, which stands in an S-bend (its true lateral offset swings from 9 m left to 3 m
+right during the approach) and also beside a cyclist: 0.95-1.05 s in 13 of 16, 0.46-0.76 s in the
+other 3. The constant-turn path cannot follow an S-bend, and rule 1 also needs the straight path, so in
+an S-bend rule 1 is late by design; road tests (Part 13.4) will show whether that needs the map's
+road geometry. Before these fixes the same 16 seeds at 11 s gave 0.0-1.58 s, 10 of them under 1.0 s, and one
+never braked.
+
+**Item 2, the live LiDAR (no Mid-360 yet):**
+- `lidar/LivoxPackets`: packet bytes to timestamped points (high/low-precision Cartesian, per-point
+  time, "no return" dropped), and `ScanAssembler`: 100 ms scans, the LiDAR clock mapped onto the
+  host's by the smallest offset over 2 s, reset on a LiDAR clock jump. No SDK dependency: unit-tested
+  in CI with synthetic packets (`test_livox_packets`, 5 tests).
+- `lidar/LivoxCapture`: the SDK2 glue (config generated, callbacks, normal mode on discovery), the
+  ground fit per scan, a stall watchdog (FAULT and shutdown after `stall_timeout_s`), and
+  `static_assert`s holding the decoder's byte offsets to the SDK's structs. Built only when the SDK
+  is found (`AR_HAVE_LIVOX`); `main` uses it when not replaying; `host/config/lidar.yaml`.
+- Livox SDK2 built from source into `~/.local/livox` (no sudo); found by `host/CMakeLists.txt`.
+- BUILD_GUIDE: Part 2.8 (local install), Part 8.1 (what the capture does; voxel downsampling and
+  PCL clustering not done, deliberately; road-anomaly pass deferred, no consumer), Appendix C
+  corrected (the Mid-360 is at 192.168.1.1xx from its serial number, not .100).
+
+**Verification:**
+- `replay_recorded_frames.py`: **22/22 PASS** (new: the drive under timing jitter, seeds 1-10, never
+  brakes). Deterministic onsets unchanged (1.05 s and 1.58 s). The real-time drive with no obstacle,
+  6 further runs: 0 brakes.
+- Jitter, 40 seeds, drive with no obstacle: 0 brakes (6 before).
+- Unit 288/288 (new: the onset confirmation, an unobserved cycle is not a miss; the Livox packet
+  tests were in the earlier count);
+  integration 44/44. The lead-car scenario still first brakes at a true TTC of 1.50 s (window
+  1.2-1.9 s).
+- Not verifiable until the Mid-360 arrives: the packet format against a live unit, the clock offset,
+  the scan rate, and fusion's time on Mid-360 clouds (Part 13.3).
+
+**Teaching notes:** why a cycle with no observation is not evidence of absence (and how treating it
+as one breaks track persistence); confirmation logic in AEB, and why it must rest on measurements,
+not predictions; mapping two free-running clocks by the minimum offset; decoding a binary protocol
+from bytes, held to the vendor's structs by `static_assert`.
+
+## 2026-10-08 — Pre-hardware item 3: calibration tools, and the recorder
+
+**What:**
+- `host/scripts/run_camera_calibration.py` (Part 12.1): views from a folder or captured from the
+  camera at the running resolution; corner detection (sector-based, classic fallback); outlier
+  views dropped; refuses frontal-only sets, poor coverage, RMS over 1 px; writes the host's YAML.
+- `system/Recorder` and `ar_drive_assist --record DIR`: frames (after undistortion, with their
+  model), scans, hub reports, extrinsics, in the replay format; taps on the camera and both LiDAR
+  sources; bounded queues, drops counted; never overwrites a recording.
+- `host/scripts/run_lidar_camera_calibration.py` (Part 12.2): board planes from a recording of a
+  board held still in several poses.
+- `scene/ExtrinsicMonitor` + `ExtrinsicMonitorThread` (Part 12.2.1), wired into `main`,
+  `FusionThread` (refined projection; DEGRADED: LiDAR-only ranging) and the renderer (a fixed
+  "recalibrate" notice for the driver).
+- CI: a Python job runs `host/test/scripts` (8 tests).
+
+**Defects and findings:**
+1. The recorder's intrinsics file was cut off (a 256-byte buffer): caught by replaying the first
+   recording; a round-trip test now covers it.
+2. Camera calibration on synthetic views was 6.7 px off in the corners: no view reached them (the
+   board must fit whole). The test now measures what a calibration can claim (the covered region,
+   up to a rotation the extrinsics absorb): 0.34 px.
+3. The LiDAR–camera tool at first missed by 1.7°: the synthetic camera (800 × 450) saw the boards
+   too small to place their planes. At the 2K camera's scale: 0.39°, 6.8 px at 5–40 m.
+4. ExtrinsicMonitor, five failures on KITTI's real frames, each fixed: one-sided depth edges biased
+   pitch (pairs); texture biased the score (local normalisation); the narrow peak was out of reach
+   from 0.7° (coarse to fine); a weak axis drifted to the bound (held-out per-axis selection); a
+   2.5° error looked "verified" (the wide look); and a real-time replay "refined" 0.97° of yaw from
+   timing during turns (no evidence while turning). Translation is not refined (the score is flat
+   in it).
+
+**Verification:**
+- Python: 8/8 (camera calibration 5, LiDAR–camera 3). Unit 288/288. Integration 52/52 (new: the
+  Recorder round trip; ExtrinsicMonitor 7, synthetic and KITTI; the driver notice).
+- `replay_recorded_frames.py`: 22/22, with the monitor running in the real-time host (it reached
+  no verdict on the 15 s drive: too little straight driving, as designed).
+- Recorded the KITTI replay through the live host (153 frames, 154 scans, 840 reports, nothing
+  dropped) and replayed the recording: no brake on the drive; with the obstacle, braking from a
+  true TTC of 1.37 s.
+- clang-format: the whole tree clean (CI's check).
+- Waiting for hardware: everything on the real camera, Mid-360 and board (Part 12 procedures).
+
+**Teaching notes:** pinhole + distortion calibration and why views must reach the corners; the
+focal-length/distance ambiguity of frontal views; plane-based target calibration and its
+observability; edge-alignment scores and their biases (one-sidedness, texture); fit/held-out
+decisions against noise; why a timing error looks like a rotation in a turn.
+
+## 2026-10-08 — Pre-hardware item 4: setup scripts
+
+**What:**
+- `host/scripts/setup_env.sh` (Parts 2.3, 2.6-2.10): installs only what is missing (the apt list
+  is the build's real `find_package` set plus the GStreamer decoders and OSRM; source-built tools
+  are left alone), the `dialout`/`video` groups, ModemManager off (Appendix D), Livox SDK2 into
+  `~/.local/livox`, the Python tools' packages (`host/scripts/requirements.txt`) into the active
+  venv; then Part 2.10's checks. `--dry-run`, `--check-only`. Never installs CUDA/TensorRT or
+  builds OpenCV.
+- `host/scripts/attach_usb_devices.ps1` (Part 2.2): devices by USB hardware id (survives a change of
+  port) or bus id, remembered with `-Save`; binds only what is unshared (the only step needing
+  admin), attaches only what is not attached, `-Detach`, then lists the devices from inside WSL2.
+
+**Found:** the guide's checks would have failed this machine wrongly twice: OpenCV is the accepted
+4.14 CUDA source build (decisions.md), not 4.10, so the check is ">= 4.10 and built with CUDA";
+and OSRM is built from source, so its apt package is not needed.
+
+**Verification:** `setup_env.sh --check-only`: every check PASS (camera and hub: WARN until they
+exist); `--dry-run` lists exactly the two group changes still to make. The PowerShell script parses
+in Windows PowerShell 5.1 and finds devices by hardware id and by bus id (exercised through
+`-Detach` on unattached devices, which changes nothing). Binding and attaching the real camera,
+adapter and hub wait for them.
+
+**Teaching notes:** usbipd's bind (once, admin) vs attach (every session); why device identity
+should be VID:PID, not a port; idempotent setup scripts and checks that state what they accept.
+
+## 2026-10-08 — Pre-hardware item 5: assembly-day procedures
+
+**What:** `docs/assembly/`, generated by `hardware/gen/assembly.py` from the same board
+descriptions as the schematics: the DB-25 cable build sheet, power board and pod board bring-up,
+the power box's off-board wiring (with a diagram), and the bench rig's setup. Every expected
+reading is computed from part values (or quotes a named datasheet figure): +5 V = 5.004 V from the
+TPS54360's 0.8 V reference and R44/R45; the UVLO points from R41/R42's design values; the
+brake-current line's idle level 1.667 V alone, 1.562 V loaded by the pod's 100 k. The off-board
+wiring is the one hand-written table, and the generator refuses to run if any connector on either
+board lacks an entry. `hardware/gen/check.sh` now also fails if the documents are stale.
+
+**Found while writing it:** both boards bond their DB-25 shells to ground, so "shield at the box
+end only" has to be done in the cable (braid to the hood at the box end, cut back and insulated at
+the pod end); the build sheet says so. Reviewing the generated text caught five slips of mine
+(D10 is a shunt TVS, not in the series path; D11's drop at idle; a resistance measured on a powered
+circuit; an unreadable UVLO phrase; J13's pin order losing its unused pins), each fixed in the
+generator. Observed, not changed: `check.sh` regenerates every schematic with fresh UUIDs, so it
+dirties them in git even when nothing changed.
+
+**Verification:** `hardware/gen/check.sh`: ALL CHECKS PASS (ERC, netlist cross-checks, footprints),
+then "docs/assembly up to date". The regenerated schematics differed only in UUIDs and were
+restored. The procedures themselves are verified on assembly day.
+
+**Teaching notes:** bring-up order (look, measure cold, current-limited first power, rails, fail-safe
+state, then function); why a 1 kΩ series resistor and a 10 kΩ pull-down make the cable fail safe;
+ground loops and single-point shield bonding; generating documentation from the design data.

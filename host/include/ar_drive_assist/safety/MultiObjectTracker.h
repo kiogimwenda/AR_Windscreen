@@ -74,6 +74,12 @@ struct MeasurementBatch {
     std::uint64_t timestampMs = 0;
     EgoPose ego;
     std::vector<ObjectMeasurement> measurements;
+    // False: nothing was LOOKED AT this cycle (the fusion had no usable LiDAR scan for the frame),
+    // so an empty batch is no evidence that anything is gone. The tracks are only predicted: no
+    // miss, no change of state, the measured run unbroken; a track not updated for maxCoastS
+    // still retires. (KITTI replay with timing jitter, 2026-10-07: one frame in three without a
+    // scan broke every track's measured run, and a stopped car in the lane was never braked for.)
+    bool observed = true;
 };
 
 struct TrackerConfig {
@@ -105,6 +111,14 @@ struct Track {
     Eigen::Matrix2d birthCov = Eigen::Matrix2d::Zero();  // first measurement's covariance
     std::uint64_t lastMeasuredRangeMs = 0;  // last update from a LiDAR-measured range (0 = never)
     bool velocityKnown = false;             // set by two-point initialisation (second sighting)
+    // Start of the current UNBROKEN run of updates from LiDAR-measured ranges (0 = none). A miss,
+    // or an update from an estimate, ends the run. DecisionArbiter rule 1 brakes only on a run of
+    // brake_min_measured_track_ms: a track that coasts and is then re-associated to some other
+    // cluster (a ghost) starts again from zero (KITTI replay, 2026-10-07). Tolerating one missed
+    // frame was tried and rejected: it let a chain of fragments (born at 28 m, "closing" at
+    // 31 m/s in a city street) through to a false brake; the strict rule costs at most one
+    // 200 ms run after a missed association in a crowded scene.
+    std::uint64_t measuredRunSinceMs = 0;
 };
 
 class MultiObjectTracker {

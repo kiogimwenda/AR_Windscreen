@@ -32,8 +32,15 @@ std::string fmt(double v, int decimals = 1) {
 
 }  // namespace
 
-CameraPipeline::CameraPipeline(const CameraConfig& cfg, FrameBus& frames, EventLog* log)
-    : cfg_(cfg), frames_(frames), log_(log), kind_(cameraSourceKind(cfg.source)) {
+CameraPipeline::CameraPipeline(const CameraConfig& cfg, FrameBus& frames, EventLog* log,
+                               FrameBus* display)
+    : cfg_(cfg),
+      frames_(frames),
+      log_(log),
+      display_(display),
+      kind_(cameraSourceKind(cfg.source)) {
+    if (kind_ == CameraSourceKind::File && !cfg_.timestampsPath.empty())
+        frameTimesUs_ = loadFrameTimes(cfg_.timestampsPath);
     open();
     if (!grab(pending_))
         throw std::runtime_error("camera: " + cfg_.source + " opened but delivered no frame");
@@ -113,9 +120,15 @@ void CameraPipeline::open() {
 
 bool CameraPipeline::grab(cv::Mat& raw) {
     if (kind_ == CameraSourceKind::File && cfg_.realtime && fileFrames_ > 0) {
-        // Pace a replay at the file's own rate, as a camera would deliver it.
-        const auto due = fileStart_ + std::chrono::duration<double>(fileFrames_ / sourceFps_);
-        std::this_thread::sleep_until(due);
+        // Pace a replay as the camera delivered it: by the recorded capture times when there
+        // are any, else at the file's own rate.
+        if (fileFrames_ < frameTimesUs_.size())
+            std::this_thread::sleep_until(
+                fileStart_ +
+                std::chrono::microseconds(frameTimesUs_[fileFrames_] - frameTimesUs_.front()));
+        else
+            std::this_thread::sleep_until(fileStart_ +
+                                          std::chrono::duration<double>(fileFrames_ / sourceFps_));
     }
     raw = cv::Mat();  // a NEW buffer, never one a published frame may still share (header)
     if (!cap_.read(raw) || raw.empty()) {
@@ -151,10 +164,27 @@ bool CameraPipeline::read(CameraFrame& out) {
     } else {
         out.bgr = raw;
     }
+    if (replayHook_ && kind_ == CameraSourceKind::File) {
+        const std::size_t i = fileFrames_ > 0 ? fileFrames_ - 1 : 0;  // this frame's index
+        const double tS = i < frameTimesUs_.size()
+                              ? (frameTimesUs_[i] - frameTimesUs_.front()) * 1e-6
+                              : i / sourceFps_;
+        replayHook_(out.bgr, tS);
+    }
     return true;
 }
 
 void CameraPipeline::run(const std::atomic<bool>& stop) {
+    if (kind_ == CameraSourceKind::File) {
+        // A replay's clock starts now, not at construction: other threads may have taken seconds
+        // to start (the inference engines load first), and frames due in that gap must not come
+        // out in a burst. The next frame is due immediately.
+        const double offsetS = fileFrames_ < frameTimesUs_.size()
+                                   ? (frameTimesUs_[fileFrames_] - frameTimesUs_.front()) * 1e-6
+                                   : fileFrames_ / sourceFps_;
+        fileStart_ = Clock::now() - std::chrono::duration_cast<Clock::duration>(
+                                        std::chrono::duration<double>(offsetS));
+    }
     FrameRateMonitor monitor(kind_ == CameraSourceKind::File ? sourceFps_ : cfg_.fps);
     auto lastFrame = Clock::now();
     auto lastReport = Clock::now();
@@ -179,6 +209,8 @@ void CameraPipeline::run(const std::atomic<bool>& stop) {
         }
         lastFrame = Clock::now();
         monitor.add(f.timestampMs);
+        if (display_ && !display_->push(f)) ++stats_.displayDrops;  // a copy: shares the pixels
+        if (tap_) tap_(f);
         if (!frames_.push(std::move(f))) ++stats_.busDrops;
 
         if (msSince(lastReport) >= cfg_.reportEveryS * 1000) {

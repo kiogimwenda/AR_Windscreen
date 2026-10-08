@@ -78,8 +78,38 @@ TEST(Threat, EgoFrameByHand) {
     EXPECT_NEAR(rel[0].gapM, 16.5, 0.05);
     EXPECT_NEAR(rel[0].closingSpeedMps, 10, 0.3);
     EXPECT_TRUE(rel[0].inEgoPath);
+    EXPECT_TRUE(rel[0].inStraightPath);
+    // Measured at 0, 100, ... 400 without a break. Time 0 is the "no run" sentinel (host times
+    // are steady-clock milliseconds and never 0), so this run counts from 100.
+    EXPECT_EQ(rel[0].measuredRunMs, 300u);
     EXPECT_TRUE(rel[0].confirmed);
     EXPECT_TRUE(rel[0].rangeMeasured);
+}
+
+// The corner exit from the KITTI replay (drive 0005, frame 129): the car finishing a right turn
+// (yaw rate -10 deg/s at 5.7 m/s) and a parked car at the kerb, 12.8 m ahead and 2.4 m to the
+// right. The constant-turn path runs through it; the straight path does not. Rule 1 needs both.
+TEST(Threat, CornerExitParkedCarIsInTheCurvedPathOnly) {
+    MultiObjectTracker t(realConfig());
+    for (int k = 0; k < 5; ++k)
+        t.update({static_cast<std::uint64_t>(100 * k), {}, {meas(12.8, -2.4)}});
+    EgoState ego;
+    ego.speedMps = 5.7;
+    ego.yawRateRadPerS = -10 * kPi / 180;
+    ego.timestampMs = 400;
+    EgoFrameConfig cfg;
+    cfg.egoPathHalfWidthM = 1.2;
+    const auto rel = toEgoFrame(t.tracks(), ego, cfg);
+    ASSERT_EQ(rel.size(), 1u);
+    EXPECT_TRUE(rel[0].inEgoPath);
+    EXPECT_FALSE(rel[0].inStraightPath);
+    // Close in, the two paths agree: the same car 5 m ahead is in both.
+    MultiObjectTracker near(realConfig());
+    for (int k = 0; k < 5; ++k)
+        near.update({static_cast<std::uint64_t>(100 * k), {}, {meas(5, -0.6)}});
+    const auto relNear = toEgoFrame(near.tracks(), ego, cfg);
+    EXPECT_TRUE(relNear[0].inEgoPath);
+    EXPECT_TRUE(relNear[0].inStraightPath);
 }
 
 // A measurement whose range is only a MiDaS estimate never makes the range "measured".

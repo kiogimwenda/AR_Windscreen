@@ -1,0 +1,3 @@
+# Live LiDAR (Livox Mid-360, Part 8.1; network in BUILD_GUIDE Appendix C). Replays ignore this.
+host_ip: 192.168.1.50      # this computer's static address on the LiDAR's subnet (192.168.1.x)
+stall_timeout_s: 1.0       # no point data this long = LiDAR FAULT, the system shuts down

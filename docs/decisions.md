@@ -1044,3 +1044,86 @@ once; 3.9 ms per 2K frame on the CPU, so CUDA is not needed (Part 6.2's conditio
 **Phase 4 exit check by measurement:** `camera_check` passes a size only at >= 95 % of the requested
 rate with **no lost frame**, because the average hides losses (29.8 fps with a lost frame, on a test
 source, is a FAIL). The 2K-or-1080p decision waits for the real camera through usbipd.
+
+## The whole system on a recorded drive, before any hardware (2026-10-07)
+
+**Replay public, synchronised camera + LiDAR + GPS/IMU data (KITTI raw) through the complete host,
+with the simulated hub running the firmware's SafetyCore.** Synthesising LiDAR from the video would
+have been circular. KITTI is real data with real calibration (checked by projecting the LiDAR into
+the image), CC BY-NC-SA 3.0 (non-commercial; credit the authors). It is a Velodyne, not the
+Livox Mid-360: good for exercising the pipeline, not for judging the Mid-360's coverage.
+
+**A deterministic frame-by-frame replay (`replay_inspect`) alongside the real-time one.** The same
+classes in lock-step make every result reproducible, so a false brake can be traced frame by frame;
+the real-time run proves the threads, buses, timing and shutdown.
+
+**The injected test obstacle is fixed in the world on the road the car drove, and seen by both
+sensors.** A LiDAR-only box let the camera masks of objects behind it claim its points; a box fixed
+in the car's frame swung round with the car in a bend. Each gave misleading results.
+
+**Five changes to perception and the decision, each from a failure on the replay** (progress log):
+the ground fitted per scan instead of a flat road; objects measured at their near face; duplicate
+measurements of one surface merged; rule 1 needing the straight path as well as the curved one;
+rule 1 needing a 200 ms unbroken LiDAR-measured run. The last two change Part 9.3's safety rule
+and are for Ian (and the supervisor) to review. A one-missed-frame tolerance on the run was tried
+and rejected on the evidence (it let a false brake through).
+
+**Optimised builds by default; the GL library is never unloaded while the process runs** (Mesa's
+D3D12 driver threads crashed the process on every shutdown with the window open).
+
+**Two more, from the replay with real-time timing variations (`replay_inspect --jitter SEED`: a
+frame sometimes gets the scan before the newest, and the hub clock is shifted up to +-60 ms):**
+- *Rule 1 starts braking only once its condition has held on the same target, and the LiDAR has
+  measured that target again at least 100 ms after it first qualified* (`brake_confirm_ms`); once
+  braking, it continues while any target qualifies. Every false brake
+  found under jitter (6 of 40 clean runs) lasted one cycle: a velocity spike from one scan (closing
+  at up to 37 m/s while the car did 6 m/s), or a parked car flickering across the path's edge. A
+  time, not a count of cycles, so that it spans two LiDAR scans at any camera rate; and a later
+  measurement, not a prediction, because predictions now continue through cycles without a scan
+  (below) and one carried a kerbside cyclist's track into the path. Cost: 100 ms.
+  For Ian to review with the other rule-1 changes.
+- *A frame with no usable LiDAR scan is not a miss.* The tracker had treated it as "looked and saw
+  nothing": every track missed, every measured run restarted, and with one frame in three without
+  a scan a stopped car in the lane was never braked for. Such a batch is now `observed = false`:
+  tracks are predicted only. Rule 1's own condition (a LiDAR range within 200 ms) is unchanged, so a
+  LiDAR outage still cannot lead to a brake.
+
+## The live Livox Mid-360 capture, built before the LiDAR is bought (2026-10-07)
+
+**Decode the SDK's packets ourselves, from bytes, and hold the offsets to the SDK with
+`static_assert`.** The decoding and scan assembly (`lidar/LivoxPackets`) need no SDK, so they are
+unit-tested in CI with synthetic packets; `lidar/LivoxCapture` is only the SDK glue, built when the
+SDK is installed. A changed SDK layout fails to compile rather than silently mis-decoding.
+
+**Map the LiDAR's clock onto the host's with the smallest observed offset over 2 s**, not PTP: no
+PTP master or GNSS pulse is wired to the Mid-360 in this build. The smallest (arrival - LiDAR time)
+is the packet that waited least; one late packet never moves it.
+
+**No voxel downsampling or PCL clustering in the capture** (departing from Part 8.1's sketch): fusion
+already clusters in linear time; downsampling would only cost near-field detail. To be timed on real
+Mid-360 clouds in Part 13.3.
+
+**Appendix C corrected:** the Mid-360's address is 192.168.1.1xx (from its serial number), not .100.
+
+## Calibration tools, and the system's own recorder (2026-10-08)
+
+**The system records itself** (`--record DIR`, `system/Recorder.h`) in the replay format. One
+format for KITTI, for the project's own drives and for calibration captures means every tool and
+the whole host can be run on any of them. The recorder taps the sensors and queues; it never
+blocks them, and it counts what it drops.
+
+**LiDAR–camera calibration from board planes, not hand-picked corners** (departing from Part
+12.2): the Mid-360's non-repeating pattern puts no point on a corner, but over a held second it
+covers the board. Each held pose gives one plane from the camera; the solve puts the LiDAR's board
+points on those planes. It refuses pose sets that leave a direction unconstrained.
+
+**ExtrinsicMonitor: edge alignment, decided on held-out frames.** The score and its safeguards
+each came from a failure on KITTI's real frames (BUILD_GUIDE 12.2.1, amended): one-sided depth
+edges, texture, a drifting weak axis, a "peak" test that passed a 2.5° error, and a turn read as a
+rotation. Rotation only by default. A refinement moves the camera's projection only; braking's LiDAR
+geometry stays calibrated. Integration tests, not unit tests (OpenCV), departing from Part 13.1.
+
+**Calibration tests run in CI on synthetic scenes with known answers** (Python): the camera
+intrinsics on rendered checkerboards through a known lens, the LiDAR–camera tool on a synthetic
+recording. Measured against the truth, the thresholds were set from what such methods achieve
+(stated in the tests), not tuned until they passed.

@@ -105,7 +105,14 @@ struct FusedObject {
     RangeSource source = RangeSource::NONE;
     Eigen::Vector3d position = Eigen::Vector3d::Zero();       // vehicle frame, cluster median
     Eigen::Vector3d groundContact = Eigen::Vector3d::Zero();  // position dropped onto the road
-    int points = 0;                                           // points in the chosen cluster
+    // The surface nearest the car: x = the cluster's 5th-percentile x (robust to a stray point),
+    // y the middle of that face's extent, z its median height. This, not the median, is what the
+    // tracker follows and the gap is measured to: a car seen at an angle shows its side, and the
+    // median of all its points sits metres behind its rear face (KITTI replay, 2026-10-07: gap
+    // read 1.4 m long at the end of an approach, and a LiDAR-only and a camera-fused measurement
+    // of one car disagreed by over a metre, so they made two tracks).
+    Eigen::Vector3d nearFace = Eigen::Vector3d::Zero();
+    int points = 0;      // points in the chosen cluster
     int maskPoints = 0;  // all points selected by the mask (or sign box)
     // points / maskPoints: how cleanly the mask picked out ONE surface. A falling average over
     // many frames is a symptom of extrinsic drift (Part 12.2.1, ExtrinsicMonitor).
@@ -115,6 +122,7 @@ struct FusedObject {
 struct UnknownObstacle {
     Eigen::Vector3d position = Eigen::Vector3d::Zero();  // vehicle frame, cluster centroid
     Eigen::Vector3d groundContact = Eigen::Vector3d::Zero();
+    Eigen::Vector3d nearFace = Eigen::Vector3d::Zero();  // as FusedObject::nearFace
     int points = 0;
 };
 
@@ -138,6 +146,9 @@ struct FusionConfig {
     double maxObstacleHeightM = 2.5;  // above the road: gantries and branches cannot hit the car
     float signMinIntensity = 150.0f;
 };
+
+// FusedObject::nearFace of a set of vehicle-frame points (not empty).
+Eigen::Vector3d nearFace(const std::vector<Eigen::Vector3d>& pts);
 
 // The mask shrunk by `cells` prototype cells (4-neighbour erosion).
 ObjectMask erodeMask(const ObjectMask& m, int cells);

@@ -48,3 +48,17 @@ that attribution to be kept with any image shown in the report or presentation.
 
 `footage/kenya_annotated/` holds the detector's output on these images, and
 `footage/krakow_signs/` its output on every 30th frame of the Kraków clip.
+
+## `recordings/` — synchronised drives the whole host can replay (2026-10-07)
+
+Directories in the format of `host/include/ar_drive_assist/system/Recording.h` (gitignored).
+
+- **`recordings/kitti_0005`**: KITTI raw data, drive `2011_09_26_drive_0005_sync` (Karlsruhe,
+  154 frames, 15.8 s): left colour camera (rectified), Velodyne HDL-64E, OXTS GPS/IMU, and the
+  calibration. **Licence CC BY-NC-SA 3.0** (non-commercial). Anything shown must credit:
+  A. Geiger, P. Lenz, C. Stiller, R. Urtasun, "Vision meets Robotics: The KITTI Dataset",
+  International Journal of Robotics Research, 2013. https://www.cvlibs.net/datasets/kitti/raw_data.php
+- **How it was obtained:** `2011_09_26_calib.zip` and `2011_09_26_drive_0005_sync.zip` from the
+  KITTI raw-data server into `datasets/kitti/`, unzipped, then
+  `python3 tools/bench_rig/kitti_to_recording.py data/datasets/kitti/2011_09_26 2011_09_26_drive_0005_sync data/recordings/kitti_0005`.
+- **Limitation:** a Velodyne, not the project's Livox Mid-360, and a German city.

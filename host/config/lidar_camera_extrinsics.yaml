@@ -1,5 +1,6 @@
 # Rigid transform from the LiDAR frame into the camera frame — see docs/BUILD_GUIDE.md Part 12.2.
-# Solved from checkerboard corner correspondences visible to both sensors simultaneously.
+# Solved by host/scripts/run_lidar_camera_calibration.py from a recording of a checkerboard held
+# still in several poses (board planes seen by both sensors).
 # Consumed by SceneReconstruction (Part 8.3) and RoadSurfaceProjector (Part 11.4) — the latter
 # introduces no new calibration dependency of its own, it reuses this one.
 # TEMPLATE ONLY; filled in during Phase 6.
@@ -8,4 +9,4 @@
 # level LiDAR (GroundPlaneModel and SceneReconstruction work in the vehicle frame).
 rotation_matrix: []            # 3x3, row-major
 translation_m: []              # [tx, ty, tz]
-reprojection_error_px: 0.0
+plane_rms_m: 0.0              # LiDAR board points from the camera's board planes

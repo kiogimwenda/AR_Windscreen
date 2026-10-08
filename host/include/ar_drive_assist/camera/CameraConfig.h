@@ -34,6 +34,7 @@
 #include <cstdint>
 #include <deque>
 #include <string>
+#include <vector>
 
 #include "ar_drive_assist/common/Camera.h"
 
@@ -46,9 +47,12 @@ struct CameraConfig {
     int fps = 30;
     std::string format = "MJPG";  // "MJPG" (JPEG-compressed, needed for 2K over USB) or "YUYV"
     std::string intrinsicsPath = "host/config/camera_intrinsics.yaml";
-    bool undistort = true;       // only takes effect once the camera is calibrated (Part 12.1)
-    bool loop = true;            // files: start again at the end
-    bool realtime = true;        // files: publish at the file's own frame rate, like a camera would
+    bool undistort = true;  // only takes effect once the camera is calibrated (Part 12.1)
+    bool loop = true;       // files: start again at the end
+    bool realtime = true;   // files: publish at the file's own frame rate, like a camera would
+    // files: per-frame capture times ("frame,t_us" CSV, a recording's camera.csv). When set, a
+    // replay is paced by the recorded times instead of a fixed rate.
+    std::string timestampsPath;
     double stallTimeoutS = 1.0;  // no frame for this long = the camera has failed (a FAULT)
     double reportEveryS = 10.0;  // how often the measured frame rate goes to the EventLog
 };
@@ -63,6 +67,9 @@ std::string cameraGstPipeline(const CameraConfig& cfg);
 // host/config/camera.yaml. Missing keys keep their defaults; a malformed value throws
 // std::runtime_error naming the file and key.
 CameraConfig loadCameraConfig(const std::string& path);
+
+// A recording's per-frame times, microseconds, in frame order. Throws std::runtime_error.
+std::vector<std::int64_t> loadFrameTimes(const std::string& csvPath);
 
 struct CameraIntrinsics {
     bool calibrated = false;  // false for the template (empty matrix): frames are not undistorted

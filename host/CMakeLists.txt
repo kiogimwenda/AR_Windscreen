@@ -76,8 +76,26 @@ ar_add_schema_library(ar_schemas ${CMAKE_CURRENT_SOURCE_DIR}/include/ar_drive_as
 # sweep and removes the surprise.
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
+# Livox SDK2 (Part 2.8, the live Mid-360): optional. Without it the host still builds and replays
+# recordings; live LiDAR capture (src/lidar/LivoxCapture.cpp) is left out and main says so.
+# Installed system-wide (Part 2.8) or into ~/.local/livox (cmake -DCMAKE_INSTALL_PREFIX=...).
+find_path(LIVOX_INCLUDE_DIR livox_lidar_api.h HINTS $ENV{HOME}/.local/livox/include /usr/local/include)
+find_library(LIVOX_LIBRARY livox_lidar_sdk_static HINTS $ENV{HOME}/.local/livox/lib /usr/local/lib)
+if(LIVOX_INCLUDE_DIR AND LIVOX_LIBRARY)
+    message(STATUS "Livox SDK2: ${LIVOX_LIBRARY} (live Mid-360 capture enabled)")
+    set(AR_HAVE_LIVOX ON)
+else()
+    message(STATUS "Livox SDK2 not found: live LiDAR capture left out (replays still work)")
+    list(FILTER SOURCES EXCLUDE REGEX ".*/lidar/LivoxCapture\\.cpp$")
+endif()
+
 add_executable(ar_drive_assist ${SOURCES})
 target_include_directories(ar_drive_assist PRIVATE include)
+if(AR_HAVE_LIVOX)
+    target_compile_definitions(ar_drive_assist PRIVATE AR_HAVE_LIVOX=1)
+    target_include_directories(ar_drive_assist SYSTEM PRIVATE ${LIVOX_INCLUDE_DIR})
+    target_link_libraries(ar_drive_assist PRIVATE ${LIVOX_LIBRARY} pthread)
+endif()
 target_link_libraries(ar_drive_assist PRIVATE
     ${OpenCV_LIBS} ${PCL_LIBRARIES} Eigen3::Eigen glm::glm
     spdlog::spdlog SDL2::SDL2 OpenGL::GL GLEW::GLEW CUDA::cudart TensorRT::TensorRT
@@ -117,10 +135,33 @@ target_include_directories(camera_check PRIVATE include)
 target_link_libraries(camera_check PRIVATE ${OpenCV_LIBS} Eigen3::Eigen yaml-cpp::yaml-cpp ar_schemas)
 
 find_package(Threads REQUIRED)
-add_executable(hub_sim tools/hub_sim/main.cpp tools/hub_sim/HubSim.cpp)
-target_include_directories(hub_sim PRIVATE tools/hub_sim
-                           ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/sensor_actuator_hub/include)
-target_link_libraries(hub_sim PRIVATE Threads::Threads)
+# The simulated hub: a library (it compiles the FIRMWARE's SafetyCore; only HubSim.cpp sees the
+# firmware headers) used by the hub_sim tool and replay_inspect.
+add_library(hub_sim_lib STATIC tools/hub_sim/HubSim.cpp)
+target_include_directories(hub_sim_lib PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/sensor_actuator_hub/include
+                           PUBLIC tools/hub_sim)
+target_link_libraries(hub_sim_lib PUBLIC Threads::Threads)
+add_executable(hub_sim tools/hub_sim/main.cpp)
+target_link_libraries(hub_sim PRIVATE hub_sim_lib)
+
+# Item 1 of the pre-hardware list: a recording through the whole chain, frame by frame (Part 13.2).
+add_executable(replay_inspect tools/replay_inspect.cpp
+               src/camera/CameraPipeline.cpp src/camera/CameraConfig.cpp
+               src/inference/MlInferenceEngine.cpp src/inference/TrtEngine.cpp
+               src/inference/Preprocess.cpp src/inference/Postprocess.cpp
+               src/lidar/LidarReplay.cpp src/lidar/InjectedObstacle.cpp src/lidar/LidarProcessor.cpp
+               src/system/Recording.cpp
+               src/system/EventLog.cpp
+               src/system/SystemManager.cpp src/scene/FusionThread.cpp src/scene/ExtrinsicMonitor.cpp
+               src/scene/SceneReconstruction.cpp src/decision/DecisionThread.cpp
+               src/decision/DecisionArbiter.cpp src/safety/MultiObjectTracker.cpp
+               src/safety/ImmFilter.cpp src/safety/Hungarian.cpp src/safety/MotionPredictor.cpp
+               src/safety/RecklessDrivingDetector.cpp src/fusion/HubReportFeeder.cpp
+               src/fusion/ImuMount.cpp src/fusion/SensorFusion.cpp src/vehicle/VehicleInterface.cpp)
+target_include_directories(replay_inspect PRIVATE include)
+target_link_libraries(replay_inspect PRIVATE hub_sim_lib ${OpenCV_LIBS} CUDA::cudart
+                      TensorRT::TensorRT Eigen3::Eigen yaml-cpp::yaml-cpp ar_schemas)
 
 # The unit suite under test/unit/ is intentionally NOT built from here — see test/CMakeLists.txt.
 # enable_testing() must come before the tests are declared, so ctest can find the integration tests.

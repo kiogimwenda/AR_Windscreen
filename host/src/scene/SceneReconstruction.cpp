@@ -47,6 +47,29 @@ bool inBox(const Box& b, const Eigen::Vector2d& px) {
 
 }  // namespace
 
+Eigen::Vector3d nearFace(const std::vector<Eigen::Vector3d>& pts) {
+    std::vector<double> xs;
+    for (const auto& p : pts) xs.push_back(p.x());
+    const std::size_t k = xs.size() / 20;  // 5th percentile: one stray point does not move it
+    std::nth_element(xs.begin(), xs.begin() + k, xs.end());
+    const double xNear = xs[k];
+    // The face: points within 0.3 m of it. Its lateral centre is the middle of its extent
+    // (5th..95th percentile), not a median, which the first metre of a visible side would drag
+    // towards that side.
+    std::vector<double> ys, zs;
+    for (const auto& p : pts)
+        if (p.x() <= xNear + 0.3) {
+            ys.push_back(p.y());
+            zs.push_back(p.z());
+        }
+    auto pct = [](std::vector<double> v, double q) {
+        const std::size_t i = static_cast<std::size_t>(q * (v.size() - 1));
+        std::nth_element(v.begin(), v.begin() + i, v.end());
+        return v[i];
+    };
+    return {xNear, 0.5 * (pct(ys, 0.05) + pct(ys, 0.95)), pct(zs, 0.5)};
+}
+
 ObjectMask erodeMask(const ObjectMask& m, int cells) {
     ObjectMask out = m;
     for (int it = 0; it < cells; ++it) {
@@ -159,6 +182,11 @@ SceneModel SceneReconstruction::merge(const FusionFrame& frame,
         if (!cluster.empty()) {
             obj.source = RangeSource::LIDAR;
             obj.position = median(cluster);
+            {
+                std::vector<Eigen::Vector3d> q;
+                for (const auto& c : cluster) q.push_back(c.q);
+                obj.nearFace = nearFace(q);
+            }
             obj.points = static_cast<int>(cluster.size());
             // Claim the object's points for rule 8, INCLUDING those the depth test hid (several
             // points of one pedestrian share an image cell). Otherwise they would come back as an
@@ -241,6 +269,7 @@ SceneModel SceneReconstruction::merge(const FusionFrame& frame,
         Eigen::Vector3d sum = Eigen::Vector3d::Zero();
         int count = 0;
         bool seen = false;
+        std::vector<int> idx;  // its points, for the near face
     };
     auto keyOf = [](long long x, long long y, long long z) {
         return (x & 0x1FFFFF) | ((y & 0x1FFFFF) << 21) | ((z & 0x1FFFFF) << 42);
@@ -256,12 +285,14 @@ SceneModel SceneReconstruction::merge(const FusionFrame& frame,
         if (v.count == 0) order.push_back(c);
         v.sum += q;
         ++v.count;
+        v.idx.push_back(i);
     }
     for (const auto& start : order) {
         Voxel& v0 = voxels[keyOf(start.x(), start.y(), start.z())];
         if (v0.seen) continue;
         v0.seen = true;
         UnknownObstacle u;
+        std::vector<Eigen::Vector3d> members;
         std::vector<Eigen::Matrix<long long, 3, 1>> stack{start};
         while (!stack.empty()) {
             const auto c = stack.back();
@@ -269,6 +300,7 @@ SceneModel SceneReconstruction::merge(const FusionFrame& frame,
             const Voxel& v = voxels[keyOf(c.x(), c.y(), c.z())];
             u.position += v.sum;
             u.points += v.count;
+            for (int i : v.idx) members.push_back(pts[i].q);
             for (int dx = -1; dx <= 1; ++dx)
                 for (int dy = -1; dy <= 1; ++dy)
                     for (int dz = -1; dz <= 1; ++dz) {
@@ -280,6 +312,7 @@ SceneModel SceneReconstruction::merge(const FusionFrame& frame,
         }
         if (u.points < cfg_.minUnknownPoints) continue;
         u.position /= static_cast<double>(u.points);
+        u.nearFace = nearFace(members);
         u.groundContact = u.position - ground.distance(u.position) * ground.n;
         scene.unknown.push_back(u);
     }

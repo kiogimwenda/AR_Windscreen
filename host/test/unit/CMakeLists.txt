@@ -155,3 +155,9 @@ target_link_libraries(test_ar_renderer PRIVATE Eigen3::Eigen ar_schemas yaml-cpp
 add_unit_test(test_camera_config test_camera_config.cpp ${HOST_SRC}/camera/CameraConfig.cpp)
 target_link_libraries(test_camera_config PRIVATE Eigen3::Eigen yaml-cpp::yaml-cpp)
 target_compile_definitions(test_camera_config PRIVATE HOST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
+
+# --- Phase 6 (started 2026-10-07 with the replay) ------------------------------------------------
+add_unit_test(test_lidar_processor test_lidar_processor.cpp ${HOST_SRC}/lidar/LidarProcessor.cpp)
+target_link_libraries(test_lidar_processor PRIVATE Eigen3::Eigen)
+add_unit_test(test_livox_packets test_livox_packets.cpp ${HOST_SRC}/lidar/LivoxPackets.cpp)
+target_link_libraries(test_livox_packets PRIVATE Eigen3::Eigen)

@@ -55,7 +55,12 @@ std::vector<EgoRelativeTrack> toEgoFrame(const std::vector<Track>& tracks, const
         e.closingSpeedMps = -xDot;
         e.inEgoPath =
             e.gapM > 0 && std::abs(e.yM - 0.5 * kappa * e.xM * e.xM) <= cfg.egoPathHalfWidthM;
+        e.inStraightPath = e.gapM > 0 && std::abs(e.yM) <= cfg.egoPathHalfWidthM;
+        e.measuredRunMs = t.measuredRunSinceMs > 0 && t.measuredRunSinceMs <= ego.timestampMs
+                              ? ego.timestampMs - t.measuredRunSinceMs
+                              : 0;
         e.confirmed = t.state == TrackState::CONFIRMED;
+        e.lastMeasuredMs = t.lastMeasuredRangeMs;
         e.rangeMeasured = t.lastMeasuredRangeMs > 0 && t.lastMeasuredRangeMs <= ego.timestampMs &&
                           ego.timestampMs - t.lastMeasuredRangeMs <= cfg.measuredRangeMaxAgeMs;
         out.push_back(e);

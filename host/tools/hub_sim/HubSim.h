@@ -10,7 +10,8 @@
 //   ActuationTask  SafetyCore::tick every 10 ms with the simulated kill switch, power box and
 //                  current, producing the "hardware" outputs (brake duty, magnet, relays);
 //   WatchdogTask   SafetyCore::mustRelease every 20 ms;
-//   SensorTask     a SensorReport every 20 ms (a car driving east at 36 km/h) and onReportSent.
+//   SensorTask     a SensorReport every 20 ms (a car driving east at 36 km/h, or a recording's
+//                  reports: setReplay) and onReportSent.
 // So VehicleInterface is tested against the real hub logic end to end, and the real hub only has
 // to replace the pseudo-terminal.
 //
@@ -29,6 +30,23 @@
 
 namespace ar_drive_assist::sim {
 
+// One recorded SensorReport (a recording's hub.csv row; system/Recording.h). Plain fields: this
+// header exposes no protocol types (see above).
+struct ReplayReport {
+    std::int64_t tUs = 0;
+    double lat = 0, lon = 0;
+    float speedKph = 0;
+    std::uint8_t fix = 1;
+    float ax = 0, ay = 0, az = 1, gx = 0, gy = 0, gz = 0;  // g, deg/s
+    float headingDeg = 0;
+    float obdKph = 0;  // NaN = not valid
+};
+// Reads a recording's hub.csv. Throws std::runtime_error.
+std::vector<ReplayReport> loadReplayReports(const std::string& csvPath);
+// The recording at time tUs (the recording's own clock): linear between rows, heading the short
+// way round; before the first row the first, after the last the last.
+ReplayReport replayAt(const std::vector<ReplayReport>& rows, std::int64_t tUs);
+
 class HubSim {
 public:
     HubSim();  // opens a pseudo-terminal; throws on failure
@@ -46,6 +64,10 @@ public:
     void setActuatorCurrent(float amps);
     void setReportsPaused(bool paused);
     void injectBytes(const std::vector<std::uint8_t>& bytes);  // raw bytes into the host stream
+    // Replay a recording's reports instead of the synthetic drive. The replay clock starts at the
+    // first valid frame from the host, so host and hub replay the same moment of the drive;
+    // reports are interpolated to the 50 Hz report rate; after the last row it holds.
+    void setReplay(std::vector<ReplayReport> rows);
 
     // --- Observed hub state ---
     struct Outputs {
@@ -54,6 +76,7 @@ public:
         std::uint8_t indicators = 0, lights = 0;
         bool armed = false;
         std::uint8_t faultCode = 0;
+        std::uint8_t peakBrake = 0;  // highest brake intensity applied since start
     };
     Outputs outputs() const;
     std::uint64_t framesReceived() const;
