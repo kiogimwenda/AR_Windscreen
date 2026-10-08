@@ -2886,3 +2886,23 @@ restored. The procedures themselves are verified on assembly day.
 **Teaching notes:** bring-up order (look, measure cold, current-limited first power, rails, fail-safe
 state, then function); why a 1 kΩ series resistor and a 10 kΩ pull-down make the cable fail safe;
 ground loops and single-point shield bonding; generating documentation from the design data.
+
+## 2026-10-08 — Demonstration videos; the collision barrier matches rule 1
+
+**What:** `replay_inspect --ar-video` renders the driver's view with the real renderer (ArRenderer
++ WindowedSink, offscreen, read back from the GPU) for every replayed frame;
+`tools/bench_rig/make_demo_video.py` lays it out with the sensor view, the decision and a timeline
+(`data/demo/`, not versioned). Two videos: KITTI 0005 with a test obstacle at 11 s, and as recorded.
+
+**Found by watching it:** the forward-collision barrier was drawn for any object in the curved
+predicted path, while rule 1 also requires the straight path, so a car parked at the kerb got a
+barrier and a "9 m" label for something the system would never brake for. *Fix:*
+`HazardView::inBrakePath` (curved AND straight path, rule 1's geometry) gates the barrier, its gap
+label and the stop-gap; an object in the curved path only keeps its warning glow.
+
+**Verification:** unit 289/289 (new: no barrier outside the brake path); integration 52/52; the
+regenerated video shows the parked car with its glow only and the obstacle with its barrier; the
+drive as recorded: 0 brake requests.
+
+**Not final (stated with the videos):** a German drive under Kenyan rules and a Kenyan sign
+detector; no route line (the map is Nairobi's); colours and sizes untuned until the real display.

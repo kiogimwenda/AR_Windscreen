@@ -87,7 +87,7 @@ OverlayScene ArRenderer::build(const RenderInputs& in) {
         if (gap > 0 && (!stopGap || gap < *stopGap)) stopGap = gap;
     }
     for (const HazardView& h : in.hazards) {
-        if ((h.threat.flags & FORWARD_COLLISION) && h.threat.inEgoPath && h.gapM > 0 &&
+        if ((h.threat.flags & FORWARD_COLLISION) && h.inBrakePath && h.gapM > 0 &&
             (!stopGap || h.gapM < *stopGap))
             stopGap = h.gapM;
     }
@@ -178,7 +178,7 @@ OverlayScene ArRenderer::build(const RenderInputs& in) {
         }
         if (!h.ground) continue;  // rule 6: no road element without a measured position
         const Eigen::Vector3d g = *h.ground;
-        if ((t.flags & FORWARD_COLLISION) && t.inEgoPath) {
+        if ((t.flags & FORWARD_COLLISION) && h.inBrakePath) {
             const double a = decel(h.gapM);
             barrier(g.x(), g.y(), col, a > cfg_.comfortG ? 1.5f : 0.0f, h.trackId);
             Eigen::Vector2d px;

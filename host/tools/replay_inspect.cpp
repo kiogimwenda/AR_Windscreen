@@ -15,6 +15,9 @@
 //                   age of the LiDAR scan fused with the frame (-1: none was usable)
 //   inspect.mp4     the camera with the LiDAR points (colour = height above the road), the camera
 //                   detections, each track's ground point and id, and the decision
+//   ar.mp4          with --ar-video: the DRIVER'S view, drawn by the real renderer (ArRenderer +
+//                   WindowedSink, offscreen, read back from the GPU) from the same scene and
+//                   decision, exactly as the running system draws it
 // --jitter SEED: the timing variations of a real-time run, reproducibly: each frame is paired with
 // the newest LiDAR scan or, at random, the one before (as a scan still being processed would
 // leave it; one more than 150 ms old is not fused, so that frame has no LiDAR at all), and the
@@ -26,6 +29,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
 #include <optional>
@@ -36,6 +40,9 @@
 #include "ar_drive_assist/camera/CameraPipeline.h"
 #include "ar_drive_assist/decision/DecisionThread.h"
 #include "ar_drive_assist/lidar/LidarReplay.h"
+#include "ar_drive_assist/render/ArRenderer.h"
+#include "ar_drive_assist/render/RenderThread.h"
+#include "ar_drive_assist/render/WindowedSink.h"
 #include "ar_drive_assist/scene/FusionThread.h"
 #include "ar_drive_assist/system/SystemManager.h"
 
@@ -81,6 +88,7 @@ int main(int argc, char** argv) {
     int maxFrames = 1 << 30;
     bool video = true;
     int jitterSeed = -1;
+    bool arVideo = false;
     for (int i = 2; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--out" && i + 1 < argc) {
@@ -95,6 +103,8 @@ int main(int argc, char** argv) {
             video = false;
         } else if (a == "--jitter" && i + 1 < argc) {
             jitterSeed = std::atoi(argv[++i]);
+        } else if (a == "--ar-video") {
+            arVideo = true;
         }
     }
     std::filesystem::create_directories(outDir);
@@ -145,6 +155,27 @@ int main(int argc, char** argv) {
     dc.thresholds = config.decision;
     dc.vehicle = config.vehicle;
     DecisionThread decision(dc, scenes, nullptr);
+
+    // The driver's view: the renderer the running system uses, offscreen.
+    std::unique_ptr<WindowedSink> sink;
+    std::unique_ptr<ArRenderer> arRenderer;
+    cv::VideoWriter arWriter;
+    if (arVideo) {
+        WindowedSinkOptions wo;
+        wo.hidden = true;
+        sink = std::make_unique<WindowedSink>(wo);
+        if (!sink->init({rec.width, rec.height, float(rec.width) / rec.height}, cam,
+                        rec.cameraFromVehicle)) {
+            std::fprintf(stderr, "replay_inspect: renderer: %s\n", sink->lastError().c_str());
+            return 1;
+        }
+        RendererConfig rcfg;
+        rcfg.frontBumperM = config.vehicle.frontBumperFromRearAxleM;
+        rcfg.tailgatingMinGapS = config.decision.tailgatingMinGapS;
+        arRenderer = std::make_unique<ArRenderer>(rcfg, cam, rec.cameraFromVehicle);
+        arWriter.open(outDir + "/ar.mp4", cv::CAP_FFMPEG,
+                      cv::VideoWriter::fourcc('a', 'v', 'c', '1'), 10, {rec.width, rec.height});
+    }
 
     std::ofstream tracksCsv(outDir + "/tracks.csv"), decCsv(outDir + "/decisions.csv");
     tracksCsv << "frame,t_ms,track,class,state,confirmed,range_measured,run_ms,x_m,y_m,in_path,"
@@ -226,6 +257,15 @@ int main(int argc, char** argv) {
         decCsv << ',' << trueGap << ',' << trueTtc << ',' << trueY << ','
                << (s.lidarUsed ? static_cast<long long>(s.lidarAgeMs) : -1) << '\n';
 
+        if (arVideo) {
+            const RenderInputs in = RenderThread::inputs(f, &s, &d, nullptr, rec.cameraFromVehicle);
+            CompositedFrame out;
+            out.video = f.bgr;
+            out.overlays = arRenderer->build(in);
+            out.timestampMs = f.timestampMs;
+            sink->present(out);
+            arWriter.write(sink->capture());
+        }
         if (!video) continue;
         cv::Mat img;
         cv::copyMakeBorder(f.bgr, img, 0, 60, 0, 0, cv::BORDER_CONSTANT, cv::Scalar::all(0));

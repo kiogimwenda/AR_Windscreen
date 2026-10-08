@@ -24,7 +24,8 @@
 //   - The glow on the object's mask (or a soft ellipse in its box without one, rule 6), coloured
 //     by risk r, shimmering faster as r rises (at most 3 Hz). The silhouette and its depth are
 //     registered as an occluder (rule 4).
-//   - Forward collision in the ego path: a barrier across the lane at the object, with the gap.
+//   - Forward collision in the path rule 1 brakes in (HazardView::inBrakePath): a barrier across
+//     the lane at the object, with the gap. In the curved path only: the glow alone.
 //   - Pedestrian, cyclist or animal in or entering the path: a ring on the ground at its feet.
 //   - Tailgating: the following-distance zone between the bumper and the lead vehicle.
 //   - Swerving / erratic neighbour: the lane line on its side glows red.
@@ -59,8 +60,13 @@ struct HazardView {
     ThreatAssessment threat;
     std::optional<Eigen::Vector3d> ground;  // vehicle frame, on the road at its base, if measured
     double gapM = -1;                       // bumper gap, if in the path
-    double depthM = 0;                      // camera depth, for occlusion
-    std::optional<PixelMask> mask;          // segmentation mask (camera pixels)
+    // In the path rule 1 brakes in: the curved path AND the straight one (EgoRelativeTrack). Only
+    // such an object gets the forward-collision barrier; one in the curved path alone (a car parked
+    // at the kerb on a corner exit) keeps its warning glow. A barrier the system would never brake
+    // for misled the driver (KITTI demonstration, 2026-10-08).
+    bool inBrakePath = false;
+    double depthM = 0;                              // camera depth, for occlusion
+    std::optional<PixelMask> mask;                  // segmentation mask (camera pixels)
     Eigen::Vector4d box = Eigen::Vector4d::Zero();  // camera pixels x, y, w, h
 };
 

@@ -158,10 +158,14 @@ add_executable(replay_inspect tools/replay_inspect.cpp
                src/decision/DecisionArbiter.cpp src/safety/MultiObjectTracker.cpp
                src/safety/ImmFilter.cpp src/safety/Hungarian.cpp src/safety/MotionPredictor.cpp
                src/safety/RecklessDrivingDetector.cpp src/fusion/HubReportFeeder.cpp
-               src/fusion/ImuMount.cpp src/fusion/SensorFusion.cpp src/vehicle/VehicleInterface.cpp)
+               src/fusion/ImuMount.cpp src/fusion/SensorFusion.cpp src/vehicle/VehicleInterface.cpp
+               src/render/RenderThread.cpp src/render/ArRenderer.cpp src/render/OverlayScene.cpp
+               src/render/SignTracker.cpp src/render/WindowedSink.cpp
+               src/nav/RoadSurfaceProjector.cpp src/nav/Route.cpp)
 target_include_directories(replay_inspect PRIVATE include)
 target_link_libraries(replay_inspect PRIVATE hub_sim_lib ${OpenCV_LIBS} CUDA::cudart
-                      TensorRT::TensorRT Eigen3::Eigen yaml-cpp::yaml-cpp ar_schemas)
+                      TensorRT::TensorRT Eigen3::Eigen yaml-cpp::yaml-cpp ar_schemas
+                      SDL2::SDL2 OpenGL::GL GLEW::GLEW)
 
 # The unit suite under test/unit/ is intentionally NOT built from here — see test/CMakeLists.txt.
 # enable_testing() must come before the tests are declared, so ctest can find the integration tests.

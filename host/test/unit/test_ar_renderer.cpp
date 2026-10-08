@@ -69,6 +69,7 @@ HazardView hazard(int id, int cls, std::uint32_t flags, double risk,
     h.threat.risk = risk;
     h.threat.level = RecklessDrivingDetector::levelFor(risk);
     h.threat.inEgoPath = true;
+    h.inBrakePath = true;
     h.ground = ground;
     h.gapM = gap;
     h.box = {900, 500, 120, 90};
@@ -194,6 +195,22 @@ TEST(ArRenderer, ForwardCollisionHazard) {
     EXPECT_GT(g->style.shimmerHz, 1.5f);
     EXPECT_LE(g->style.shimmerHz, 3.0f);
     EXPECT_FLOAT_EQ(g->style.color.r, palette::forRisk(0.95).r);
+}
+
+// In the curved path only (a car parked at the kerb on a corner exit): rule 1 would never brake
+// for it, so no barrier and no gap label, which would tell the driver otherwise. The glow stays.
+TEST(ArRenderer, NoBarrierForAnObjectRuleOneWouldNotBrakeFor) {
+    auto r = renderer();
+    RenderInputs in;
+    in.frameMs = 1000;
+    in.egoSpeedMps = 10;
+    HazardView h = hazard(4, 0, FORWARD_COLLISION, 0.95, Eigen::Vector3d(23.5, 1.0, 0), 20);
+    h.inBrakePath = false;
+    in.hazards = {h};
+    const auto s = r.build(in);
+    EXPECT_EQ(s.count(OverlayKind::ROAD_BARRIER), 0u);
+    EXPECT_FALSE(hasLabel(s, "20 m"));
+    EXPECT_EQ(s.count(OverlayKind::ELLIPSE_GLOW), 1u) << "the warning glow stays";
 }
 
 TEST(ArRenderer, PedestrianGetsAGroundRingAndAMaskGlow) {

@@ -58,6 +58,7 @@ RenderInputs RenderThread::inputs(const CameraFrame& frame, const SceneSnapshot*
         h.threat = t.threat;
         h.ground = Eigen::Vector3d(t.posVehicle.x(), t.posVehicle.y(), 0.0);
         h.gapM = t.inEgoPath ? t.gapM : -1;
+        h.inBrakePath = t.inEgoPath && t.inStraightPath;  // rule 1's geometry
         h.depthM = (cameraFromVehicle * *h.ground).z();
         double best = 2.0;  // metres
         for (const FusedObject& o : scene->scene.objects) {

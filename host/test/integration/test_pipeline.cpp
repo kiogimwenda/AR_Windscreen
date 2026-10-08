@@ -175,6 +175,7 @@ TEST(RenderInputs, HazardsAndEgoSpeedComeFromTheSceneAndTheDecision) {
     EXPECT_NEAR(*in.egoSpeedMps, 10, 1e-9);
     ASSERT_EQ(in.hazards.size(), 1u);
     EXPECT_NEAR(in.hazards[0].gapM, 12, 0.3);
+    EXPECT_TRUE(in.hazards[0].inBrakePath) << "straight ahead: the barrier is drawn";
     EXPECT_GT(in.hazards[0].depthM, 10);  // in front of the camera
     EXPECT_EQ(in.lanes, &s.detections);
     EXPECT_FALSE(in.systemNotice.has_value());
