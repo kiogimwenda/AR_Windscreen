@@ -171,9 +171,9 @@ before ordering.
 
 | # | Item | Notes | Est. |
 |---|---|---|---|
-| 9.1 | Pod board, 4-layer, 80 × 55 mm, ×5 | Four layers for a solid ground under the GNSS and IMU | US$15–35 |
-| 9.2 | Power board, 2-layer, 2 oz copper, 110 × 80 mm, ×5 | 2 oz for the actuator and relay currents | US$10–25 |
-| 9.3 | Components: STM32F405RGT6 ×2 (one spare), 8 MHz crystals, AP2112K-3.3, USB-C sockets, USBLC6-2SC6, 60 V buck IC + inductor, SMCJ24A, 74HCT244, MOSFETs, SN65HVD230, PESD2CAN, PC817, DB-25 PCB connectors, passives | From the board house's assembly service or LCSC/Mouser; hand-solderable packages chosen (LQFP64, SOIC, SOT-23, 0805) | US$40–70 |
+| 9.1 | Pod board, 4-layer, 70 × 53 mm, ×5 | Four layers for a solid ground under the GNSS and IMU | US$15–35 |
+| 9.2 | Power board, 2-layer, 2 oz copper, 95 × 66 mm, ×5 | 2 oz for the actuator and relay currents | US$10–25 |
+| 9.3 | Components: STM32F405RGT6 ×2 (one spare), 8 MHz crystals, AP2112K-3.3, USB-C sockets (GCT USB4105-GF-A, 16-pin USB 2.0: the footprint matches it), USBLC6-2SC6, side-push tactile switches ×2 per board (Panasonic EVQ-P7C, RESET and BOOT: pressed through pin-holes in the pod's wall), 60 V buck IC + inductor, SMCJ24A, 74HCT244, MOSFETs, SN65HVD230, PESD2CAN, PC817, DB-25 PCB connectors, passives | From the board house's assembly service or LCSC/Mouser; hand-solderable packages chosen (LQFP64, SOIC, SOT-23, 0805) | US$40–70 |
 | 9.4 | Optional machine assembly of the fine-pitch parts | If hand-soldering the LQFP64 is not wanted | US$15–40 |
 | 9.5 | Courier to Kenya and duty/VAT | Express courier; duty and VAT on the declared value | US$30–60 |
 | | **Total** | at ~129 KES/US$ | **≈ KES 15,000 – 28,000** |
@@ -183,6 +183,103 @@ ACS712 stay as modules on the power board (3.1, 3.2). Only the parts that were n
 onto the boards themselves.
 
 ---
+
+## 10. PCB buy list (Rev 1, hand assembly)
+
+Every part below fits the footprint on the board; **buy the part named, or one with the same package
+and ratings**. A different package will not fit its pads. Quantities are **per board**; for two
+assembled boards of each, buy ×2 and add spares (10 % on passives, which come in strips of 10–50;
+one spare of each IC). Generated from the boards' own BOMs (`hardware/<board>/fab/<board>-bom.csv`,
+2026-10-11). Sources: LCSC, Mouser or DigiKey (§9.3); "e.g." parts are examples of the right type.
+
+**Common passives (both boards):** resistors 0805, 1 %, 1/8 W, thick film (e.g. Yageo RC0805FR-07…);
+capacitors 0805/1206/1210 MLCC, X7R or X5R unless C0G is stated, voltage as listed.
+
+### 10.1 Pod board (70 × 53 mm)
+
+| Refs | Qty | Part | Fits footprint | Notes |
+|---|---|---|---|---|
+| U1 | 1 | **STM32F405RGT6** | LQFP-64 10×10, 0.5 mm | |
+| U3 | 1 | **AP2112K-3.3TRG1** (3.3 V LDO, 600 mA) | SOT-23-5 | |
+| U4 | 1 | **USBLC6-2SC6** (USB ESD) | SOT-23-6 | |
+| Y1 | 1 | 8.000 MHz crystal, HC-49/US **SMD**, load capacitance **12 pF**, ≤ 50 ppm | HC49-SD | 12 pF to suit C12/C13 = 15 pF |
+| J1 | 1 | **GCT USB4105-GF-A** (USB-C, 16-pin) | USB4105 | |
+| J7 | 1 | DB-25 **female**, right-angle PCB, through-hole, 2.77 × 2.84 mm pitch, **4.94 mm** front-face-to-pin offset, board locks (e.g. TE 2311766-1, Norcomp 178-025 series) | DSUB-25 socket, EdgePinOffset 4.94 mm | **check the 4.94 mm offset on the datasheet** before buying |
+| SW1, SW2 | 2 | **Panasonic EVQP7C01P** (side-push tactile) | SW_SPST_EVQP7C | distributors list it as 3.5 × 2.9 mm |
+| J2 | 1 | 1×6 **female** socket, 2.54 mm (e.g. Sullins PPTC061LFBN-RC) | PinHeader 1×06 | the BNO085 breakout plugs in (§10.3) |
+| J3, J5 | 2 | 1×5 male pin header, 2.54 mm | PinHeader 1×05 | leads to GNSS / ST-Link |
+| J6 | 1 | 1×4 male pin header, 2.54 mm | PinHeader 1×04 | fallback HC-05 only |
+| J8 | 1 | 1×1 male pin, 2.54 mm (cut from a strip) | PinHeader 1×01 | optional IMU reset wire |
+| J4 | 1 | **JST SM05B-GHS-TB(LF)(SN)** + mating GHR-05V-S housing and crimped leads | JST GH 5-pin | gesture puck cable |
+| D1, D2 | 2 | **SS14** (1 A 40 V Schottky) | SMA | |
+| D3 / D4 / D5 / D6 | 1 each | 0805 LEDs: green / blue / amber / red (e.g. Kingbright APT2012SGC, -QBC/D, -SYCK, -SURCK) | LED 0805 | **D4 blue: see note below** |
+| C1, C2 | 2 | 10 µF 25 V X5R | 1206 | e.g. Samsung CL31A106KAHNNNE |
+| C7 | 1 | 4.7 µF 25 V X5R | 1206 | |
+| C3–C6, C9, C14, C65 | 7 | 100 nF 50 V X7R | 0805 | e.g. CL21B104KBCNNNC |
+| C8 | 1 | 1 µF 25 V X7R | 0805 | |
+| C10, C11 | 2 | 2.2 µF 16 V X7R, low ESR | 0805 | the MCU's VCAP pins: ceramic only |
+| C12, C13 | 2 | 15 pF 50 V **C0G** | 0805 | crystal load |
+| C15 | 1 | 4.7 nF 100 V X7R | 0805 | USB shield |
+| C54, C57, C60 | 3 | 10 nF 50 V X7R | 0805 | |
+| R30–R33, R40–R48, R50–R52, R55, R58, R64 | 19 | 1 kΩ | 0805 | |
+| R1, R53, R56, R59, R62 | 5 | 10 kΩ | 0805 | |
+| R2, R3 | 2 | 5.1 kΩ | 0805 | USB-C CC |
+| R4 / R66 | 1 / 1 | 1 MΩ / 100 kΩ | 0805 | |
+| R5, R6 / R7, R8 | 2 / 2 | 4.7 kΩ / 2.2 kΩ | 0805 | I2C pull-ups |
+| R49 / R61, R63 | 1 / 2 | 330 Ω / 100 Ω | 0805 | |
+| H1–H4 | 4 | M3 × 6 mm standoffs and screws | 3.2 mm hole | |
+
+**Note on D4 (LINK, blue):** it is driven from a 3.3 V pin through 1 kΩ, and a blue LED needs about
+2.9–3.2 V, so it will glow faintly at best. Either buy a blue LED rated **≤ 2.8 V at 1 mA**, or fit
+any other colour (the silkscreen says "LINK", not a colour).
+
+### 10.2 Power board (95 × 66 mm, order with 2 oz copper)
+
+| Refs | Qty | Part | Fits footprint | Notes |
+|---|---|---|---|---|
+| U1 | 1 | **TPS54360DDAR** (60 V 3.5 A buck) | SO-8 PowerPAD (DDA) | solder its thermal pad |
+| L1 | 1 | **Bourns SRR1260-8R2Y** (8.2 µH) | SRR1260 | Isat > 4.5 A |
+| U2 | 1 | **AP2112K-3.3TRG1** | SOT-23-5 | |
+| U3 | 1 | **SN74HCT244DWR** | SOIC-20 **wide** (7.5 mm) | HCT, not HC |
+| U4 | 1 | **SN65HVD230DR** | SOIC-8 | |
+| U5 | 1 | **PC817** (e.g. Sharp PC817X) | DIP-4 | |
+| Q2–Q7 | 6 | **AO3400A** (30 V N-MOSFET) | SOT-23 | |
+| Q8 | 1 | **2N7002** | SOT-23 | |
+| D10 | 1 | **SMCJ24CA** (TVS, bidirectional) | SMC | |
+| D11, D13 | 2 | **B560C-13-F** (5 A 60 V Schottky) | SMC | |
+| D14–D19 | 6 | **SS14** | SMA | flyback |
+| D20 | 1 | **NUP2105LT1G** (CAN ESD) | SOT-23 | |
+| D21 | 1 | **1N4148W-7-F** | SOD-123 | |
+| D12 | 1 | green LED (e.g. Kingbright APT2012SGC) | LED 0805 | |
+| F1, F3 | 2 | **Keystone 3568** mini-blade fuse holder + **3 A mini-blade (ATM) fuses** | Keystone 3568 | buy spare fuses |
+| F2 | 1 | 500 mA polyfuse, ≥ 6 V (e.g. Bourns MF-NSMF050-2) | 1206 | |
+| J1 | 1 | DB-25 female, same part as the pod's J7 | as pod J7 | |
+| J2, J3, J5–J10 | 8 | **Phoenix MKDS 1,5/2-5,08** (1715721) | MKDS 2-pin 5.08 | |
+| J11 | 1 | **Phoenix MKDS 1,5/3-5,08** (1715734) | MKDS 3-pin | |
+| J4 | 1 | **Phoenix MKDS 1,5/6-5,08** (1715763) | MKDS 6-pin | |
+| J13 / J14 / J12 | 1 / 1 / 1 | male pin headers 1×8 / 1×3 / 1×4, 2.54 mm | PinHeader | leads to the modules |
+| C20 | 1 | 47 µF **63 V** aluminium, Ø 8 mm, 3.5 mm pitch, 105 °C (e.g. Panasonic EEU-FR1J470) | CP radial 8 mm | |
+| C21, C22 | 2 | 2.2 µF **100 V** X7R (e.g. Murata GRM32ER72A225KA35L) | 1210 | the converter's input |
+| C24, C25 | 2 | 47 µF 16 V X5R (e.g. Murata GRM32ER61C476KE15L) | 1210 | the converter's output |
+| C23, C31, C32 | 3 | 100 nF 50 V X7R | 0805 | |
+| C26 / C27 | 1 / 1 | 6.8 nF 50 V X7R / 39 pF 50 V **C0G** | 0805 | compensation |
+| C28–C30 | 3 | 10 µF 25 V X5R | 1206 | |
+| R47, R50–R61 | 13 | 10 kΩ | 0805 | |
+| R41 / R42 / R43 | 1 each | 523 kΩ / 84.5 kΩ / 162 kΩ, **1 %** | 0805 | converter EN and frequency |
+| R44 / R45 / R46 | 1 each | 53.6 kΩ / 10.2 kΩ / 13.0 kΩ, **1 %** | 0805 | converter feedback, compensation |
+| R40 / R48 / R62 / R63 | 1 each | 4.7 kΩ / 20 kΩ / 100 kΩ / 2.2 kΩ | 0805 | |
+| H1–H4 | 4 | M3 standoffs and screws | 3.2 mm hole | |
+
+### 10.3 Modules and breakouts: how they connect (pin orders checked 2026-10-11)
+
+| Board header | Module | Connection | Checked against |
+|---|---|---|---|
+| Pod **J2** | BNO085 breakout, **Adafruit 4754** (2.1) | **Plugs straight in**, face up, body over the board: J2 is its JP1 row pin for pin (VIN, 3Vo, GND, SCL, SDA, INT; 3Vo left open). Solder a **male** header on its JP1 row only. Its RST (JP2 pin 4) to pod **J8** by an optional wire. | Adafruit's board file (Adafruit-BNO085-PCB, JP1/JP2 pad nets) |
+| Pod J3 | NEO-M8N board (2.2) | A 4-wire lead, **matching names**: the board's labels are the module's (VCC, GND, TX, RX). These boards' 4-pin headers come in different orders and most have **no PPS pin**: J3's PPS stays free unless yours has one. Takes 3–5 V. | sellers' listings (orders differ) |
+| Pod J6 | HC-05 (2.4, fallback) | A lead, matching names; **J6's VCC is the pod's 5 V** (the HC-05 board needs 3.6–6 V); RXD/TXD are 3.3 V logic. | HC-05 (ZS-040) listings |
+| Power J13 | BTS7960 / IBT-2 (3.1) | 8-wire lead, **pin for pin**: RPWM, LPWM, R_EN, L_EN, R_IS, L_IS, VCC, GND, the standard IBT-2 order. Check your board's silkscreen: one seller lists another order. | Handsontec IBT-2 datasheet |
+| Power J14 | ACS712-20A (3.2) | 3-wire lead, matching names (VCC, OUT, GND); clones order these differently. | sellers' listings (orders differ) |
+| Power J12 | HX711 (5.2, bench) | 4-wire lead, matching names (VCC, DT, SCK, GND); orders differ between boards. | sellers' listings (orders differ) |
 
 ## Notes
 

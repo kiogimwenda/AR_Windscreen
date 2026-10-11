@@ -24,7 +24,7 @@ import math
 import uuid as uuidlib
 from pathlib import Path
 
-from kisch import POWER_NETS, dump, find, fnt, q, uid, unq
+from kisch import POWER_NETS, dump, find, fnt, new_uuid, q, uid, unq
 
 G = 1.27   # routing grid, mm
 U = 2.54   # drawing unit, mm
@@ -163,8 +163,8 @@ class Sheet:
         self.lib, self.parts = lib, parts
         self.name, self.title, self.paper = name, title, paper
         self.file = file or name.lower().replace(" ", "_").replace(".", "") + ".kicad_sch"
-        self.uuid = str(uuidlib.uuid4())       # the sheet symbol's uuid, in instance paths
-        self.file_uuid = str(uuidlib.uuid4())
+        self.uuid = new_uuid()       # the sheet symbol's uuid, in instance paths
+        self.file_uuid = new_uuid()
         self.placed, self.texts, self.flags, self.rails = [], [], [], []
         self.port_side, self.port_row, self.shapes = {}, {}, {}
         self.default_side = "L"
@@ -746,10 +746,10 @@ class Writer:
                     or ds not in ({"L", "R"}, {"U", "D"}))
 
         used = set()
-        for e in list(edges):
+        for e in sorted(edges, key=sorted):  # sorted: the same files on every run
             if e in used:
                 continue
-            a, b = tuple(e)
+            a, b = sorted(e)
             d = vdir(b[0] - a[0], b[1] - a[1])
             s0 = a
             while not is_break(s0) and frozenset((s0, step(s0, OPP[d]))) in edges:
@@ -816,7 +816,7 @@ def build_project(lib, project, title, sheets, root, outdir, date, comment):
     """sheets: [Sheet]; root: a Sheet-like description of the block diagram, with .boxes
     [(sheet, x, y, w, [(net, side)])], .texts, .paper. Writes <outdir>/<project>.kicad_sch and
     one file per sheet. Returns the unrouted list (empty when everything was drawn)."""
-    root_uuid = str(uuidlib.uuid4())
+    root_uuid = new_uuid()
     counters = {"pwr": 0, "flg": 0}
     problems = []
     # which nets leave which sheet

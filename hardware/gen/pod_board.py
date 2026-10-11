@@ -1,4 +1,4 @@
-"""The windscreen pod board (BUILD_GUIDE Part 4.8.2). 4-layer, 80 x 55 mm.
+"""The windscreen pod board (BUILD_GUIDE Part 4.8.2). 4-layer, 70 x 53 mm (outlines.py).
 
 Every MCU pin assignment here must equal firmware/sensor_actuator_hub/include/hub/Config.h, and
 every DB-25 pin must equal BUILD_GUIDE 4.8.3; check_nets.py verifies both from the exported
@@ -91,10 +91,10 @@ decoupling = [
     C("C12", "15p", "OSC_IN", "GND", desc="crystal load"),
     C("C13", "15p", "OSC_OUT", "GND", desc="crystal load"),
     C("C14", "100n", "NRST", "GND"),
-    {"sym": "Switch:SW_Push", "ref": "SW1", "value": "RESET", "fp": "Button_Switch_SMD:SW_SPST_TL3342",
+    {"sym": "Switch:SW_Push", "ref": "SW1", "value": "RESET", "fp": "Button_Switch_SMD:SW_SPST_EVQP7C",
      "nets": {"1": "NRST", "2": "GND"}},
     R("R1", "10k", "BOOT0", "GND", desc="BOOT0 low: run from flash"),
-    {"sym": "Switch:SW_Push", "ref": "SW2", "value": "BOOT", "fp": "Button_Switch_SMD:SW_SPST_TL3342",
+    {"sym": "Switch:SW_Push", "ref": "SW2", "value": "BOOT", "fp": "Button_Switch_SMD:SW_SPST_EVQP7C",
      "desc": "hold at reset for the USB DFU bootloader", "nets": {"1": "BOOT0", "2": "+3V3"}},
 ]
 groups.append(("MCU: STM32F405RGT6", [mcu], 1))
@@ -103,7 +103,7 @@ groups.append(("MCU support: decoupling, crystal, reset, boot", decoupling, 5))
 # --- USB --------------------------------------------------------------------------------------
 usb = [
     {"sym": "Connector:USB_C_Receptacle_USB2.0_16P", "ref": "J1", "value": "USB-C",
-     "fp": "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
+     "fp": "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal",
      "desc": "to the laptop: the Part 3 protocol; also powers the pod when the cable is out",
      "nets": {"A1": "GND", "A12": "GND", "B1": "GND", "B12": "GND",
               "A4": "VBUS", "A9": "VBUS", "B4": "VBUS", "B9": "VBUS",
@@ -120,9 +120,14 @@ groups.append(("USB-C to the laptop", usb, 3))
 
 # --- Sensors and local connectors ------------------------------------------------------------
 sensors = [
-    CONN("J2", "IMU (BNO085 breakout)", ["+3V3", "GND", "IMU_SCL", "IMU_SDA", "IMU_INT", "IMU_RST"],
-         desc="carrier header: match to the purchased breakout's pin order before layout; "
-              "mount the breakout on standoffs, rigidly"),
+    # Pin for pin the Adafruit 4754's JP1 row (its board file: VIN 3Vo GND SCL SDA INT): the breakout
+    # plugs straight in, face up, its body over the board. 3Vo is its regulator's OUTPUT: left open.
+    CONN("J2", "IMU (BNO085 breakout)", ["+3V3", None, "GND", "IMU_SCL", "IMU_SDA", "IMU_INT"],
+         desc="Adafruit 4754 JP1 row: VIN 3Vo(open) GND SCL SDA INT; mount the breakout rigidly"),
+    # The breakout's RST is on its other row (JP2 pin 4) and the firmware does not use it (it recovers
+    # through the sensor's own reset report): an optional jumper wire from here.
+    CONN("J8", "IMU reset (optional wire)", ["IMU_RST"],
+         desc="optional jumper to the BNO085 breakout's RST (JP2 pin 4)"),
     R("R5", "4.7k", "+3V3", "IMU_SCL"), R("R6", "4.7k", "+3V3", "IMU_SDA"),
     CONN("J3", "GNSS (NEO-M8N breakout)", ["+3V3", "GND", "GPS_RX", "GPS_TX", "GPS_PPS"],
          desc="MCU GPS_TX goes to the module's RX: names are the MCU's view. Match the breakout's "
@@ -133,8 +138,10 @@ sensors = [
     R("R7", "2.2k", "+3V3", "GEST_SCL", desc="stronger pull-up for the cable"),
     R("R8", "2.2k", "+3V3", "GEST_SDA"),
     CONN("J5", "SWD (ST-Link)", ["+3V3", "SWDIO", "SWCLK", "GND", "NRST"]),
-    CONN("J6", "ELM327 fallback (USART3)", ["+3V3", "GND", "OBD_TX", "OBD_RX"],
-         desc="HC-05 bridge to a Bluetooth ELM327, env:hub_elm327 only (Part 4.8.5)"),
+    # The HC-05 board needs 3.6-6 V on VCC (its own 3.3 V regulator), so the pod's 5 V feeds it; its
+    # RXD/TXD are 3.3 V logic, as the MCU's.
+    CONN("J6", "ELM327 fallback (USART3)", ["VIN_POD", "GND", "OBD_TX", "OBD_RX"],
+         desc="HC-05 bridge to a Bluetooth ELM327, env:hub_elm327 only (Part 4.8.5); VCC is the pod's 5 V"),
 ]
 groups.append(("Sensors and local connectors", sensors, 3))
 

@@ -63,3 +63,7 @@ PRE_HARDWARE_TODO.md
 
 # Demonstration videos (tools/bench_rig/make_demo_video.py): regenerated, not versioned
 data/demo/
+
+# KiCad DRC reports written by hardware/gen/layout.sh
+hardware/*/drc.json
+hardware/*/DRC.rpt

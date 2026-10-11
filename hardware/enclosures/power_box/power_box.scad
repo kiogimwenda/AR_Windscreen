@@ -1,10 +1,10 @@
 // Power box: a printed chassis plate inside a commercial ABS junction box (about 250 x 150 x 100 mm
 // outside, IP65 class). See BUILD_GUIDE Part 4.8.4/4.8.6 and hardware/enclosures/README.md.
 //
-// Why a bought box: the contents (power board 110 x 80, BTS7960 module with its heatsink, ACS712,
+// Why a bought box: the contents (power board 95 x 66, BTS7960 module with its heatsink, ACS712,
 // six automotive relays in 28 mm sockets, eight cable glands) need about 240 x 140 mm of floor; a
 // printed box that size exceeds most printer beds (220 x 220) and would be weaker and leakier than
-// an ABS junction box. The printed chassis plate (210 x 130 mm) carries everything and is screwed to
+// an ABS junction box. The printed chassis plate (210 x 112 mm) carries everything and is screwed to
 // the box floor from below; the box walls and floor are drilled from 1:1 templates
 // (make_templates.py).
 //
@@ -30,10 +30,10 @@ box_in = [240, 140, 95];       // interior length, width, depth (to the lid seal
 box_wall = 3;                  // wall and floor thickness
 
 // --- Chassis plate ---------------------------------------------------------------------------------
-plate = [210, 130];
+plate = [210, 112];           // depth follows the 66 mm power board (2026-10-08; was 130 for 80)
 plate_t = 4;
 plate_xy = [15, 0];            // in box coordinates: centred along X, against the front wall
-floor_fix = [[90, 6], [90, 70], [6, 86], [204, 86]];  // M4 from below the box into inserts
+floor_fix = [[90, 6], [90, 60], [6, 68], [204, 68]];  // M4 from below the box into inserts
 fix_boss_h = 8;                // the plate's 4 mm + 4 mm boss above: room for an M4 x 8.1 insert
 
 // Power board (outline and holes from boards.scad)
@@ -57,7 +57,7 @@ acs_holes = [[3, 6.5], [28, 6.5]];
 // automotive "mini" relays in 28 x 28 mm sockets with one M4 mounting tab each (VERIFY).
 relay_count = 6;
 relay_pitch = 33;
-relay_row = [8, 92];           // first socket's corner on the plate
+relay_row = [8, 74];           // first socket's corner on the plate: just behind the 66 mm board
 relay_size = [28, 28];
 relay_tab = [14, -5];          // the tab's hole, relative to the socket's corner
 
@@ -132,7 +132,8 @@ module assembly() {
         color("silver") keep(power_board_keeps[0], zb + power_board[2], db25_shell_h);
         color("gold") keep(power_board_keeps[1], zb + power_board[2], 12);
         color("limegreen") keep(power_board_keeps[2], zb + power_board[2], 12);
-        color("white") keep(power_board_keeps[3], zb + power_board[2], 9);
+        color("white") keep(power_board_keeps[3], zb + power_board[2], 12);
+        color("limegreen") keep(power_board_keeps[4], zb + power_board[2], 12);
         color("darkred") translate([bts_xy[0], bts_xy[1], plate_t + bts_standoff]) cube([bts_size[0], bts_size[1], 2]);
         color("gray") translate([bts_xy[0] + 5, bts_xy[1] + 5, plate_t + bts_standoff + 2])
             cube([40, 40, bts_heatsink_h]);

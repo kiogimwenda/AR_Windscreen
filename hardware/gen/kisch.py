@@ -18,6 +18,7 @@ drawing, lay out the PCB.
 """
 
 import re
+import random
 import uuid as uuidlib
 from pathlib import Path
 
@@ -127,8 +128,22 @@ class Library:
 
 
 # --- Schematic ---------------------------------------------------------------------------------
+# Identifiers are DETERMINISTIC: a generator seeded with the board's name (reseed()), so the same
+# description always yields the same files. Random ones changed every schematic on every run (git
+# noise), and the PCB links each footprint to its schematic symbol by these ids: they must not move.
+_rng = random.Random(0)
+
+
+def reseed(name):
+    _rng.seed(name)
+
+
+def new_uuid():
+    return str(uuidlib.UUID(int=_rng.getrandbits(128), version=4))
+
+
 def uid():
-    return q(str(uuidlib.uuid4()))
+    return q(new_uuid())
 
 
 def fnt(size=1.27, justify=None, hide=False):
@@ -146,7 +161,7 @@ class Schematic:
         self.lib = lib
         self.title = title
         self.project = project
-        self.root = str(uuidlib.uuid4())
+        self.root = new_uuid()
         self.items = []
         self.used = {}
         self.pwr = 0

@@ -811,7 +811,7 @@ of the 360°; the Mid-360 is rated to 55 °C and the glass zone gets hotter in t
 firmware, the sensors it reads next to it. The price is a 25-way cable to the power box, made
 safe by 4.8.4's rule: every line that reaches the power box defaults to "off" in hardware.
 
-#### 4.8.2 The pod board (4-layer, 80 × 55 mm)
+#### 4.8.2 The pod board (4-layer, 70 × 53 mm; was 80 × 55 before the 2026-10-08 compaction)
 
 - **MCU: STM32F405RGT6** (LQFP64, 168 MHz, 1 MB flash, 192 KB RAM, two bxCAN controllers, USB
   OTG FS). Chosen over the F411 for CAN (OBD straight from the car) and over BGA/QFN parts because
@@ -867,7 +867,7 @@ trim, clear of the curtain airbag. Shield bonded to ground **at the power box en
 | 22 | CAN_STBY | pod → box | transceiver Rs; HIGH (default) = standby |
 | 23, 24 | HX711_DOUT, HX711_SCK | — | bench rig load cell only; unused in the car |
 
-#### 4.8.4 The power board (2-layer, 2 oz copper, 110 × 80 mm)
+#### 4.8.4 The power board (2-layer, 2 oz copper, 95 × 66 mm; was 110 × 80 before the 2026-10-08 compaction, then 90 × 66 until 5 mm was added on 2026-10-09 for the silkscreen labels)
 
 **The rule that makes the split safe: every signal from the pod enters the power board through a
 10 kΩ pull-down.** MCU in reset, MCU unpowered, cable unplugged or cut: the brake drive, enable and

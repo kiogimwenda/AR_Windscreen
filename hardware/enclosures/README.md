@@ -56,10 +56,12 @@ from the camera on the car, and use the actual tilt (inclinometer app on the top
 ## Power box (`power_box/`)
 
 A **bought ABS junction box, about 250 × 150 × 100 mm outside (240 × 140 × 95 inside), IP65
-class**, with a **printed chassis plate** (210 × 130 × 4 mm) that carries everything. Why not a
+class**, with a **printed chassis plate** (210 × 112 × 4 mm) that carries everything. Why not a
 printed box: the contents need about 240 × 140 mm of floor, beyond most printer beds (220 × 220),
 and a bought box is stronger and seals better. The guide's earlier 150 × 100 × 60 estimate cannot
-hold six 28 mm automotive relays next to the 110 × 80 board.
+hold six 28 mm automotive relays next to the board. (The board was compacted to 90 × 66 mm (95 × 66 since 2026-10-09: room for its labels) on
+2026-10-08 and the plate to 210 × 112, the relay row moved forward behind it; the box stays: the
+row of six relays, ~193 mm, sets its length.)
 
 Layout (`top.png`, `assembly.png`): the power board against the **front wall**, its DB-25 through
 it; the BTS7960 (heatsink up) and ACS712 to the left, beside the board's module headers; the six

@@ -18,7 +18,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from kisch import Library, Schematic, layout  # noqa: E402
+from kisch import Library, Schematic, layout, reseed  # noqa: E402
 from kisheet import build_project  # noqa: E402
 
 DEFAULT_SYMBOLS = "/mnt/c/Program Files/KiCad/10.0/share/kicad/symbols"
@@ -55,6 +55,7 @@ def build_drawn(m, drawing, lib, outdir):
 
 def build(module, lib, outdir, flat=False):
     m = importlib.import_module(module)
+    reseed(f"{module}{'/flat' if flat else ''}")  # deterministic ids (kisch.reseed)
     refs = [p["ref"] for _, ps, _ in m.groups for p in ps]
     dups = sorted({r for r in refs if refs.count(r) > 1})
     if dups:  # KiCad's ERC does not catch this; the netlist silently merges the parts

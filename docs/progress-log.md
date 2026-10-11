@@ -2906,3 +2906,151 @@ drive as recorded: 0 brake requests.
 
 **Not final (stated with the videos):** a German drive under Kenyan rules and a Kenyan sign
 detector; no route line (the map is Nairobi's); colours and sizes untuned until the real display.
+
+## 2026-10-08 — Pre-hardware item 6 (Phase 12B): both boards placed; the layout guide
+
+**What:**
+- `hardware/gen/layout.sh` / `layout.py` (KiCad 10's own Python): builds each `.kicad_pcb` with
+  every footprint from KiCad's library, each pad on its net from KiCad's exported netlist, placed
+  per `placement.py`, linked to its schematic symbol; writes the net classes and fab rules
+  (`pcb_rules.py`) into the `.kicad_pro`; adds the planes (pod: GND In1, +3V3 In2; power: GND
+  bottom); runs KiCad's DRC with the schematic-parity check. Refuses to overwrite a routed board.
+- `hardware/LAYOUT_GUIDE.md`: PCB basics from zero, the placement and its reasons, routing each
+  board in order, finishing, ordering, checklists. `<board>/placement.md` and `placement.png`.
+
+**Found and fixed on the way:**
+1. **The power board's terminal blocks could not fit their edge**: 5.08 mm blocks need ~138 mm, the
+   bottom edge gave 92. Split over three edges by function (car wiring bottom, actuator right,
+   input/LiDAR left); `outlines.py` and the power-box model updated. Only the DB-25 passes through
+   a wall, so no drilling changes.
+2. **The schematic generator made random ids** on every run: every schematic changed in git each
+   time, and the PCB's links to the symbols would have broken on the next regeneration. Now seeded
+   per board (and one wire's point order made deterministic): two runs are byte-identical.
+3. **Net names**: KiCad names nets by their sheet path; the PCB now takes them from KiCad's own
+   netlist, cross-checked pin by pin against the board description.
+4. The GNSS header first overlapped a mounting hole (caught by DRC), turned.
+
+**Verification:** DRC with schematic parity: pod 77 parts, 172 connections to route, **0 errors,
+0 parity issues**; power 82 parts, 163 to route, **0 errors, 0 parity issues**. Warnings: silkscreen
+labels in the dense rows only (tidied by hand, guide G3). `check.sh` still ALL PASS; a re-run leaves
+the schematics byte-identical (PDFs differ only by their timestamps). IPC-2221 widths: 10 A on
+2 oz needs 3.6 mm (4.0 used, or a zone); 3 A needs 0.68 mm (1.0 used).
+
+**Still open:** routing (Ian, the guide); J2/J3 pin order and the IMU breakout's standoff holes
+wait for the bought breakouts.
+
+**Teaching notes:** footprints, courtyards and DRC; why decoupling sits at the pin; return paths
+and ground planes; a buck converter's hot loop; track width from current (IPC-2221); why
+generated files must be deterministic.
+
+## 2026-10-08 — Both boards compacted, each proven routable; the power box follows
+
+**What:** pod board 80 × 55 → **70 × 53 mm** (−16 % area); power board 110 × 80 → **90 × 66 mm**
+(−33 %). `outlines.py` (sizes, holes, connector zones) and `placement.py` changed; the power box's
+chassis plate 210 × 130 → **210 × 112 mm**, its relay row moved forward behind the board, the STL,
+pictures and drilling templates regenerated. The bought box is unchanged: the six-relay row
+(~193 mm) sets its length.
+
+**How "as compact as the design allows" was decided:** `hardware/gen/routecheck.sh` (new) autoroutes
+a throwaway copy with Freerouting 2.5 and runs KiCad's DRC on it. A squeeze was kept only if every
+signal still routed with no error. The pod at 70 × 51 failed (the ~20 cable signals could not all
+leave the MCU through a 3.4 mm channel on two signal layers, and capacitors under the MCU's bottom
+pins blocked their exits); 70 × 53 with those capacitors moved passes. The power board's width is
+set by its bottom terminal row (~83 mm) and its height by four packed bands.
+
+**Design improvements found by the check (kept in the real design):**
+1. Plane settings: 0.3 mm clearance / 0.25 mm minimum left no room for thermal spokes between the
+   DB-25's pins (they never joined the plane). Now 0.2 / 0.2 with 0.3 mm spokes (0.3 clearance on
+   the power board, its largest class clearance).
+2. The 10 A actuator rail is now a pre-drawn copper zone (4.4 mm spine joining J5, J6, J7), and the
+   magnet's flyback diode D14 sits at the magnet terminal under it.
+3. Two pinch points on the power board widened (U3, J12).
+
+**Verification:** DRC with schematic parity: pod 0 errors, 172 connections to route; power 0 errors,
+160 to route; parity exact. Routability: both pass (pod and power: 0 signal connections left; power
+twice in a row). `check.sh` ALL PASS; assembly documents up to date (they do not depend on placement).
+
+**Teaching notes:** routability, not overlap, limits compaction; escape routing from a fine-pitch
+IC; why an autorouter is a test here and not the design.
+
+## 2026-10-09 — Both boards routed to specification; labels, terminals, buttons, USB-C model
+
+**What:** both PCBs routed by script (Ian's request: "do the PCB routing too as per specification
+and design"). `hardware/gen/route.sh` routes each placed board with Freerouting 2.5 inside rule
+areas and net classes that encode LAYOUT_GUIDE's specification, mends what the autorouter gets
+wrong, and keeps a board only when KiCad's DRC passes; `hardware/gen/routespec.sh` (new) checks
+the specification points the DRC does not know. Also, from Ian's review of the placement:
+1. **Screw terminals** faced into the board (the 3D view showed it): turned 180°, wire openings
+   now flush with the edges, bodies in the same place.
+2. **RESET/BOOT** are side-push switches (Panasonic EVQ-P7C) on the pod's left edge under the SWD
+   header, pressed through pin-holes; the ELM327 header moved inboard.
+3. **Labels:** every terminal, port, header and button is named on the silkscreen, with its pins
+   (header pins carry the module's names); references moved to clear spots or onto the fab layer.
+4. **USB-C** footprint GCT USB4105 (same 16 pins): KiCad has no 3D model of the HRO part.
+The power board grew to 95 × 66 mm for the right edge's names; the power box is unchanged (STL,
+pictures and templates regenerated).
+
+**How the routing was made to pass:** planes are not routed: GND (both boards) and +3V3 (pod)
+pads each get a via before routing (the pod MCU's supply pins a short tie to their capacitor), and
+the router ignores GND; the pod's In1 and In2 are declared power layers. After routing:
+neck-downs widened to their class width where they fit, plane copper boxed in by tracks joined,
+any connection the router left out joined at its net's class width, scraps of pour removed. A
+failing board is routed again from a fresh placement (Freerouting differs run to run).
+
+**Verification:** DRC with schematic parity: pod 0 unconnected, 0 errors (1 cosmetic silk
+warning); power 0 unconnected, 0 errors (terminal outlines at the edge, on purpose); parity exact
+on both. `routespec.sh`: pod (no track on In1/In2, nothing under the crystal, widths) and power
+(rail zone solid, no bottom track under the converter, bottom a GND zone, widths) all PASS.
+
+**What did not work, and why (kept for the report):** routing the planes as tracks (neck-downs
+below the fab minimum, boxed-in pins); letting signals use the pod's In2 (the +3V3 plane fell
+into pieces); laying the converter's short nets first (Freerouting then left +5V in pieces in
+13 of 13 attempts); `routecheck.sh`'s earlier "routable" verdicts (it let signals use In1).
+
+**Teaching notes:** a plane is reached by a via per pad, not by tracks; an autorouter's output
+must be checked and mended, never trusted; what a DRC cannot know needs its own check.
+
+## 2026-10-09 (later) — Toward ordering: converter fixed, fabrication files generated
+
+**Asked:** "Are the boards production ready?" Not yet (footprints unchecked against real parts,
+breakout pin orders unconfirmed, routing unreviewed, no fabrication files). Then: "go ahead" with
+what can be done without the parts.
+
+**Done:**
+1. **Converter.** The switch node measured 77.6 mm with 4 vias (partly on the bottom layer) and
+   the feedback 39.6 mm with 4 vias. U1 turned 270°, the converter rearranged per TI's layout:
+   switch node **16.3 mm**, feedback **7.4 mm**, bootstrap 3.2 mm, all top layer, no vias.
+2. **Identification** (board, REV 1, date, designer) on the bottom silkscreen (`finish.py`).
+3. **Fabrication files** (`finish.sh`): gerbers + Excellon drill (zipped), BOM, positions, per-layer
+   review images; origin at the board's bottom-left corner; written only if the DRC passes.
+4. **Router leftovers:** dangling vias removed (KiCad's own DRC finds them). A dangling 0.01 mm
+   track sliver turned out to join two tracks: removing it opened a connection, so tracks are
+   never removed this way (and the export is now gated on the DRC).
+5. 5V_POD given its own 0.5 A class (behind the 500 mA polyfuse).
+
+**Verification:** pod: 0 unconnected, 0 errors, parity exact, **no warnings**; power: 0, 0, exact,
+warnings only the terminal outlines at the edge (intended). `routespec.sh`: all PASS on both.
+
+**Still before ordering (needs Ian / the parts):** 1:1 print against the real parts; J2/J3 pin
+order against the bought breakouts and the IMU standoff holes; the review (LAYOUT_GUIDE E, F);
+optionally teardrops; check the zips in the fab's Gerber viewer; 2 oz copper for the power board.
+
+
+## 2026-10-11 — PCB buy list; module headers checked against the BOM's parts
+
+**Buy list:** `bill-of-materials.md` §10: every part on both boards with the part each footprint was
+drawn for (hand assembly, Rev 1), and §10.3: how each module connects.
+
+**Header check (Ian: "confirm with what's in the BOM to check pin order"):**
+- **Pod J2 was wrong for the Adafruit 4754** (read from Adafruit's own board file): it would have put
+  ground on the breakout's 3.3 V regulator output and shifted every signal. J2 is now its JP1 row pin
+  for pin (VIN, 3Vo open, GND, SCL, SDA, INT); the IMU reset moved to a new one-pin header J8 for an
+  optional jumper (the firmware does not use it).
+- **Pod J6 (HC-05 fallback) now gets the pod's 5 V:** the HC-05 board needs 3.6–6 V; it had 3.3 V.
+- BTS7960 J13 matches the standard IBT-2 order; GNSS, ACS712 and HX711 headers vary by seller, so
+  they connect by leads matched by name.
+- Flagged in the buy list: D4 (blue LINK LED) barely lights from 3.3 V through 1 kΩ.
+
+**Verification:** `check.sh` ALL PASS; ERC clean; pod rerouted (attempt 4 of 8): 0 unconnected,
+0 DRC errors, parity exact, no warnings; `routespec.sh` all PASS; fabrication files regenerated.
+The pod's teardrops have to be added again (the copper changed); the power board is unchanged.

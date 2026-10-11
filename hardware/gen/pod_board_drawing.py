@@ -45,6 +45,7 @@ def draw(lib, parts):
     s.add("R30", 62, 34)
     s.add("D3", 62, 42, rot=90)
     s.flag("VIN_POD", 30, 24)
+    s.port("VIN_POD", "R", 24, "output")
     s.flag("X_5V_CABLE", 18, 33)
     s.flag("VBUS", 80, 22)
     s.flag("GND", 86, 22)
@@ -109,7 +110,8 @@ def draw(lib, parts):
     s.port("IMU_SCL", "L", 22)
     s.port("IMU_SDA", "L", 30)
     s.port("IMU_INT", "L", 32)
-    s.port("IMU_RST", "L", 33)
+    s.add("J8", 100, 36, fields="right")
+    s.port("IMU_RST", "L", 36)
     s.add("R5", 60, 19.5)
     s.add("R6", 66, 27.5)
     s.add("J3", 100, 42, fields="right")
@@ -121,13 +123,17 @@ def draw(lib, parts):
     s.add("R8", 66, 63.5)
     s.add("J5", 100, 78, fields="right")
     s.add("J6", 100, 92, fields="right")
+    s.port("VIN_POD", "L", 92, "input")
     s.text(8, 9, "SENSORS AND LOCAL CONNECTORS. Breakouts on standoffs; MATCH EACH HEADER'S PIN ORDER TO THE\n"
                  "BREAKOUT YOU BUY before layout. Names are the MCU's view (GPS_TX goes to the module's RX).", 1.5)
-    s.text(112, 20, "BNO085 IMU (I2C1, 4.7 k pull-ups R5/R6).\nMount rigidly: it measures the car's motion.", 1.4)
+    s.text(112, 20, "BNO085 IMU (I2C1, 4.7 k pull-ups R5/R6): J2 is pin for pin the Adafruit 4754's\n"
+                    "JP1 row (VIN 3Vo GND SCL SDA INT; 3Vo, its regulator output, left open).\n"
+                    "J8: optional wire to the breakout's RST. Mount rigidly: it measures the car's motion.", 1.4)
     s.text(112, 40, "NEO-M8N GNSS (USART2, PPS for timing).", 1.4)
     s.text(112, 56, "Gesture puck: APDS-9960 on ~1.5 m of cable\n(I2C2 at 100 kHz; 2.2 k pull-ups for the cable).", 1.4)
     s.text(112, 77, "SWD: ST-Link programming and debugging.", 1.4)
-    s.text(112, 91, "ELM327 fallback (USART3, HC-05 bridge):\nbuild env hub_elm327 only (Part 4.8.5).", 1.4)
+    s.text(112, 91, "ELM327 fallback (USART3, HC-05 bridge):\nbuild env hub_elm327 only (Part 4.8.5).\n"
+                    "VCC is the pod's 5 V: the HC-05 board needs 3.6-6 V.", 1.4)
 
     # --- 5. Status LEDs ------------------------------------------------------------------------------------
     s = sheet("leds", "Status LEDs (driver-facing edge)")
@@ -201,12 +207,12 @@ def draw(lib, parts):
     root.boxes.append((by["mcu"], 70, my, 30, zip_sides(left, right)))
     first = {n: i for i, n in enumerate(left) if n}
     root.boxes.append((by["usb"], 22, my + first["USB_DM"], 24, [(n, "R") for n in usb]))
-    root.boxes.append((by["sensors"], 22, my + first["IMU_SCL"], 24, [(n, "R") for n in sen]))
+    root.boxes.append((by["sensors"], 22, my + first["IMU_SCL"], 24, [(n, "R") for n in sen] + [("VIN_POD", "R")]))
     root.boxes.append((by["leds"], 22, my + first["LED_LINK"], 24, [(n, "R") for n in led]))
     firstr = {n: i for i, n in enumerate(right) if n}
     root.boxes.append((by["cable"], 124, my + firstr[cab[0]] - 2, 30,
                        [("X_5V_CABLE", "L"), None] + [(n, "L") for n in cab]))
-    root.boxes.append((by["power"], 124, my - 10, 30, [("X_5V_CABLE", "L")]))
+    root.boxes.append((by["power"], 124, my - 10, 30, [("X_5V_CABLE", "L"), ("VIN_POD", "L")]))
     root.texts.append((20, 8, "WINDSCREEN POD BOARD: block diagram. Each box is a sheet (double-click it in KiCad).\n"
                               "Power rails +3V3, VBUS and GND join the sheets by name (power symbols);\n"
                               "every other connection between sheets is a wire here.", 1.8))

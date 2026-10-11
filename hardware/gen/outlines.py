@@ -27,24 +27,33 @@ HW = Path(__file__).resolve().parents[1]
 # A "keep" is (label, x, y, w, h): where an edge component must sit, and the enclosure's cut-out.
 BOARDS = {
     "pod_board": {
-        "w": 80.0, "h": 55.0, "r": 2.0, "copper": 4, "thickness": 1.6,
-        "holes": [(4.0, 4.0), (76.0, 4.0), (4.0, 51.0), (76.0, 51.0)],  # M3, 3.2 mm
+        # Compacted 2026-10-08 from 80 x 55 to 70 x 53 (hardware/gen/placement.py): the bottom holes moved up
+        # beside the DB-25 band; the IMU header joined the top edge.
+        "w": 70.0, "h": 53.0, "r": 2.0, "copper": 4, "thickness": 1.6,
+        "holes": [(4.0, 4.0), (66.0, 4.0), (4.0, 38.5), (66.0, 38.5)],  # M3, 3.2 mm
         "keeps": [
-            ("DB-25 (J7): flange flush with the bottom edge, centred", 13.5, 41.0, 53.0, 14.0),
-            ("USB-C (J1): flush with the right edge", 70.5, 22.0, 9.5, 9.0),
-            ("Status LEDs D3-D6: top edge, facing the driver", 30.0, 0.5, 20.0, 3.0),
-            ("SWD (J5) and ELM327 (J6) headers: left edge", 0.5, 12.0, 6.0, 25.0),
+            ("DB-25 (J7): flange flush with the bottom edge, centred", 8.5, 39.0, 53.0, 14.0),
+            ("USB-C (J1): flush with the right edge", 60.5, 8.0, 9.5, 11.0),
+            ("Status LEDs D3-D6: top edge, facing the driver", 8.0, 0.5, 17.0, 3.0),
+            ("SWD header (J5) and the RESET/BOOT plungers (SW1, SW2): left edge", 0.5, 7.5, 6.0, 25.5),
+            ("Gesture cable (J4): right edge, below the USB", 63.0, 20.0, 7.0, 11.0),
         ],
         "notes": "4 layers: signal / GND / +3V3 / signal. Ground plane unbroken under GNSS and IMU.",
     },
     "power_board": {
-        "w": 110.0, "h": 80.0, "r": 2.0, "copper": 2, "thickness": 1.6,
-        "holes": [(4.0, 4.0), (106.0, 4.0), (4.0, 76.0), (106.0, 76.0)],
+        # Compacted 2026-10-08 from 110 x 80 (hardware/gen/placement.py): the bottom holes moved up
+        # beside the bottom terminal row so the terminals run corner to corner. 5 mm wider on
+        # 2026-10-09: room on the right for the terminals' and module headers' silkscreen names.
+        "w": 95.0, "h": 66.0, "r": 2.0, "copper": 2, "thickness": 1.6,
+        "holes": [(4.0, 4.0), (91.0, 4.0), (4.0, 51.5), (91.0, 51.5)],
         "keeps": [
-            ("DB-25 (J1): flange flush with the top edge", 28.5, 0.0, 53.0, 14.0),
-            ("Fuse holders F1, F3: top edge, left", 2.0, 14.0, 24.0, 22.0),
-            ("Terminal blocks J2-J11: bottom edge (all car-side wiring)", 9.0, 66.0, 92.0, 14.0),
-            ("BTS7960 / ACS712 module headers J13, J14: right edge", 96.0, 20.0, 14.0, 40.0),
+            ("DB-25 (J1): flange flush with the top edge", 18.5, 0.0, 53.0, 14.0),
+            ("Fuse holders F1, F3: top-left", 0.5, 7.5, 17.5, 16.0),
+            ("Car-wiring terminals J8-J11, J4: bottom edge", 0.5, 55.0, 83.0, 11.0),
+            ("Actuator terminals J5-J7 + module headers J13, J14: right edge", 73.0, 7.5, 22.0, 36.0),
+            # The 5.08 mm terminals need ~138 mm of edge: split over three edges by what they
+            # connect to. Only the DB-25 passes through a wall; the rest are wired inside the box.
+            ("Input and LiDAR terminals J2, J3: left edge", 0.0, 24.5, 11.0, 23.5),
         ],
         "notes": "2 layers, order 2 oz (70 um) copper. TPS54360 loop compact (datasheet layout).",
     },

@@ -1127,3 +1127,103 @@ geometry stays calibrated. Integration tests, not unit tests (OpenCV), departing
 intrinsics on rendered checkerboards through a known lens, the LiDAR–camera tool on a synthetic
 recording. Measured against the truth, the thresholds were set from what such methods achieve
 (stated in the tests), not tuned until they passed.
+
+## PCB placement generated and checked (2026-10-08); routing by hand, later reversed (see 2026-10-09)
+
+**Placement is generated from the board descriptions; routing is Ian's.** `hardware/gen/layout.sh`
+places every part (each position with its reason, `placement.py`), sets the net classes and rules,
+and proves the result with KiCad's own DRC and schematic-parity check. Routing is left to be done
+by hand with the guide: it is where the engineering judgement is learnt and examined, and an
+autorouter's output would be neither.
+
+**The power board's terminal blocks are on three edges** (car wiring, actuator, input/LiDAR), not
+one: they need ~138 mm and the bottom edge has 92. Only the DB-25 passes through a wall.
+
+**Deterministic schematic ids** (seeded per board): the PCB links each footprint to its symbol by
+id, so ids that changed on every generation would have broken the links.
+
+**Track widths from IPC-2221** (outer layer, 10 °C rise), checked in code: the actuator rail 4.0 mm
+on 2 oz (3.6 needed for its 10 A fuse) or a zone; supplies 1.0 mm (0.68 needed for 3 A).
+
+## Boards compacted to the routability limit (2026-10-08)
+
+**Pod 70 × 53 mm, power 90 × 66 mm**, each squeeze kept only if an autorouted throwaway copy still
+routed every signal with no DRC error (`hardware/gen/routecheck.sh`, Freerouting 2.5). The autorouter
+is a test of the placement; the routing itself stays by hand (decision above). The power box keeps
+its bought size (the relay row sets it); its printed plate shrinks to 210 × 112 mm.
+
+## Both boards routed by script, labelled, terminals turned outward (2026-10-09)
+
+**Routing is generated, not drawn by hand** (reversing 2026-10-08, at Ian's request: "do the PCB
+routing too as per specification and design"). `hardware/gen/route.sh` routes each placed board
+with Freerouting inside rules that encode LAYOUT_GUIDE's specification, then proves it with
+KiCad's DRC and schematic-parity check: it keeps a board only with 0 errors, 0 unconnected and
+exact parity. The guide becomes the explanation and the review checklist of that routing.
+
+**Planes are not routed; every pad gets its own via.** GND (both boards) and +3V3 (pod) are
+net classes the router is told to ignore. Before routing, each SMD pad on them gets a via beside
+it (the pod MCU's: straight out from the pin's tip), and the pod MCU's +3V3 pins a short track
+to their decoupling capacitor. Routing them as tracks had made Freerouting neck them down below
+the fab minimum at small pins and box pins into islands.
+
+**The converter is fixed by placement, not by laying its tracks first.** Measured on the first
+routing, the switch node was 78 mm with four vias and the feedback line 40 mm with four vias: U1's
+switch pin faced away from D13. U1 is turned 270° and the converter rearranged around it (TI's
+layout): now 16 mm and 7 mm, top layer, no vias. Laying those nets before routing (locked) was
+tried and dropped: Freerouting then left +5V in pieces in all 13 attempts.
+
+**5V_POD has its own 0.5 A class** (it is behind the pod's 500 mA polyfuse), not the 3 A supply
+class: the width check had demanded 0.68 mm of a net that cannot carry more than 0.5 A.
+
+**Fabrication outputs are generated and gated** (`hardware/gen/finish.sh`): the bottom-silkscreen
+identification, then gerbers, drill, BOM and positions from the board's bottom-left corner, only
+when the DRC passes. Teardrops stay a manual GUI step (KiCad's scripting cannot make them; the fab
+does not need them).
+
+**What Freerouting gets wrong is mended, then checked, in code:** a neck-down below the minimum
+width is widened (or, on GND only, removed when widening would crowd another net); a group of
+plane copper left unjoined (a pin or a piece of pour boxed in by tracks) gets a short track to
+the main group; a scrap of pour touching nothing is removed. Freerouting varies run to run, so a
+board that fails is routed again from a fresh placement (up to five attempts).
+
+**Facts found on the way** (Specctra export): KiCad exports rule areas as keepouts that block vias
+too, and Freerouting treats even a wire_keepout as closed to vias: the pod's In1 is declared a
+power layer instead. The session import replaces all wiring, so what was placed before routing is
+put back. `routecheck.sh` let the router use In1 for signals, so its "routable" verdicts for the
+compaction were optimistic; `route.sh` is the real test.
+
+**Screw terminals turned to open outward.** The 3D view showed every power-board terminal's wire
+entry facing into the board (wires would have crossed the parts). They are rotated 180° with
+their bodies in the same place, the bottom row 0.55 mm further out (flush with the edge, clear of
+the holes); the relay drivers sit one terminal pitch left of their J4 pins (J4 pin 1 is the
+coils' common +12 V) so D14 keeps its place.
+
+**RESET and BOOT are side-push switches on the pod's left edge** (Panasonic EVQ-P7C, plungers
+flush with the edge, below the SWD header), pressed through pin-holes in the enclosure wall: all
+programming controls on one edge, recessed against accidental presses. The ELM327 fallback header
+(an internal lead) moved inboard to make room.
+
+**Every terminal, port, header and button is named on the silkscreen**, title with reference plus
+each pin, from `placement.LABELS`; header pins carry the breakout module's pin names. Reference
+designators move to the first clear spot; where none exists they stay on the fab layer only.
+The power board grew 5 mm (95 × 66) for the right edge's names; the box is unchanged (the plate
+already had room). **USB-C footprint:** GCT USB4105 (same 16 pins), because KiCad has no 3D model
+of the HRO part.
+
+## Module headers checked against the parts in the BOM (2026-10-11)
+
+**Pod J2 is the Adafruit 4754's JP1 row, pin for pin** (VIN, 3Vo, GND, SCL, SDA, INT), read from
+Adafruit's own board file. The old J2 (3V3, GND, SCL, SDA, INT, RST) would have put ground on the
+breakout's 3.3 V regulator output and shifted every signal by a pin. 3Vo stays open. RST is on the
+breakout's other row: the firmware does not use it (it re-initialises on the sensor's reset report),
+so it moved to a one-pin header **J8** for an optional jumper rather than a second socket over the MCU.
+
+**Pod J6 (HC-05 fallback) is fed the pod's 5 V**, not 3.3 V: the HC-05 board needs 3.6–6 V on VCC;
+its serial pins are 3.3 V logic.
+
+**Leads, not sockets, for the rest:** GNSS, BTS7960, ACS712 and HX711 boards order their header pins
+differently from seller to seller, so they connect by leads matched by name (the silkscreen carries
+the module's pin names). The BTS7960 header follows the standard IBT-2 order.
+
+**A buy list per footprint** is in `bill-of-materials.md` §10: the parts each footprint was drawn for.
+

@@ -6,8 +6,8 @@ Phase 12B the plan.
 | Directory | Contents | Status (2026-10-06) |
 |---|---|---|
 | `gen/` | The board descriptions, the power board's drawing, and the tools that turn them into KiCad files and check them | Done |
-| `pod_board/` | KiCad 10 project: STM32F405RGT6, 8 MHz crystal, USB-C, diode-OR'd 5 V to 3.3 V, IMU / GNSS / gesture / SWD / ELM327 headers, status LEDs, DB-25 with series resistors and input filters. 4-layer. | Schematic done, ERC clean, cross-checked; outline, holes and edge-connector positions set; **PCB layout to do** |
-| `power_board/` | KiCad 10 project: 12 V fuse, TVS and reverse-polarity diode; TPS54360 5 V (TI reference design); 3.3 V; 74HCT244 buffer; BTS7960 and ACS712 module headers; magnet and relay MOSFETs with flyback diodes; fail-safe pull-downs; SN65HVD230 CAN; presence MOSFET; PC817 brake-light input; terminals for the kill relay, E-stop, relays, actuator, LiDAR and OBD lead; DB-25. 2-layer, 2 oz. | Schematic done, ERC clean, cross-checked; outline, holes and edge-connector positions set; **PCB layout to do** |
+| `pod_board/` | KiCad 10 project: STM32F405RGT6, 8 MHz crystal, USB-C, diode-OR'd 5 V to 3.3 V, IMU / GNSS / gesture / SWD / ELM327 headers, status LEDs, DB-25 with series resistors and input filters. 4-layer. | Schematic done, ERC clean, cross-checked; **placed** (77 parts, 0 DRC errors, matches the schematic); **routing to do** (`LAYOUT_GUIDE.md`) |
+| `power_board/` | KiCad 10 project: 12 V fuse, TVS and reverse-polarity diode; TPS54360 5 V (TI reference design); 3.3 V; 74HCT244 buffer; BTS7960 and ACS712 module headers; magnet and relay MOSFETs with flyback diodes; fail-safe pull-downs; SN65HVD230 CAN; presence MOSFET; PC817 brake-light input; terminals for the kill relay, E-stop, relays, actuator, LiDAR and OBD lead; DB-25. 2-layer, 2 oz. | Schematic done, ERC clean, cross-checked; **placed** (82 parts, 0 DRC errors, matches the schematic); **routing to do** (`LAYOUT_GUIDE.md`) |
 | `enclosures/` | OpenSCAD: LiDAR roof mount, power-box chassis and box drilling templates; shared board outlines (`common/boards.scad`). See its README. | LiDAR mount and power box designed; pod, E-stop and gesture puck wait for the parts and the car |
 
 Each board folder also has `<board>.pdf` (the schematic, for reading without KiCad) and
@@ -69,9 +69,17 @@ netlist check: export the netlist from KiCad and run `check_nets.py` on it.)
 
 ## What remains for Phase 12B (Ian's work)
 
-Layout is where the remaining engineering judgement is, and the part examiners will ask about.
-In KiCad: open each `.kicad_pro`, *Tools → Update PCB from Schematic*, draw the board outline,
-place, route, run DRC.
+**Both boards are placed (2026-10-08): routing, finishing and ordering remain, step by step in
+[`LAYOUT_GUIDE.md`](LAYOUT_GUIDE.md).** `gen/layout.sh` built each `.kicad_pcb` from the board
+descriptions: every footprint from KiCad's library, each pad on its net (from KiCad's own
+netlist), placed per `gen/placement.py` (each position with its reason, listed in
+`<board>/placement.md`, pictured in `<board>/placement.png`), linked to its schematic symbol, the
+net classes and fab rules (`gen/pcb_rules.py`, track widths from IPC-2221) and the copper planes
+in place; then KiCad's DRC with the schematic-parity check: 0 errors, exact parity. The schematic
+generator now gives every object a deterministic id, so the links survive regeneration and the
+files only change when the design does.
+
+The notes below are the layout principles the placement follows (and the guide expands).
 
 **Pod board (4-layer: signal / ground / power / signal).**
 - Decoupling capacitors (C3–C9) at their VDD pins, each with its own via to the ground plane.
@@ -89,7 +97,7 @@ place, route, run DRC.
 - The TPS54360's power loop is the critical path: input capacitors (C21, C22), the IC, the catch
   diode (D13) and the inductor (L1) as close together as possible, the SW node small (it is the
   board's noise source), the feedback divider (R44, R45) away from L1 and the SW node. Follow the
-  datasheet's layout example (section 10) closely.
+  datasheet's layout example (its "Layout" section) closely.
 - Wide traces or pours for the 12 V input, the actuator rail (ACT_12V) and the relay coils' +12 V;
   the actuator's heavy current itself runs in wire on the BTS7960 module, not on this board.
 - Fuse holders and terminal blocks along the edges, grouped by what they connect to (12 V in,
@@ -110,6 +118,12 @@ python3 hardware/gen/outlines.py           # --force to overwrite a .kicad_pcb a
 its edge connectors (DB-25, USB-C, fuses, terminal blocks, LEDs, headers). It writes the starter
 `<board>.kicad_pcb` (outline on Edge.Cuts, hole positions on User.Drawings, connector boxes on
 User.Comments: place H1–H4 and the connectors on them) and `enclosures/common/boards.scad`, which
-the enclosure models include. Pod board 80 × 55 mm, 4 layers; power board 110 × 80 mm, 2 layers.
+the enclosure models include. Pod board 70 × 53 mm, 4 layers; power board 95 × 66 mm, 2 layers (compacted 2026-10-08 from 80 × 55 and 110 × 80; the power board 5 mm wider again on 2026-10-09 for its silkscreen labels).
 If a layout needs a change, change it there and regenerate both. The starter files passed KiCad's
 DRC with no errors.
+
+**Placed and routed (2026-10-09):** `gen/layout.sh` places every part (`gen/placement.py`, with
+each position's reason and the silkscreen names), `gen/route.sh` routes both boards to the
+specification and keeps a board only with 0 unconnected, 0 DRC errors and exact schematic parity,
+and `gen/routespec.sh` checks what the DRC cannot (planes, crystal, converter, widths). How it was
+done and how to review it: `LAYOUT_GUIDE.md`.
