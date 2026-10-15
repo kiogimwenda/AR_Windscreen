@@ -6,7 +6,7 @@
 "C26","6800p","Capacitor_SMD:C_0805_2012Metric","1"
 "C27","39p","Capacitor_SMD:C_0805_2012Metric","1"
 "C28-C30","10u","Capacitor_SMD:C_1206_3216Metric","3"
-"D10","SMCJ24CA","Diode_SMD:D_SMC","1"
+"D10","SMCJ33CA","Diode_SMD:D_SMC","1"
 "D11,D13","B560C","Diode_SMD:D_SMC","2"
 "D12","green","LED_SMD:LED_0805_2012Metric","1"
 "D14-D19","SS14","Diode_SMD:D_SMA","6"

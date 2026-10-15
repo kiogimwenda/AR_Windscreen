@@ -25,8 +25,11 @@ inp = [
          desc="switched ACC (ignition) feed; its own fuse at the car's fuse box too"),
     {"sym": "Device:Fuse", "ref": "F1", "value": "3A", "fp": "Fuse:Fuseholder_Blade_Mini_Keystone_3568",
      "nets": {"1": "ACC_IN", "2": "ACC_FUSED"}},
-    {"sym": "Device:D_TVS", "ref": "D10", "value": "SMCJ24CA", "fp": SMC,
-     "desc": "load-dump / jump-start transient clamp (bidirectional: also survives reversed leads)",
+    # SMCJ33CA, not 24CA: it breaks down at ~37 V, above the 35 V a car's suppressed load dump holds
+    # for up to 400 ms (ISO 16750-2 test B), so it clips only the fast spikes instead of trying to
+    # hold the whole car's supply down (hardware/sim/run_input.sh, 2026-10-16).
+    {"sym": "Device:D_TVS", "ref": "D10", "value": "SMCJ33CA", "fp": SMC,
+     "desc": "fast-transient clamp, above the 35 V suppressed load dump (bidirectional: survives reversed leads)",
      "nets": {"1": "ACC_FUSED", "2": "GND"}},
     D("D11", "B560C", "ACC_FUSED", "+12V", fp=SMC, sym="Device:D_Schottky",
       desc="reverse-polarity protection: 60 V, 5 A; ~0.6 V drop, ~1 W at 2 A"),

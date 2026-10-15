@@ -897,6 +897,7 @@ pin, missing pull-down, swapped cable pins): all caught.
 
 **Reverse polarity: B560C Schottky instead of a P-MOSFET.** The SOT-23 P-MOSFETs in the library are
 −30 V parts, too close to the bidirectional SMCJ24CA's ~39 V clamp. ~1 W at 2 A is acceptable.
+*(The TVS became an SMCJ33CA on 2026-10-16, clamping at up to ~53 V: the diode, rated 60 V, still fits.)*
 
 **5 V: TI's TPS54360 5 V reference design, unchanged** (SLVSBB4G Fig. 34). Proven values over a
 custom design for a first board.
@@ -1240,4 +1241,14 @@ the 0.6 mm clearance and the DRC checks it. `routespec.sh` checks both rules.
 **The 5 V converter simulated with TI's own model** (`hardware/sim/run_buck.sh`), in KiCad's
 ngspice: start-up, a 0.2–1.5 A load step (stability) and 9–30 V input, against stated limits;
 all pass. TI's model is downloaded on use, not committed (TI's copyright).
+
+## TVS D10: SMCJ33CA instead of SMCJ24CA (2026-10-16)
+
+**Chosen by simulation** (`hardware/sim/run_input.sh`). In a centrally suppressed load dump
+(ISO 16750-2 test B: 35 V for up to 400 ms, what modern cars do) the SMCJ24CA, breaking down at
+~27 V, tried to hold the car's whole supply down: ~100 ms at up to 141 W, 7 J, against roughly
+152 W allowed for that length. The SMCJ33CA breaks down at ~37 V: it does not conduct during that
+dump (the rail reaches 33 V; the buck, C20, C21/C22 and D11 are rated 60 V or more) and still
+clamps the ISO 7637-2 spikes. Same SMC footprint: the value changed, not the copper. An
+unsuppressed load dump (older cars, up to ~100 V) would overwhelm either; then the 3 A fuse opens.
 

@@ -875,14 +875,18 @@ magnet lines read LOW (released, cable dropped free) and every relay is off, in 
 firmware involved.
 
 - **Two 12 V feeds.**
-  - *Logic:* switched ACC (ignition) → 3 A fuse → bidirectional TVS (SMCJ24CA) → reverse-polarity
+  - *Logic:* switched ACC (ignition) → 3 A fuse → bidirectional TVS (SMCJ33CA) → reverse-polarity
     Schottky (B560C, 60 V 5 A) → a 60 V-rated buck to 5 V (TPS54360, built exactly to TI's 5 V
     reference design). The TVS clamps load-dump and jump-start transients; a buck rated only to
     28 V (MP1584 modules) or 40 V (LM2596) could be destroyed by what the TVS lets through, hence
     the 60 V part. *(Amended 2026-10-06, schematic capture:* a Schottky diode replaced the planned
     P-MOSFET "ideal diode". The SOT-23 P-MOSFETs available are rated −30 V, too close to the TVS's
     ~39 V clamp; the diode costs ~1 W at 2 A, which the SMC package and copper carry, and it needs
-    no gate circuit.)*
+    no gate circuit.)* *(Amended 2026-10-16, simulation:* the TVS is an SMCJ33CA, not the SMCJ24CA
+    first chosen. A car's centrally suppressed load dump holds its supply at 35 V for up to 400 ms
+    (ISO 16750-2 test B); the SMCJ24CA breaks down at ~27 V, so it tried to hold the whole car's
+    supply down: ~140 W for ~100 ms, near its rating. The SMCJ33CA breaks down at ~37 V: it lets the
+    35 V through (the buck is rated 60 V) and still clamps the fast spikes, with the same footprint.)*
   - *Actuator:* battery → 10 A fuse → contacts of the **40 A kill relay** → BTS7960 VIN and the
     magnet. The kill relay's **coil** is fed from the logic feed **through the E-stop's NC
     contact**: pressing the E-stop, a broken wire or no ignition all open the relay (Part 0

@@ -1914,7 +1914,7 @@
 				)
 			)
 		)
-		(property "Value" "SMCJ24CA"
+		(property "Value" "SMCJ33CA"
 			(at 97.574 89.95 90)
 			(effects
 				(font
@@ -1940,7 +1940,7 @@
 				)
 			)
 		)
-		(property "Description" "load-dump / jump-start transient clamp (bidirectional: also survives reversed leads)"
+		(property "Description" "fast-transient clamp, above the 35 V suppressed load dump (bidirectional: survives reversed leads)"
 			(at 91.44 88.9 0)
 			(hide yes)
 			(effects

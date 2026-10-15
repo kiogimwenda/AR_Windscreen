@@ -3083,3 +3083,24 @@ turn-off spike clamped to the supply + 0.3 V (14.7 V at 14.4 V, rating 30 V); di
 current (<= 0.31 A, rating 1 A); with the pod unplugged the gate stays at 0 V and the coil off.
 Release (current to 10 %): relays 8.5–8.8 ms, magnet 6.6 ms after switch-off.
 
+## 2026-10-16 — 12 V input protection simulated
+
+`hardware/sim/run_input.sh`: J2 -> 3 A fuse -> SMCJ24CA -> B560C -> +12V with C20, loaded by the
+converter (6 W) and the LiDAR (8 W) as constant power and all five relay coils. Against ISO 16750-2
+and ISO 7637-2 for a 12 V car. All PASS: running at 12/14.4 V the rail is 11.45/13.86 V, 1.9 A
+through the fuse, 0.72 W in D11; a reversed battery reaches nothing (rail 0 V, fuse untouched); a
+24 V jump-start passes through (TVS idle, rail 23.4 V); pulse 1 (-150 V) is absorbed by the TVS
+(0.3 J) and blocked by D11; pulse 2a (+112 V) is soaked up by C20 (rail at most 28.6 V).
+**Finding:** in the suppressed load dump (35 V, 400 ms) the SMCJ24CA, which breaks down at
+~27 V, tries to hold the car's whole supply down: ~100 ms at up to 141 W, 7 J, against ~152 W
+allowed for that length (from the datasheet's derating, approximately): little margin, and a
+longer or stiffer dump would exceed it. An SMCJ33CA (breakdown ~37 V, same SMC footprint) does not
+conduct at 35 V at all; the rail then reaches 33 V, far inside the converter's 60 V.
+
+
+**D10 changed to SMCJ33CA (same day, Ian's decision):** schematic, the routed board's value and
+description (copper and teardrops untouched), BOM §4.1b/§9.3/§10.2, BUILD_GUIDE 4.8.4 (amended)
+and decisions updated; `run_input.sh` rerun with it fitted: ALL PASS (idle through the jump-start
+and the 35 V dump, rail at most 33.2 V; still absorbs pulse 1). Also fixed: the assembly-document
+generator had no wiring entry for the pod's new J8 (since 2026-10-11; check.sh now passes again).
+Power board: DRC 0/0, parity exact; fabrication files regenerated.

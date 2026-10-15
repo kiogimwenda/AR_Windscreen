@@ -19,7 +19,7 @@ x, y: mm from the board's top-left corner (y down); rotation: degrees, counter-c
 | C30 | 10u | 30.00 | 19.80 | 0 | 5V_POD capacitor after the polyfuse |
 | C31 | 100n | 67.00 | 32.50 | 0 | 74HCT244 decoupling |
 | C32 | 100n | 41.50 | 50.50 | 0 | transceiver decoupling, beside its VCC pin 3 (the right side stays clear for the CAN_STBY line to pin 8) |
-| D10 | SMCJ24CA | 21.50 | 15.50 | 90 | TVS straight after the fuse: clamps transients before anything else |
+| D10 | SMCJ33CA | 21.50 | 15.50 | 90 | TVS straight after the fuse: clamps transients before anything else |
 | D11 | B560C | 21.50 | 26.50 | 90 | reverse-polarity Schottky after the TVS |
 | D12 | green | 16.40 | 40.40 | 0 | 12 V present LED near the input |
 | D13 | B560C | 37.50 | 35.00 | 180 | catch diode right below the SW pin, cathode to it: the hot loop |

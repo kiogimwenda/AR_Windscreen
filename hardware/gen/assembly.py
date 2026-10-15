@@ -148,11 +148,12 @@ OFFBOARD = {
     },
     "pod_board": {
         "J1": "USB-C to the laptop",
-        "J2": "the IMU breakout (BNO085), on standoffs",
+        "J2": "the IMU breakout (Adafruit 4754 BNO085): its JP1 row plugs straight in, face up",
         "J3": "the GNSS breakout (NEO-M8N); antenna on the pod's roof face",
         "J4": "the gesture puck (APDS-9960) on its ~1.5 m JST-GH cable",
         "J5": "ST-Link (SWD) for flashing and debugging",
-        "J6": "ELM327 fallback bridge (HC-05), hub_elm327 build only",
+        "J6": "ELM327 fallback bridge (HC-05, VCC from the pod's 5 V), hub_elm327 build only",
+        "J8": "optional: a jumper wire to the IMU breakout's RST (its JP2 pin 4)",
         "J7": "the inter-box DB-25 cable to the power box",
     },
 }

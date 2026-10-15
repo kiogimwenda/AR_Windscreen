@@ -83,7 +83,7 @@ with a different crystal needs `HSE_VALUE` and `Config.h`'s `kHseHz` changed to 
 | # | Item | Spec that matters | Source | Price (KES) | Status |
 |---|---|---|---|---|---|
 | 4.1 | 12 V → 5 V buck converter, **rated to 60 V input**, ≥ 1 A | The power box's 5 V (pod, buffer, ACS712, transceiver). 60 V because the TVS (4.1b) lets ~39 V through a load dump; MP1584 (28 V) and LM2596 (40 V) modules are not enough. Relay coils are 12 V now. | Jumia / Nerokas (or on the power board, §9) | est. 800–1,500 | Check listing |
-| 4.1b | SMCJ24CA TVS diode, B560C Schottky (reverse polarity; also the buck's catch diode), 3 A and 10 A fuses | Input protection of the logic feed (Part 4.8.4) | Pixel / auto-spares | est. 500 | Common |
+| 4.1b | SMCJ33CA TVS diode, B560C Schottky (reverse polarity; also the buck's catch diode), 3 A and 10 A fuses | Input protection of the logic feed (Part 4.8.4) | Pixel / auto-spares | est. 500 | Common |
 | 4.2 | Inline blade-fuse holders plus assorted ATO fuses | Separate fuses for the peripheral rail, the actuator rail and the LiDAR | Auto-spares strip | est. 500 | Common |
 | 4.3 | Wire: 1.5 mm² and 2.5 mm² automotive, red and black; heat-shrink; crimp ring terminals | Actuator and LiDAR runs | Auto-spares / electrical shops | est. 1,500 | Common |
 | 4.4 | **Laptop in-car power**. See note D. | The guide's USB-C PD car charger will not run this laptop under GPU load. | — | — | **Decision needed** |
@@ -173,7 +173,7 @@ before ordering.
 |---|---|---|---|
 | 9.1 | Pod board, 4-layer, 70 × 53 mm, ×5 | Four layers for a solid ground under the GNSS and IMU | US$15–35 |
 | 9.2 | Power board, 2-layer, 2 oz copper, 95 × 66 mm, ×5 | 2 oz for the actuator and relay currents | US$10–25 |
-| 9.3 | Components: STM32F405RGT6 ×2 (one spare), 8 MHz crystals, AP2112K-3.3, USB-C sockets (GCT USB4105-GF-A, 16-pin USB 2.0: the footprint matches it), USBLC6-2SC6, side-push tactile switches ×2 per board (Panasonic EVQ-P7C, RESET and BOOT: pressed through pin-holes in the pod's wall), 60 V buck IC + inductor, SMCJ24A, 74HCT244, MOSFETs, SN65HVD230, PESD2CAN, PC817, DB-25 PCB connectors, passives | From the board house's assembly service or LCSC/Mouser; hand-solderable packages chosen (LQFP64, SOIC, SOT-23, 0805) | US$40–70 |
+| 9.3 | Components: STM32F405RGT6 ×2 (one spare), 8 MHz crystals, AP2112K-3.3, USB-C sockets (GCT USB4105-GF-A, 16-pin USB 2.0: the footprint matches it), USBLC6-2SC6, side-push tactile switches ×2 per board (Panasonic EVQ-P7C, RESET and BOOT: pressed through pin-holes in the pod's wall), 60 V buck IC + inductor, SMCJ33CA, 74HCT244, MOSFETs, SN65HVD230, PESD2CAN, PC817, DB-25 PCB connectors, passives | From the board house's assembly service or LCSC/Mouser; hand-solderable packages chosen (LQFP64, SOIC, SOT-23, 0805) | US$40–70 |
 | 9.4 | Optional machine assembly of the fine-pitch parts | If hand-soldering the LQFP64 is not wanted | US$15–40 |
 | 9.5 | Courier to Kenya and duty/VAT | Express courier; duty and VAT on the declared value | US$30–60 |
 | | **Total** | at ~129 KES/US$ | **≈ KES 15,000 – 28,000** |
@@ -245,7 +245,7 @@ any other colour (the silkscreen says "LINK", not a colour).
 | U5 | 1 | **PC817** (e.g. Sharp PC817X) | DIP-4 | |
 | Q2–Q7 | 6 | **AO3400A** (30 V N-MOSFET) | SOT-23 | |
 | Q8 | 1 | **2N7002** | SOT-23 | |
-| D10 | 1 | **SMCJ24CA** (TVS, bidirectional) | SMC | |
+| D10 | 1 | **SMCJ33CA** (TVS, bidirectional, 33 V) | SMC | not the 24 V part: see BUILD_GUIDE 4.8.4 |
 | D11, D13 | 2 | **B560C-13-F** (5 A 60 V Schottky) | SMC | |
 | D14–D19 | 6 | **SS14** | SMA | flyback |
 | D20 | 1 | **NUP2105LT1G** (CAN ESD) | SOT-23 | |
