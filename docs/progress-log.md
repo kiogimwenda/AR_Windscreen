@@ -3054,3 +3054,21 @@ drawn for (hand assembly, Rev 1), and §10.3: how each module connects.
 **Verification:** `check.sh` ALL PASS; ERC clean; pod rerouted (attempt 4 of 8): 0 unconnected,
 0 DRC errors, parity exact, no warnings; `routespec.sh` all PASS; fabrication files regenerated.
 The pod's teardrops have to be added again (the copper changed); the power board is unchanged.
+
+## 2026-10-15 — Reviewer's fixes; the 5 V converter simulated
+
+**Review (an engineering friend of Ian's):** "a via on a ground pad" and "more clearance from the
+terminals". Measured: 9 vias touching ground pads (6 centred in them) on the power board, 2 on
+the pod; 5 places within 0.3 mm of a terminal or fuse-holder pin. Fixed in the generators (no via
+touches any SMD pad; 0.6 mm round terminal and fuse-holder pins, given to the router as grown pad
+copies since KiCad does not export a pad's own clearance), both boards rerouted (power attempt 1,
+pod attempt 5), teardrops re-added by Ian, finished. DRC 0/0, parity exact; `routespec.sh` all
+PASS including the two new checks.
+
+**Simulation (`hardware/sim/`):** TI's unencrypted TPS54360 transient model with the board's
+values, run in KiCad's own ngspice from KiCad's Python (no install). Results: start-up 4.75 V at
+2.3 ms, 0.9 % overshoot; load step 0.2→1.5 A: −179 mV (3.6 %), back within 1 % in 123 µs, no
+ringing; 1.5→0.2 A: +129 mV, 147 µs; 9 / 12 / 14.4 / 30 V at 1 A: 5.00 V, ripple 7–35 mV,
+602 kHz. All PASS. Getting ngspice going from KiCad's DLL needed: PSpice compatibility, the XSPICE
+code models loaded by hand (short Windows path), `@iload[current]` saved before the run.
+

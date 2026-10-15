@@ -252,7 +252,12 @@ copper) and **net classes** (widths and clearances, `hardware/gen/pcb_rules.py`)
   nothing under the crystal (on the bottom layer anywhere in its area, on the top layer under its
   body, between its pads);
 - **power board:** no other copper in the 10 A actuator rail's zone, and no bottom-layer tracks
-  under the converter's switching loop, so the ground there stays whole (TI's layout rule).
+  under the converter's switching loop, so the ground there stays whole (TI's layout rule);
+- **power board: 0.6 mm round every screw-terminal and fuse-holder pin** (the class clearances
+  are 0.25–0.3 mm): big through-hole pins soldered by hand, the car's wiring, where a stray strand
+  lands (a reviewer's advice, 2026-10-15);
+- **no via in or touching a surface-mount pad** (both boards): an open via in a pad draws the
+  solder away from the joint when soldering by hand (same review).
 
 ### D2. Planes: a via per pad, not tracks
 

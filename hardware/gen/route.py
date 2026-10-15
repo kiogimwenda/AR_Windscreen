@@ -148,8 +148,20 @@ def obstacles():
     return items
 
 
+def is_terminal_pad(it):
+    return it.GetClass() == "PAD" and any(k in it.GetParentFootprint().GetFPIDAsString()
+                                          for k in pcb_rules.TERMINAL_FOOTPRINTS)
+
+
+def clearance_to(it):
+    """The room other nets' copper keeps from this item: more round terminal and fuse pins."""
+    return max(CLEAR, pcb_rules.TERMINAL_CLEARANCE) if is_terminal_pad(it) else CLEAR
+
+
 def free_spot(pt, netcode, items):
-    """True if a via at pt clears every other-net pad/track/via, and the board edge."""
+    """True if a via at pt clears every other-net pad/track/via (with the terminals' wider
+    clearance), touches no surface-mount pad at all (not even its own net's: an open via in a pad
+    draws the solder away from the joint), and keeps off the board edge."""
     x, y = TM(pt.x) - ORIGIN[0], TM(pt.y) - ORIGIN[1]
     r = VIA_D / 2
     if x - r < E + 0.1 or y - r < E + 0.1 or x + r > W - E - 0.1 or y + r > H - E - 0.1:
@@ -157,15 +169,19 @@ def free_spot(pt, netcode, items):
     shape = pcbnew.SHAPE_CIRCLE(pt, FM(r))
     for it in items:
         if it.GetNetCode() == netcode:
-            # same net may touch, but two drilled holes may not meet (KiCad's hole-to-hole rule)
+            # same net may touch, but two drilled holes may not meet (KiCad's hole-to-hole rule),
+            # and no via goes in a surface-mount pad
             drilled = it.GetClass() == "PCB_VIA" or (it.GetClass() == "PAD" and it.HasHole())
             if drilled and it.GetEffectiveShape(pcbnew.F_Cu).Collide(shape, FM(0.25)):
+                return False
+            if it.GetClass() == "PAD" and it.GetAttribute() == pcbnew.PAD_ATTRIB_SMD and \
+                    it.GetEffectiveShape(pcbnew.F_Cu).Collide(shape, FM(0.1)):
                 return False
             continue
         for layer in copper:
             if not it.IsOnLayer(layer):
                 continue
-            if it.GetEffectiveShape(layer).Collide(shape, FM(CLEAR)):
+            if it.GetEffectiveShape(layer).Collide(shape, FM(clearance_to(it))):
                 return False
     return True
 
@@ -247,7 +263,7 @@ def too_near(track):
     for fp in board.GetFootprints():
         for pad in fp.Pads():
             if pad.GetNetCode() != track.GetNetCode() and pad.IsOnLayer(track.GetLayer()) and \
-                    pad.GetEffectiveShape(track.GetLayer()).Collide(shape, FM(CLEAR)):
+                    pad.GetEffectiveShape(track.GetLayer()).Collide(shape, FM(clearance_to(pad))):
                 return True
     for o in board.GetTracks():
         if o.GetNetCode() != track.GetNetCode() and o.IsOnLayer(track.GetLayer()) and \
@@ -403,6 +419,50 @@ if POD:
     text = text.replace("(layer In1.Cu\n      (type signal)", "(layer In1.Cu\n      (type power)")
     text = _re.sub(r'\(wire_keepout "" \(polygon In1\.Cu [^)]*\)\s*\)', "", text)
     text = text.replace("(layer In2.Cu\n      (type signal)", "(layer In2.Cu\n      (type power)")
+# The terminal and fuse-holder pins' wider clearance: KiCad does not export a pad's own clearance
+# to the router, so their pads are given to it as copies grown by the difference; it then keeps its
+# usual clearance from a pad that is, to it, that much larger. (The real pads keep their size; the
+# DRC checks the clearance on them.)
+GROW = int(round((pcb_rules.TERMINAL_CLEARANCE - CLEAR) * 1000))  # um
+grown = {}
+
+
+def _grow_padstack(name):
+    m = _re.search(r'\(padstack %s\n(.*?)\n    \)' % _re.escape(name), text, _re.S)
+    shapes = []
+    for layer in ("F.Cu", "B.Cu"):
+        c = _re.search(r'\(circle %s ([\d.]+)' % layer, m.group(1))
+        if c:
+            shapes.append(f"      (shape (circle {layer} {float(c.group(1)) + 2 * GROW:g}))")
+            continue
+        poly = _re.search(r'\((?:polygon|rect) %s ([-\d. \n]+)\)' % layer, m.group(1))
+        nums = [float(v) for v in poly.group(1).split()]
+        if "(polygon" in m.group(1):
+            nums = nums[1:]  # aperture width first
+        xs, ys = nums[0::2], nums[1::2]
+        shapes.append(f"      (shape (rect {layer} {min(xs) - GROW:g} {min(ys) - GROW:g} "
+                      f"{max(xs) + GROW:g} {max(ys) + GROW:g}))")
+    return f"    (padstack {name}_keep\n" + "\n".join(shapes) + "\n      (attach off)\n    )\n"
+
+
+def _keep_pins(m):
+    body = m.group(0)
+    if not any(k in m.group(2) for k in pcb_rules.TERMINAL_FOOTPRINTS):
+        return body
+
+    def pin(pm):
+        grown.setdefault(pm.group(1), None)
+        return f"(pin {pm.group(1)}_keep "
+    return _re.sub(r'\(pin (\S+) ', pin, body)
+
+
+if GROW > 0:
+    # image names are quoted only when they need it
+    text = _re.sub(r'\(image ("?)([^"\s]+)\1(.*?)\n    \)', _keep_pins, text, flags=_re.S)
+    extra = "".join(_grow_padstack(n) for n in grown)
+    text = text.replace("    (padstack ", extra + "    (padstack ", 1)
+    print(f"terminal pins given to the router with {pcb_rules.TERMINAL_CLEARANCE} mm clearance: "
+          f"{len(grown)} pad shapes")
 dsn.write_text(text)
 # Automatic neck-down stays on (narrowing at small pins): without it the 1.0 mm supply tracks
 # could not reach the small pins at all (17 left unrouted); its too-narrow pieces are mended below.

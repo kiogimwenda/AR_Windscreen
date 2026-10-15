@@ -1227,3 +1227,17 @@ the module's pin names). The BTS7960 header follows the standard IBT-2 order.
 
 **A buy list per footprint** is in `bill-of-materials.md` §10: the parts each footprint was drawn for.
 
+## A reviewer's two points adopted; the converter simulated (2026-10-15)
+
+**No via in a surface-mount pad, and 0.6 mm round the terminal and fuse-holder pins.** An engineer
+reviewing the boards pointed at a via on a ground pad and thin tracks close to the terminals. Both
+measured true (9 vias touching ground pads on the power board, 2 on the pod; 5 places under
+0.3 mm from a terminal pin). Vias came from stitching and mending steps that let a via sit on its
+own net's pad; now no via touches any surface-mount pad. KiCad does not pass a pad's own clearance
+to the autorouter, so the terminal pins reach it as copies grown by 0.35 mm; the real pads carry
+the 0.6 mm clearance and the DRC checks it. `routespec.sh` checks both rules.
+
+**The 5 V converter simulated with TI's own model** (`hardware/sim/run_buck.sh`), in KiCad's
+ngspice: start-up, a 0.2–1.5 A load step (stability) and 9–30 V input, against stated limits;
+all pass. TI's model is downloaded on use, not committed (TI's copyright).
+

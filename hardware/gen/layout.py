@@ -373,6 +373,9 @@ def build(board, force):
                 fp.SetLocked(True)  # edge connectors and holes are fixed by the enclosure
         if ref.startswith("H"):
             fp.SetExcludedFromBOM(False)  # as the schematic's mounting-hole symbols
+        if any(k in p["fp"] for k in pcb_rules.TERMINAL_FOOTPRINTS):
+            for pad in fp.Pads():  # wider clearance round the terminal and fuse-holder pins
+                pad.SetLocalClearance(pcbnew.FromMM(pcb_rules.TERMINAL_CLEARANCE))
         # Reference labels: 0.8 mm (the fab's minimum readable height) and placed clear of the
         # part, so dense rows stay legible.
         ref_text = fp.Reference()

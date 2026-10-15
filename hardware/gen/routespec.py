@@ -90,6 +90,38 @@ else:
     gnd = [z for z in board.Zones() if not z.GetIsRuleArea() and z.GetLayer() == pcbnew.B_Cu and short(z.GetNetname()) == "GND"]
     check("bottom layer is a GND zone", [] if gnd else ["missing"])
 
+# No via in (or touching) a surface-mount pad: an open via draws the solder away from the joint.
+in_pad = []
+smd = [(fp.GetReference(), p, p.GetEffectiveShape(pcbnew.F_Cu), p.GetBoundingBox())
+       for fp in board.GetFootprints() for p in fp.Pads()
+       if p.GetAttribute() == pcbnew.PAD_ATTRIB_SMD and p.IsOnLayer(pcbnew.F_Cu)]
+for v in board.GetTracks():
+    if v.GetClass() != "PCB_VIA":
+        continue
+    vb, vs = v.GetBoundingBox(), v.GetEffectiveShape(pcbnew.F_Cu)
+    in_pad += [f"{ref}.{p.GetNumber()}" for ref, p, ps, pb in smd if vb.Intersects(pb) and ps.Collide(vs, 0)]
+check("no via in or touching a surface-mount pad", in_pad)
+
+# The terminal and fuse-holder pins: every other net's copper at least TERMINAL_CLEARANCE away.
+near_terminal = []
+for fp in board.GetFootprints():
+    if not any(k in fp.GetFPIDAsString() for k in pcb_rules.TERMINAL_FOOTPRINTS):
+        continue
+    for p in fp.Pads():
+        ps, zone = p.GetEffectiveShape(pcbnew.F_Cu), p.GetBoundingBox()
+        zone.Inflate(pcbnew.FromMM(1.0))
+        for t in board.GetTracks():
+            if t.GetNetCode() == p.GetNetCode() or not zone.Intersects(t.GetBoundingBox()):
+                continue
+            for layer in (pcbnew.F_Cu, pcbnew.B_Cu):
+                if t.IsOnLayer(layer) and p.GetEffectiveShape(layer).Collide(
+                        t.GetEffectiveShape(layer), pcbnew.FromMM(pcb_rules.TERMINAL_CLEARANCE) - 1):
+                    near_terminal.append(f"{fp.GetReference()}.{p.GetNumber()}~{short(t.GetNetname())}")
+                    break
+if any(any(k in fp.GetFPIDAsString() for k in pcb_rules.TERMINAL_FOOTPRINTS) for fp in board.GetFootprints()):
+    check(f"other nets at least {pcb_rules.TERMINAL_CLEARANCE} mm from terminal and fuse-holder pins",
+          sorted(set(near_terminal)))
+
 # Track widths. The requirement: every track at least as wide as IPC-2221 asks for its class's
 # current (the supply and rail classes) and never under the fab minimum. The class width is the
 # design's nominal width, a little above that; tracks below it are counted (neck-downs at pins,

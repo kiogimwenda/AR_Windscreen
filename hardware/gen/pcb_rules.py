@@ -75,6 +75,13 @@ FAB_RULES = {
                         min_resolved_spokes=1),
 }
 
+# Extra room around the pins of the screw terminals and fuse holders (power board): they are large
+# through-hole pads soldered by hand with a lot of heat and solder, carry the car's wiring, and are
+# where a stray strand of wire lands. Every other net's copper keeps this far from them (reviewer's
+# advice, 2026-10-15; the class clearances are 0.25-0.3 mm).
+TERMINAL_CLEARANCE = 0.6
+TERMINAL_FOOTPRINTS = ("TerminalBlock", "Fuseholder")
+
 TRACK_CHOICES = {"pod_board": [0.2, 0.25, 0.3, 0.4, 0.6, 1.0],
                  "power_board": [0.3, 0.5, 0.8, 1.0, 1.5, 2.5, 4.0]}
 
