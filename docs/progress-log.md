@@ -3072,3 +3072,14 @@ ringing; 1.5→0.2 A: +129 mV, 147 µs; 9 / 12 / 14.4 / 30 V at 1 A: 5.00 V, rip
 602 kHz. All PASS. Getting ngspice going from KiCad's DLL needed: PSpice compatibility, the XSPICE
 code models loaded by hand (short Windows path), `@iload[current]` saved before the run.
 
+## 2026-10-15 (later) — Relay and magnet drivers simulated
+
+`hardware/sim/run_relay.sh`: the pod's MCU pin through 1 k, the cable and the power board's 10 k
+pull-down into the AO3400A, the coil and its SS14 flyback. No vendor SPICE model exists for the
+AO3400A or SS14, so both are built from datasheet figures; the coils use typical values (relay
+85 Ohm / 0.35 H, magnet 48 Ohm / 0.15 H) until the real parts are measured.
+Results, all PASS: gate 2.99 V (needs >= 2.5 V; threshold <= 1.45 V); MOSFET on-voltage 3–9 mV;
+turn-off spike clamped to the supply + 0.3 V (14.7 V at 14.4 V, rating 30 V); diode peak = coil
+current (<= 0.31 A, rating 1 A); with the pod unplugged the gate stays at 0 V and the coil off.
+Release (current to 10 %): relays 8.5–8.8 ms, magnet 6.6 ms after switch-off.
+
