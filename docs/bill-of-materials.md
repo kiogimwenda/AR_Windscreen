@@ -150,9 +150,9 @@ genuine unit with a serial number. The Mid-360's default IP is derived from that
 | Installation, including the pod bracket, LiDAR wedge plate and enclosures (§6) | 10,000 – 18,000 |
 | **Local subtotal** | **≈ 41,000 – 71,000** |
 | Import bundle (§7), dominated by the LiDAR (+ the M12 camera) | ≈ 140,000 – 170,000 |
-| Custom PCBs, components and their shipping (§9) | ≈ 15,000 – 28,000 |
+| Custom PCBs, assembled by the fab, and their shipping (§9) | ≈ 30,000 – 61,000 |
 | Actuator + laptop power | open, see notes B and D |
-| **Total** | **≈ 195,000 – 270,000**, plus the notes B/D items |
+| **Total** | **≈ 210,000 – 303,000**, plus the notes B/D items |
 
 *Amended 2026-09-30:* the two-box hub adds about KES 25,000–50,000 over the single-box estimate
 (≈ 170,000–220,000): the F405 board, cable and connectors, automotive relays, protection parts,
@@ -173,10 +173,10 @@ before ordering.
 |---|---|---|---|
 | 9.1 | Pod board, 4-layer, 70 × 53 mm, ×5 | Four layers for a solid ground under the GNSS and IMU | US$15–35 |
 | 9.2 | Power board, 2-layer, 2 oz copper, 95 × 66 mm, ×5 | 2 oz for the actuator and relay currents | US$10–25 |
-| 9.3 | Components: STM32F405RGT6 ×2 (one spare), 8 MHz crystals, AP2112K-3.3, USB-C sockets (GCT USB4105-GF-A, 16-pin USB 2.0: the footprint matches it), USBLC6-2SC6, side-push tactile switches ×2 per board (Panasonic EVQ-P7C, RESET and BOOT: pressed through pin-holes in the pod's wall), 60 V buck IC + inductor, SMCJ33CA, 74HCT244, MOSFETs, SN65HVD230, PESD2CAN, PC817, DB-25 PCB connectors, passives | From the board house's assembly service or LCSC/Mouser; hand-solderable packages chosen (LQFP64, SOIC, SOT-23, 0805) | US$40–70 |
-| 9.4 | Optional machine assembly of the fine-pitch parts | If hand-soldering the LQFP64 is not wanted | US$15–40 |
-| 9.5 | Courier to Kenya and duty/VAT | Express courier; duty and VAT on the declared value | US$30–60 |
-| | **Total** | at ~129 KES/US$ | **≈ KES 15,000 – 28,000** |
+| 9.3 | **Assembly by the fab** (JLCPCB PCBA; PCBWay alike), **2 of each board**: the parts (bought by the fab, matched from `hardware/<board>/fab/<board>-jlc-bom.csv`, every line with its part number: §10), setup, stencil, "extended part" fees, through-hole assembly (terminals, DB-25, fuse holders, headers, C20, U5) | Decided 2026-10-16: boards arrive assembled. Parts the fab does not stock (some connectors) are bought through its global sourcing or sent to it; the quote shows which | US$150–300 |
+| 9.4 | Spares for repair: STM32F405RGT6, TPS54360DDAR, AO3400A ×5, SS14 ×5, mini blade fuses 3 A ×10 | Bought with the order | US$20–30 |
+| 9.5 | Courier to Kenya and duty/VAT | Express courier; duty and VAT on the declared value (higher for assembled boards) | US$40–80 |
+| | **Total** | at ~129 KES/US$ | **≈ KES 30,000 – 61,000** |
 
 The BNO085 and NEO-M8N stay as breakouts on standoffs in version 1 (2.1, 2.2); the BTS7960 and
 ACS712 stay as modules on the power board (3.1, 3.2). Only the parts that were never the risk go
@@ -184,9 +184,12 @@ onto the boards themselves.
 
 ---
 
-## 10. PCB buy list (Rev 1, hand assembly)
+## 10. PCB parts list (Rev 1.1, assembled by the fab)
 
-Every part below fits the footprint on the board; **buy the part named, or one with the same package
+*Changed 2026-10-16:* the boards are ordered **assembled by the fab**. The fab buys and fits these
+parts from `hardware/<board>/fab/<board>-jlc-bom.csv` (made from `hardware/gen/sourcing.py`, the
+same part numbers as below); this list is what to check its matches against, and what to buy for
+repairs. Every part below fits the footprint on the board; **a substitute must have the same package
 and ratings**. A different package will not fit its pads. Quantities are **per board**; for two
 assembled boards of each, buy ×2 and add spares (10 % on passives, which come in strips of 10–50;
 one spare of each IC). Generated from the boards' own BOMs (`hardware/<board>/fab/<board>-bom.csv`,

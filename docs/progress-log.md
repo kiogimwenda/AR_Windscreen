@@ -3104,3 +3104,13 @@ and decisions updated; `run_input.sh` rerun with it fitted: ALL PASS (idle throu
 and the 35 V dump, rail at most 33.2 V; still absorbs pulse 1). Also fixed: the assembly-document
 generator had no wiring entry for the pod's new J8 (since 2026-10-11; check.sh now passes again).
 Power board: DRC 0/0, parity exact; fabrication files regenerated.
+
+## 2026-10-16 — Tag pcb-rev1.1; the boards to be ordered assembled
+
+Tag `pcb-rev1.1` on 7604624 (the review fixes, the SMCJ33CA, the corrected IMU header). Ordering
+plan changed to fab assembly (Ian): `hardware/gen/sourcing.py` (a part number for every BOM line)
+and `finish.sh` writing `<board>-jlc-bom.csv` and `<board>-jlc-cpl.csv`; checked: the two files
+list the same parts (pod 74, power 78) and every designator. BOM §9 (costs: ~KES 30,000–61,000)
+and §10, LAYOUT_GUIDE H1/H3 (the ordering steps: upload, match check, rotation preview,
+through-hole assembly, edge rails), decisions and the to-do updated.
+

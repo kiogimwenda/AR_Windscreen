@@ -1252,3 +1252,15 @@ dump (the rail reaches 33 V; the buck, C20, C21/C22 and D11 are rated 60 V or mo
 clamps the ISO 7637-2 spikes. Same SMC footprint: the value changed, not the copper. An
 unsuppressed load dump (older cars, up to ~100 V) would overwhelm either; then the 3 A fuse opens.
 
+## Boards ordered assembled by the fab (2026-10-16)
+
+**Ian's decision: order the boards already assembled** (JLCPCB's PCB Assembly; PCBWay takes the
+same files), 2 of each, instead of hand-soldering them. `finish.sh` now also writes each board's
+fab-format BOM and placement file from `hardware/gen/sourcing.py`, which ties every BOM line to an
+exact part number (the buy list's, passives from the makers the fab stocks cheaply) and fails if a
+part has none. Where the exact number is not certain (the DB-25's 4.94 mm offset, the crystal's
+12 pF, the PC817's suffix) the line says what to match, and the fab's matches are checked against
+it before ordering. Through-hole parts are assembled too, for boards that arrive complete. The
+PCB budget becomes ~KES 30,000–61,000 (was 15,000–28,000 with hand assembly). Tag `pcb-rev1.1`
+marks the design ordered.
+

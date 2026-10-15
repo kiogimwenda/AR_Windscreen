@@ -375,7 +375,8 @@ the board passes the DRC (0 errors, 0 unconnected, exact parity):
 | `<board>-gerbers.zip` | **upload this**: every copper layer (4 on the pod), solder mask, paste, silkscreen, the outline, and the Excellon drill files (plated and non-plated holes separate) |
 | `gerbers/` | the same files unzipped, with drill maps (PDF) and the Gerber job file |
 | `<board>-bom.csv` | bill of materials, grouped by value and footprint |
-| `<board>-pos.csv` | every part's position and rotation (for machine assembly) |
+| `<board>-pos.csv` | every part's position and rotation (KiCad's own format) |
+| `<board>-jlc-bom.csv`, `<board>-jlc-cpl.csv` | **for the assembled order**: the BOM with every part's manufacturer and part number, and the placement file, in the fab's format (H3) |
 | `review/*.png` | each layer drawn, to look at before paying |
 
 All coordinates are from the board's **bottom-left corner** (the drill/place origin), as fabs and
@@ -398,13 +399,29 @@ at every layer: copper where you expect it, the silkscreen readable, the drill h
 | Min track/gap | 0.15 mm or more (ours) | 0.2 mm or more |
 | Quantity | 5 (the minimum; spares for mistakes) | 5 |
 
-### H3. Assembly
+### H3. Assembly: ordered from the fab (decided 2026-10-16)
 
-Hand soldering is realistic for both: 0805 passives, SOT-23, SOIC, SMA/SMC diodes and the
-LQFP-64 (with flux, a fine tip and solder wick; watch a drag-soldering video first). The fab can
-also assemble the SMD parts: it needs a BOM and a position file (File → Fabrication Outputs →
-Component Placement) and each part matched to its catalogue number; through-hole parts are
-usually still soldered by you. Then bring-up: `docs/assembly/`.
+The boards are ordered **assembled** (JLCPCB's PCB Assembly; PCBWay takes the same files):
+
+1. Upload `<board>-gerbers.zip`; choose the H2 options (2 oz for the power board).
+2. Turn on **PCB Assembly**: top side, quantity **2** (of the 5 boards made).
+3. Upload `<board>-jlc-bom.csv` (every part with its manufacturer and part number) and
+   `<board>-jlc-cpl.csv` (positions and rotations from the board's bottom-left corner).
+4. **Check every part the fab's tool matched** against the BOM's Comment column (its notes:
+   SMCJ**33**CA not 24CA, the female socket for J2, the DB-25's 4.94 mm offset, the crystal's
+   12 pF). Parts it does not stock (some connectors) are bought through its global sourcing or sent
+   to it; or left off and soldered by you (they are large through-hole parts).
+5. **Check the rotation preview**: each footprint library's zero rotation differs from the fab's;
+   polarised parts (diodes, ICs, the electrolytic C20, LEDs) are the ones to look at. Correct any
+   that are turned in their viewer.
+6. Through-hole parts (terminals, DB-25, fuse holders, headers, C20, U5): choose their through-hole
+   assembly too, for boards that arrive complete.
+7. Several parts sit flush with the board edges (the terminals, the DB-25, USB-C, the buttons'
+   plungers): if the fab asks for **edge rails** (break-off strips for its machines), accept them.
+8. Accept the quote only after its engineering check; their DFM report is worth reading.
+
+Still yours: the breakouts and modules (IMU, GNSS, BTS7960, ACS712, HC-05), the mini blade fuses,
+the cables. Then bring-up: `docs/assembly/` (power the boards first from a current-limited supply).
 
 ---
 

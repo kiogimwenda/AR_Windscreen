@@ -5,6 +5,7 @@
 #   drill     Excellon, plated and non-plated holes in separate files, with a drill map
 #   <board>-pos.csv  component positions (both sides, mm) for machine assembly
 #   <board>-bom.csv  grouped bill of materials from the schematic
+#   <board>-jlc-bom.csv, <board>-jlc-cpl.csv  the fab-assembly BOM and placement (sourcing.py)
 #   <board>-gerbers.zip  what the fab asks for: gerbers + drill files
 #   review/*.png      each layer rendered, to look at before paying
 #     hardware/gen/finish.sh [pod_board] [power_board]
@@ -52,6 +53,8 @@ PY
     "$CLI" pcb export pos --format csv --units mm --side both --use-drill-file-origin -o "$(win "$fab/$b-pos.csv")" "$(win "$pcb")" >/dev/null
     "$CLI" sch export bom --fields 'Reference,Value,Footprint,${QUANTITY}' --labels 'Refs,Value,Footprint,Qty' \
         --group-by 'Value,Footprint' -o "$(win "$fab/$b-bom.csv")" "$(win "$HW/$b/$b.kicad_sch")" >/dev/null
+    # the fab-assembly files: every part matched to its exact part number (sourcing.py)
+    python3 "$HW/gen/sourcing.py" "$b" "$fab" || fail=1
     (cd "$fab/gerbers" && rm -f ../"$b-gerbers.zip" && zip -q -j ../"$b-gerbers.zip" *.g* *.drl 2>/dev/null)
     # one picture per layer (from the same board data the gerbers are plotted from)
     IFS=, read -ra L <<<"$layers"
