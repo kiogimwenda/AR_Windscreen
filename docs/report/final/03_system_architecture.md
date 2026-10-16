@@ -73,5 +73,5 @@ not need hardware was built and verified first against recorded road video, a re
 a public recorded drive with LiDAR (KITTI) and synthetic scenes, so that the hardware's arrival
 leaves only integration. The two PCBs were described in Python, generated as KiCad schematics,
 checked against the firmware's pin assignments and the cable table, placed and routed by script,
-and their key circuits simulated (Section 9). Every task is recorded in a progress log and every
+and their key circuits simulated before ordering (Section 9.1, Figures 9.1–9.5). Every task is recorded in a progress log and every
 choice made under ambiguity in a decision log.

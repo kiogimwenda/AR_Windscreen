@@ -96,7 +96,9 @@ contact tells the hub, wired normally-closed to ground so that a broken sense wi
 **Property 4, the laptop only requests.** The laptop has no electrical path to any actuator: it
 reaches the car only through the hub's protocol. On the power board, every line from the pod
 passes through a 10 kΩ pull-down, so an unpowered, resetting or unplugged pod leaves the brake
-drive, the magnet and every relay off.
+drive, the magnet and every relay off. Simulated with the real cable and pull-down values, an
+unplugged pod leaves the driver's gate at 0 V and the coil off; with the pod driving, the gate
+reaches 2.99 V and the magnet lets go 6.6 ms after release (Section 9.1.3, Figure 9.3).
 
 ## 5.6 Failure analysis
 
@@ -104,7 +106,7 @@ drive, the magnet and every relay off.
 |---|---|---|---|
 | Laptop crashes or USB pulled | the pod stays up on cable power; its watchdog releases within 200 ms | firmware, no host code involved | [RESULT: hub-measured release time, Part 13.3 item 5] |
 | Inter-box cable unplugged or cut | pull-downs release everything; the pod reports fault 5 | hardware first; firmware agrees within 10 ms; no false overcurrent latch | firmware tests; [RESULT: bench, item 6] |
-| The pod loses power | lines float to their pull-downs | hardware | power board simulation (relay drivers) |
+| The pod loses power | lines float to their pull-downs | hardware | relay-driver simulation, pod unplugged: gate 0 V, coil off (Figure 9.3) |
 | The firmware hangs | the independent watchdog resets within 500 ms | hardware backstop | — |
 | The power box loses 12 V | the kill relay opens; fault 5 | hardware | — |
 | Current-sense wire breaks | reads high: latched release | fails towards release | firmware tests |

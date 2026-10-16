@@ -19,7 +19,7 @@ made.
 | 6. Precision Navigation Overlay Design | `06_navigation_overlay.md` | drafted; Part 12.4 figures slot |
 | 7. Hardware Bill of Materials | — | needs the actual costs |
 | 8. Calibration | — | needs the results |
-| 9. Testing and Validation | — | needs the event logs |
+| 9. Testing and Validation | `09_testing_validation.md` | 9.1 circuit simulations drafted, with their figures (`figures/`); bench and road tests wait |
 | 10. Results and Discussion | — | needs the results |
 | 11. Future Work | `11_future_work.md` | drafted |
 | 12. Conclusion | — | after the results |
