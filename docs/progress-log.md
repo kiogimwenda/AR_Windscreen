@@ -3195,3 +3195,6 @@ CL31B105KBHNNNE). Both simulations rerun with the fitted values as the cases jud
 values as comparison cases: ALL PASS (R63 111 mW in the jump-start; inrush 28 µC). BOM §4 lines,
 BUILD_GUIDE 4.8.4 and the report draft updated.
 
+**Tag `pcb-rev1.2`** on a0c0c57: Rev 1.1 with R63 4.7 kΩ and the pod's C1/C2 1 µF / 4.7 µF. This
+is the design to order (`pcb-rev1.1` predates the two value changes).
+

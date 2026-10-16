@@ -1283,5 +1283,6 @@ still reads pressed from 6 V. The pod's C1 and C2 were 10 µF each: with the dec
 4.7 µF (the AP2112K needs 1 µF each side) it is 28 µC. Value changes only, same footprints:
 the routed boards' values were edited in place (copper and teardrops untouched), the fab files
 regenerated, both simulations rerun with the new values (ALL PASS). The tag `pcb-rev1.1` still
-marks the design before these two changes: order from this commit's fab files.
+marks the design before these two changes; **`pcb-rev1.2`** (on a0c0c57) marks the design to
+order: use its fab files.
 
