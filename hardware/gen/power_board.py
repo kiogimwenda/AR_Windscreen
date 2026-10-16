@@ -137,7 +137,7 @@ misc = [
     R("R61", "10k", "+5V", "BOXP_G", desc="present = connected AND powered"),
     R("R62", "100k", "BOXP_G", "GND"),
     CONN("J10", "Brake-light switch", ["BL_IN", "GND"], kind="screw"),
-    R("R63", "2.2k", "BL_IN", "BL_A", desc="~5 mA LED current at 12 V"),
+    R("R63", "4.7k", "BL_IN", "BL_A", desc="~2.3 mA LED current at 12 V; 4.7k keeps a 24 V jump-start within 0805"),
     {"sym": "Isolator:PC817", "ref": "U5", "value": "PC817", "fp": "Package_DIP:DIP-4_W7.62mm",
      "nets": {"1": "BL_A", "2": "GND", "3": "GND", "4": "BRAKE_LIGHT"}},
     D("D21", "1N4148W", "GND", "BL_A", desc="reverse protection for the opto LED"),

@@ -1,7 +1,7 @@
 Comment,Designator,Footprint,Manufacturer,MPN,LCSC Part #
-10u (10 uF 25 V X5R),"C1,C2",C_1206_3216Metric,Samsung Electro-Mechanics,CL31A106KAHNNNE,
+"1u (1 uF 50 V X7R, 1206 (pod C1))",C1,C_1206_3216Metric,Samsung Electro-Mechanics,CL31B105KBHNNNE,
+4.7u (4.7 uF 25 V X5R),"C2,C7",C_1206_3216Metric,Samsung Electro-Mechanics,CL31A475KAHNNNE,
 100n (100 nF 50 V X7R),"C3,C4,C5,C6,C9,C14,C65",C_0805_2012Metric,Samsung Electro-Mechanics,CL21B104KBCNNNC,
-4.7u (4.7 uF 25 V X5R),C7,C_1206_3216Metric,Samsung Electro-Mechanics,CL31A475KAHNNNE,
 1u (1 uF 50 V X7R),C8,C_0805_2012Metric,Samsung Electro-Mechanics,CL21B105KBFNNNE,
 2.2u (2.2 uF 16 V X7R (MCU VCAP)),"C10,C11",C_0805_2012Metric,Samsung Electro-Mechanics,CL21B225KOFNNNE,
 15p (15 pF 50 V C0G),"C12,C13",C_0805_2012Metric,Samsung Electro-Mechanics,CL21C150JBANNNC,

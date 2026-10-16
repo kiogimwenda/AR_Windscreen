@@ -216,7 +216,7 @@ capacitors 0805/1206/1210 MLCC, X7R or X5R unless C0G is stated, voltage as list
 | J4 | 1 | **JST SM05B-GHS-TB(LF)(SN)** + mating GHR-05V-S housing and crimped leads | JST GH 5-pin | gesture puck cable |
 | D1, D2 | 2 | **SS14** (1 A 40 V Schottky) | SMA | |
 | D3 / D4 / D5 / D6 | 1 each | 0805 LEDs: green / blue / amber / red (e.g. Kingbright APT2012SGC, -QBC/D, -SYCK, -SURCK) | LED 0805 | **D4 blue: see note below** |
-| C1, C2 | 2 | 10 µF 25 V X5R | 1206 | e.g. Samsung CL31A106KAHNNNE |
+| C1 / C2 | 1 / 1 | 1 µF 50 V X7R / 4.7 µF 25 V X5R | 1206 | Samsung CL31B105KBHNNNE / CL31A475KAHNNNE; no larger: USB attach inrush (`hardware/sim/run_pod_supply.sh`, 2026-10-16) |
 | C7 | 1 | 4.7 µF 25 V X5R | 1206 | |
 | C3–C6, C9, C14, C65 | 7 | 100 nF 50 V X7R | 0805 | e.g. CL21B104KBCNNNC |
 | C8 | 1 | 1 µF 25 V X7R | 0805 | |
@@ -270,7 +270,7 @@ any other colour (the silkscreen says "LINK", not a colour).
 | R47, R50–R61 | 13 | 10 kΩ | 0805 | |
 | R41 / R42 / R43 | 1 each | 523 kΩ / 84.5 kΩ / 162 kΩ, **1 %** | 0805 | converter EN and frequency |
 | R44 / R45 / R46 | 1 each | 53.6 kΩ / 10.2 kΩ / 13.0 kΩ, **1 %** | 0805 | converter feedback, compensation |
-| R40 / R48 / R62 / R63 | 1 each | 4.7 kΩ / 20 kΩ / 100 kΩ / 2.2 kΩ | 0805 | |
+| R40 / R48 / R62 / R63 | 1 each | 4.7 kΩ / 20 kΩ / 100 kΩ / 4.7 kΩ | 0805 | R63 4.7 kΩ, not 2.2 kΩ: a 24 V jump-start (`hardware/sim/run_brake.sh`, 2026-10-16) |
 | H1–H4 | 4 | M3 standoffs and screws | 3.2 mm hole | |
 
 ### 10.3 Modules and breakouts: how they connect (pin orders checked 2026-10-11)

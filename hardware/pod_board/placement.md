@@ -6,8 +6,8 @@ x, y: mm from the board's top-left corner (y down); rotation: degrees, counter-c
 
 | Ref | Value | x | y | Rot | Why it is there |
 |---|---|---|---|---|---|
-| C1 | 10u | 49.50 | 18.60 | 0 | LDO input capacitor |
-| C2 | 10u | 54.50 | 22.40 | 90 | LDO output capacitor |
+| C1 | 1u | 49.50 | 18.60 | 0 | LDO input capacitor |
+| C2 | 4.7u | 54.50 | 22.40 | 90 | LDO output capacitor |
 | C3 | 100n | 26.20 | 7.70 | 0 | 100 nF at VDD pin 64 / VSS 63 (top-left pins) |
 | C4 | 100n | 36.60 | 12.50 | 90 | 100 nF at VDD pin 48 (right side) |
 | C5 | 100n | 23.90 | 24.60 | 90 | 100 nF at VDD pin 19 / VSS 18 (bottom-left pins) |

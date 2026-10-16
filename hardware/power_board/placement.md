@@ -82,7 +82,7 @@ x, y: mm from the board's top-left corner (y down); rotation: degrees, counter-c
 | R60 | 10k | 51.93 | 16.20 | 90 | fail-safe resistor in line with DB-25 pin 22, where the line enters the board |
 | R61 | 10k | 66.50 | 12.50 | 0 | presence gate divider (top) |
 | R62 | 100k | 66.50 | 15.00 | 0 | presence gate divider (bottom) |
-| R63 | 2.2k | 17.20 | 50.50 | 0 | opto LED resistor |
+| R63 | 4.7k | 17.20 | 50.50 | 0 | opto LED resistor |
 | U1 | TPS54360DDA | 36.00 | 27.00 | 270 | TPS54360 at the heart of the converter block, turned so its SW pin (8) is the corner nearest both D13 and L1: the switch node is a few mm, on the top layer |
 | U2 | AP2112K-3.3 | 37.00 | 47.00 | 0 | 3.3 V LDO for the transceiver |
 | U3 | 74HCT244 | 67.00 | 24.00 | 0 | 74HCT244 buffer between the DB-25 lines and the BTS7960 header |

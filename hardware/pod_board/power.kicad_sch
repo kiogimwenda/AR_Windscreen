@@ -1691,8 +1691,8 @@
 				)
 			)
 		)
-		(property "Value" "10u"
-			(at 90.716 87.41 0)
+		(property "Value" "1u"
+			(at 90.208 87.41 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1717,7 +1717,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "1 uF, not more: USB attach inrush (hardware/sim/run_pod_supply.sh)"
 			(at 86.36 86.36 0)
 			(hide yes)
 			(effects
@@ -1834,8 +1834,8 @@
 				)
 			)
 		)
-		(property "Value" "10u"
-			(at 141.516 87.41 0)
+		(property "Value" "4.7u"
+			(at 142.024 87.41 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1860,7 +1860,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "4.7 uF, not more: USB attach inrush (hardware/sim/run_pod_supply.sh)"
 			(at 137.16 86.36 0)
 			(hide yes)
 			(effects

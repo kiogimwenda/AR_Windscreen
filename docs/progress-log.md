@@ -3114,3 +3114,84 @@ list the same parts (pod 74, power 78) and every designator. BOM §9 (costs: ~KE
 and §10, LAYOUT_GUIDE H1/H3 (the ordering steps: upload, match check, rotation preview,
 through-hole assembly, edge rails), decisions and the to-do updated.
 
+## 2026-10-16 — Enclosures: E-stop housing, windscreen pod, gesture puck
+
+**Attempted:** The three printed housings still undesigned (to-do item 7), each from the bought
+part's typical dimensions, marked VERIFY where the real part must be measured before printing.
+
+**Built/changed:** `hardware/enclosures/estop/` (yellow box 56 × 56 × 59 for the 22 mm E-stop:
+standard 22.3 mm hole and notch, contact blocks inside, M16 gland, base on M3 inserts, two M4 to
+the dash; drilling template), `hardware/enclosures/pod/` (rear cover, front shell with the
+carrier wall, black front plate with hood, cradle, rail, the glass plate's template: 79 × 52 × 75
+mm; camera on a 38 × 38 placeholder), `hardware/enclosures/gesture_puck/` (34 × 21 × 10.5 mm shell
+and base for the GY-9960 APDS-9960 module). README sections with parts lists and the VERIFY lists;
+BUILD_GUIDE 4.8.6 amended. `make_templates.py` now ignores a model's other echo lines.
+
+**Reasoning:** In the pod the camera and the board bolt to opposite faces of one carrier wall, so
+the camera-IMU extrinsics depend on one printed part, not on a joint. The hood is splayed 4° wider
+than the lens's 90° × 55° field so it stays out of the image; its bottom rows may still see the
+dash, so the README says to check the first frames and pitch up a step if so. The gesture window
+is left open: a clear cover reflects the APDS-9960's own IR LED into its receiver.
+
+**Checked:** every STL exported by OpenSCAD reports a simple (manifold) solid, and an edge count
+on each file finds no open or shared edges. Three faults found that way and fixed: the front plate
+vanished entirely (the rounded-box helper erased a box thinner than twice its corner radius), a
+lead slot's corner lay on a screw boss's axis, and the puck's screw bosses touched the end walls
+along a line. Also caught on review: the rear cover had no fixing at all, the pivot insert cut
+into a screw boss (pivot lowered to 60 mm), and a gesture cable exit ran through a screw boss.
+
+**Not done:** nothing printed; dimensions of the camera, GNSS board, E-stop, gesture module and
+the car's glass angle are typical values until the parts are measured.
+
+
+## 2026-10-16 — Brake-light input and pod supply simulated
+
+**Attempted:** The last two circuits without a simulation: the brake-light optocoupler input
+and the pod's supply.
+
+**Built/changed:** `hardware/sim/run_brake.sh` (`brake/brake.py`) and
+`hardware/sim/run_pod_supply.sh` (`pod_supply/pod_supply.py`), with results and plots; the sim
+README lists them. No SPICE model is published for the PC817 or the AP2112K: both are built from
+their datasheets, and the results say so.
+
+**Results.** Brake light, ALL PASS: with the weakest PC817 (CTR 25 %) the pin reads pressed at
+0.15 V from 9 V (from 3.4 V up); with the strongest (600 %) it reads released up to 0.9 V on the
+line; reversed wiring is absorbed by D21 (LED 0.67 V reverse); the pin follows the pedal within
+0.2 ms. Pod supply: +3V3 holds at 3.29 V on the worst cable path (F2 at 1 Ohm, 3 m of 26 AWG,
+236 mA, well inside F2's 500 mA), on USB alone at 4.40 V, on both, and when the cable is pulled
+while running; back-feed into a sleeping laptop 0.2 uA. **One FAIL:** at USB attach the pod
+draws 88 uC of inrush charge (C1, C2 and the decoupling: about 22 uF) against USB 2.0's 50 uC
+(10 uF) limit.
+
+**Findings for Ian (not changed on the board):**
+1. USB inrush: C1 1 uF and C2 4.7 uF (value changes, same footprints; the AP2112K needs 1 uF
+   each side) bring it to 28 uC, PASS; laptops usually cope with the present values.
+2. R63 2.2 k dissipates 237 mW (0805: 125 mW) for the 60 s of a 24 V jump-start; 4.7 k keeps it
+   at 111 mW and the weakest PC817 still reads pressed from 6 V.
+3. The brake input's threshold is the LED's forward voltage (~1 V for a strong part): a
+   lamp-check voltage on a dark brake-lamp line would read as pressed (the safe direction). A
+   resistor across the LED on a later revision would make the threshold definite (~3 V).
+
+## 2026-10-16 — Report: the sections that need no results drafted
+
+**Built/changed:** `docs/report/final/` with drafts of Part 16.1's sections 2 (motivation and
+scope), 3 (system architecture), 4 (software architecture, with the as-built subsystem table and
+each deviation from the proposal), 5 (actuation safety, as a small safety case with a failure
+table), 6 (the navigation overlay pipeline) and 11 (future work), and a README mapping all twelve
+sections to their state.
+
+**Reasoning:** Written from the guide, the decision log and the code as they stand, not from the
+proposal's intentions; each claim was checked against its source (one corrected while checking:
+the camera's undistortion is a CPU remap, not GPU). Every place that needs a measurement, a photo
+or a decision is marked [RESULT], [FIGURE] or [CHECK], so nothing claims a test not yet run.
+Citations use the proposal's keys. They are drafts for Ian to rewrite in his own voice.
+
+**R63 4.7 kΩ and C1/C2 1 µF / 4.7 µF adopted (same day, Ian's decision):** generator values
+(`power_board.py`, `pod_board.py`), `check.sh` ALL CHECKS PASS; the routed boards' values and
+descriptions set in place (teardrops kept: pod 507, power 338); `finish.sh` for both boards
+(0 unconnected, 0 DRC errors, parity exact; pod no warnings, power the 5 intended silk
+warnings); `routespec.sh` passes; a 1 µF 1206 part added to `sourcing.py` (Samsung
+CL31B105KBHNNNE). Both simulations rerun with the fitted values as the cases judged and the old
+values as comparison cases: ALL PASS (R63 111 mW in the jump-start; inrush 28 µC). BOM §4 lines,
+BUILD_GUIDE 4.8.4 and the report draft updated.
+

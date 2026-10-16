@@ -911,7 +911,8 @@ firmware involved.
 - **BOX_PRESENT:** a 2N7002 whose gate is fed from this board's 5 V rail, pulling pin 13 low. The
   pod therefore sees "present" only when the box is connected **and** powered, and reports
   `ignitionOn` from it.
-- **Brake light:** PC817, LED side from the brake-light switch (2.2 kΩ, reverse diode),
+- **Brake light:** PC817, LED side from the brake-light switch (4.7 kΩ, reverse diode; *amended
+  2026-10-16, simulation:* 2.2 kΩ ran at 237 mW in a 60 s 24 V jump-start, beyond its 0805 rating),
   open-collector output to the pod.
 - **LiDAR feed:** 12 V from the protected logic feed through its own 3 A fuse and an M12 socket.
 - **Bench header:** the HX711 load-cell amplifier's two lines (pins 23, 24) and 5 V.
@@ -960,6 +961,13 @@ pod's USART3 header (the pre-2026-09-30 arrangement).
     webcams are rated only to 40 °C.
   - *Camera:* a UVC board camera with an **M12 lens and locking ring** fits the pod and gives a
     fixed focus by construction (BOM 2.6b). The existing USB webcam remains usable on the bench.
+  - *(Designed 2026-10-16, `hardware/enclosures/pod/`:* 79 × 52 × 75 mm plus a 30 mm hood,
+    upright behind the mirror rather than the 110 × 70 × 45 estimate: the 70 × 53 board stands
+    vertically on the carrier wall, the camera on the wall's other face, the GNSS on a shelf above.
+    The camera is a placeholder (38 × 38 board, M12 lens) until the module is bought. The locating
+    pin became the thumbscrew itself, screwed into an insert in the rail at a fixed point; pitch
+    ±8° in an arc slot on both ears. The rear cover holds by two top screws and two bottom lap
+    tabs, because the board fills it wall to wall.)*
 - **Power box enclosure** *(amended 2026-10-06, designed: `hardware/enclosures/power_box/`)*: a
   bought **ABS junction box, about 250 × 150 × 100 mm, IP65 class**, holding a printed chassis
   plate that carries the power board, the BTS7960 and ACS712 modules and the six automotive relays
@@ -985,7 +993,13 @@ pod's USART3 header (the pre-2026-09-30 arrangement).
   - Set the final angle at installation with the bonnet measured: the lower forward edge must
     reach the bonnet-grazing ray, θ ≥ atan((h_lidar − h_bonnet)/d_bonnet) − 7°.
 - **Gesture puck:** a small printed housing on the column shroud, sensor facing the driver's
-  hand, its cable along the A-pillar to the pod.
+  hand, its cable along the A-pillar to the pod. *(Designed 2026-10-16,
+  `hardware/enclosures/gesture_puck/`: 34 × 21 × 10.5 mm, black ASA, the module clamped under an
+  open, flared window (no clear cover: it would reflect the sensor's own IR LED into it), leads
+  soldered to the module's pads, VHB base. An arrow on top marks the car's front.)*
+- **E-stop housing** *(added 2026-10-16, `hardware/enclosures/estop/`)*: a yellow ASA box,
+  56 × 56 × 59 mm, for the 22 mm mushroom (ISO 13850: red on yellow), its base screwed to a solid
+  dash panel beside the column (never the column itself), cable out through an M16 gland.
 
 #### 4.8.7 Failure analysis of the split
 

@@ -35,6 +35,7 @@ SOURCING = [
     ("10n", "C_0805", "Samsung Electro-Mechanics", "CL21B103KBANNNC", "", "10 nF 50 V X7R"),
     ("100n", "C_0805", "Samsung Electro-Mechanics", "CL21B104KBCNNNC", "", "100 nF 50 V X7R"),
     ("1u", "C_0805", "Samsung Electro-Mechanics", "CL21B105KBFNNNE", "", "1 uF 50 V X7R"),
+    ("1u", "C_1206", "Samsung Electro-Mechanics", "CL31B105KBHNNNE", "", "1 uF 50 V X7R, 1206 (pod C1)"),
     ("2.2u", "C_0805", "Samsung Electro-Mechanics", "CL21B225KOFNNNE", "", "2.2 uF 16 V X7R (MCU VCAP)"),
     ("4.7u", "C_1206", "Samsung Electro-Mechanics", "CL31A475KAHNNNE", "", "4.7 uF 25 V X5R"),
     ("10u", "C_1206", "Samsung Electro-Mechanics", "CL31A106KAHNNNE", "", "10 uF 25 V X5R"),

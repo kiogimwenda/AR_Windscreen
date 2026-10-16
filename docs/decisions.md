@@ -1264,3 +1264,24 @@ it before ordering. Through-hole parts are assembled too, for boards that arrive
 PCB budget becomes ~KES 30,000–61,000 (was 15,000–28,000 with hand assembly). Tag `pcb-rev1.1`
 marks the design ordered.
 
+## Enclosures designed before the parts are bought (2026-10-16)
+
+The E-stop housing, the windscreen pod and the gesture puck are designed around typical
+dimensions (a 38 × 38 M12 board camera, a NEO-M8N board with stacked patch, the GY-9960 APDS-9960
+module, a 27° windscreen), every such number marked VERIFY in its model, so the printing waits
+only on a measurement, not a design. The pod stands upright (79 × 52 × 75 mm) instead of the
+guide's 110 × 70 × 45 estimate, so the vertical board and the camera share one carrier wall. The
+gesture window has no cover (a clear one reflects the sensor's IR LED back into it).
+
+## R63 4.7 kΩ and the pod's C1/C2 1 µF / 4.7 µF (2026-10-16, Ian's decision)
+
+**From the brake-light and pod-supply simulations** (`hardware/sim/run_brake.sh`,
+`run_pod_supply.sh`). R63, the optocoupler LED's resistor, was 2.2 kΩ: 237 mW in a 60 s, 24 V
+jump-start, against an 0805's 125 mW; at 4.7 kΩ it is 111 mW, and the weakest PC817 (CTR 25 %)
+still reads pressed from 6 V. The pod's C1 and C2 were 10 µF each: with the decoupling about
+22 µF behind the USB socket, an 88 µC inrush at attach against USB 2.0's 50 µC; at 1 µF and
+4.7 µF (the AP2112K needs 1 µF each side) it is 28 µC. Value changes only, same footprints:
+the routed boards' values were edited in place (copper and teardrops untouched), the fab files
+regenerated, both simulations rerun with the new values (ALL PASS). The tag `pcb-rev1.1` still
+marks the design before these two changes: order from this commit's fab files.
+

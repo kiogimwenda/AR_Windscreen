@@ -36,6 +36,8 @@ def holes(scad):
         if not line.startswith('ECHO: "'):
             continue
         f = line[7:-1].split(",")
+        if len(f) < 2 or f[0] not in ("HOLE", "SLOT", "DSUB", "OUTLINE", "PANEL"):
+            continue  # a model's other messages (its size, say): not part of a template
         kind, plate = f[0], f[1]
         p = plates.setdefault(plate, {"holes": [], "slots": [], "dsubs": [], "w": 0, "h": 0, "r": 0,
                                       "centre": True, "desc": ""})

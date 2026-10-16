@@ -2212,7 +2212,7 @@
 				)
 			)
 		)
-		(property "Value" "2.2k"
+		(property "Value" "4.7k"
 			(at 233.68 103.866 90)
 			(effects
 				(font
@@ -2238,7 +2238,7 @@
 				)
 			)
 		)
-		(property "Description" "~5 mA LED current at 12 V"
+		(property "Description" "~2.3 mA LED current at 12 V; 4.7k keeps a 24 V jump-start within 0805"
 			(at 233.68 101.6 0)
 			(hide yes)
 			(effects
